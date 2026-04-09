@@ -1,0 +1,1 @@
+/usr/lib64/ccache/cc -fPIC  -Wall -Wextra -fPIC -Wl,--dependency-file=CMakeFiles/cui.dir/link.d -shared -Wl,-soname,cui.so -o cui.so CMakeFiles/cui.dir/src/main.c.o  -lgtk-3 -lgdk-3 -lpangocairo-1.0 -lpango-1.0 -lharfbuzz -lz -latk-1.0 -lcairo-gobject -lcairo -lgdk_pixbuf-2.0 -lgio-2.0 -lgobject-2.0 -lglib-2.0
