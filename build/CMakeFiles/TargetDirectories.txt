@@ -1,3 +1,0 @@
-/home/bdkl/.gitrepos/deadbeef-cui/build/CMakeFiles/cui.dir
-/home/bdkl/.gitrepos/deadbeef-cui/build/CMakeFiles/edit_cache.dir
-/home/bdkl/.gitrepos/deadbeef-cui/build/CMakeFiles/rebuild_cache.dir
