@@ -13,11 +13,11 @@ static ddb_mediasource_source_t *ml_source;
 static int shutting_down = 0;
 
 // --- Medialib Scriptable API Function Pointers ---
-static ddb_scriptable_item_t* (*scriptableItemAlloc)(void);
-static void (*scriptableItemFree)(ddb_scriptable_item_t *item);
-static void (*scriptableItemSetPropertyValueForKey)(ddb_scriptable_item_t *item, const char *key, const char *value);
-static void (*scriptableItemAddSubItem)(ddb_scriptable_item_t *parent, ddb_scriptable_item_t *child);
-static void (*scriptableItemFlagsAdd)(ddb_scriptable_item_t *item, uint64_t flags);
+static ddb_scriptable_item_t* (*scriptableItemAlloc)(void) = NULL;
+static void (*scriptableItemFree)(ddb_scriptable_item_t *item) = NULL;
+static void (*scriptableItemSetPropertyValueForKey)(ddb_scriptable_item_t *item, const char *key, const char *value) = NULL;
+static void (*scriptableItemAddSubItem)(ddb_scriptable_item_t *parent, ddb_scriptable_item_t *child) = NULL;
+static void (*scriptableItemFlagsAdd)(ddb_scriptable_item_t *item, uint64_t flags) = NULL;
 
 #define SCRIPTABLE_FLAG_IS_LIST (1 << 2)
 
@@ -53,27 +53,30 @@ static ddb_scriptable_item_t *my_preset = NULL;
 static void resolve_medialib_api(void) {
     if (scriptableItemAlloc) return;
 
+    // We try to find the symbols in the current process space first
     void *handle = RTLD_DEFAULT;
     
-    // Try explicit load first to ensure symbols are available
-    void *ml_handle = dlopen("/usr/lib64/deadbeef/medialib.so", RTLD_NOW | RTLD_GLOBAL);
-    if (ml_handle) {
-        handle = ml_handle;
-        fprintf(stderr, "deadbeef-cui: [DEBUG] Successfully dlopened medialib.so\n");
-    } else {
-        fprintf(stderr, "deadbeef-cui: [DEBUG] dlopen medialib.so failed: %s, falling back to RTLD_DEFAULT\n", dlerror());
+    scriptableItemAlloc = dlsym(handle, "scriptableItemAlloc");
+    if (!scriptableItemAlloc) {
+        // If not found, try to explicitly load medialib.so
+        void *ml_handle = dlopen("medialib.so", RTLD_NOW | RTLD_GLOBAL);
+        if (!ml_handle) {
+            ml_handle = dlopen("/usr/lib64/deadbeef/medialib.so", RTLD_NOW | RTLD_GLOBAL);
+        }
+        if (ml_handle) {
+            handle = ml_handle;
+            scriptableItemAlloc = dlsym(handle, "scriptableItemAlloc");
+        }
     }
 
-    scriptableItemAlloc = dlsym(handle, "scriptableItemAlloc");
-    scriptableItemFree = dlsym(handle, "scriptableItemFree");
-    scriptableItemSetPropertyValueForKey = dlsym(handle, "scriptableItemSetPropertyValueForKey");
-    scriptableItemAddSubItem = dlsym(handle, "scriptableItemAddSubItem");
-    scriptableItemFlagsAdd = dlsym(handle, "scriptableItemFlagsAdd");
-    
-    if (!scriptableItemAlloc) {
-        fprintf(stderr, "deadbeef-cui: [ERROR] Failed to resolve scriptableItemAlloc!\n");
+    if (scriptableItemAlloc) {
+        scriptableItemFree = dlsym(handle, "scriptableItemFree");
+        scriptableItemSetPropertyValueForKey = dlsym(handle, "scriptableItemSetPropertyValueForKey");
+        scriptableItemAddSubItem = dlsym(handle, "scriptableItemAddSubItem");
+        scriptableItemFlagsAdd = dlsym(handle, "scriptableItemFlagsAdd");
+        fprintf(stderr, "deadbeef-cui: [DEBUG] ScriptableItem API resolved.\n");
     } else {
-        fprintf(stderr, "deadbeef-cui: [DEBUG] All scriptableItem symbols resolved successfully.\n");
+        fprintf(stderr, "deadbeef-cui: [ERROR] Could not resolve ScriptableItem API.\n");
     }
 }
 
@@ -254,22 +257,21 @@ static void update_tree_data(cui_widget_t *cw) {
     if (!medialib_plugin) {
         medialib_plugin = (DB_mediasource_t *)deadbeef_api->plug_get_for_id("medialib");
     }
-    if (!medialib_plugin) {
-        fprintf(stderr, "deadbeef-cui: [DEBUG] medialib plugin not available in update_tree_data\n");
-        return;
-    }
+    if (!medialib_plugin) return;
 
     if (!ml_source) {
         ml_source = medialib_plugin->create_source("deadbeef");
         if (ml_source) {
             medialib_plugin->refresh(ml_source);
-            // Re-add listener if it was missed
             if (!cw->listener_id) {
                 cw->listener_id = medialib_plugin->add_listener(ml_source, ml_listener_cb, cw);
             }
         }
     }
     if (!ml_source) return;
+
+    init_my_preset();
+    if (!my_preset) return;
 
     if (cw->cached_tree) {
         medialib_plugin->free_item_tree(ml_source, cw->cached_tree);
@@ -279,22 +281,8 @@ static void update_tree_data(cui_widget_t *cw) {
     cw->sel_artist_node = NULL;
     cw->sel_album_node = NULL;
 
-    g_free(cw->sel_genre_text); cw->sel_genre_text = NULL;
-    g_free(cw->sel_artist_text); cw->sel_artist_text = NULL;
-    g_free(cw->sel_album_text); cw->sel_album_text = NULL;
-
-    init_my_preset();
-    if (!my_preset) {
-        fprintf(stderr, "deadbeef-cui: [ERROR] Failed to initialize preset in update_tree_data\n");
-        return;
-    }
-
     cw->cached_tree = medialib_plugin->create_item_tree(ml_source, my_preset, NULL);
-    if (!cw->cached_tree) {
-        fprintf(stderr, "deadbeef-cui: [DEBUG] create_item_tree returned NULL (scanner state: %d)\n", 
-                medialib_plugin->scanner_state(ml_source));
-        return;
-    }
+    if (!cw->cached_tree) return;
     
     populate_list_multi(cw->store_genre, 1, cw, ALL_GENRES);
     populate_list_multi(cw->store_artist, 2, cw, ALL_ARTISTS);
@@ -384,156 +372,103 @@ static void on_row_activated(GtkTreeView *tree_view, GtkTreePath *path, GtkTreeV
     }
 }
 
-// Widget destruction callback
 static void cui_destroy(ddb_gtkui_widget_t *w) {
     cui_widget_t *cw = (cui_widget_t *)w;
-    fprintf(stderr, "deadbeef-cui: [DEBUG] cui_destroy starting for widget %p (shutting_down=%d)\n", cw, shutting_down);
-
     if (cw->idle_id) {
-        fprintf(stderr, "deadbeef-cui: [DEBUG] Removing pending idle handler %u\n", cw->idle_id);
         g_source_remove(cw->idle_id);
         cw->idle_id = 0;
     }
 
     if (!shutting_down && medialib_plugin && ml_source) {
         if (cw->listener_id) {
-            fprintf(stderr, "deadbeef-cui: [DEBUG] Removing ml listener %d\n", cw->listener_id);
             medialib_plugin->remove_listener(ml_source, cw->listener_id);
             cw->listener_id = 0;
         }
         if (cw->cached_tree) {
-            fprintf(stderr, "deadbeef-cui: [DEBUG] Freeing cached tree %p\n", cw->cached_tree);
             medialib_plugin->free_item_tree(ml_source, cw->cached_tree);
             cw->cached_tree = NULL;
         }
     }
     
-    fprintf(stderr, "deadbeef-cui: [DEBUG] Freeing selection strings and widget struct\n");
     g_free(cw->sel_genre_text);
     g_free(cw->sel_artist_text);
     g_free(cw->sel_album_text);
     free(cw);
-    fprintf(stderr, "deadbeef-cui: [DEBUG] cui_destroy finished\n");
 }
 
-// Helper to create a single list column
 static GtkWidget *create_column(const char *title, GtkListStore **out_store, GtkWidget **out_tree) {
     GtkListStore *store = gtk_list_store_new(1, G_TYPE_STRING);
     GtkWidget *tree = gtk_tree_view_new_with_model(GTK_TREE_MODEL(store));
     g_object_unref(store);
-
     gtk_tree_view_set_headers_visible(GTK_TREE_VIEW(tree), TRUE);
-
     GtkCellRenderer *renderer = gtk_cell_renderer_text_new();
     GtkTreeViewColumn *column = gtk_tree_view_column_new_with_attributes(title, renderer, "text", 0, NULL);
     gtk_tree_view_append_column(GTK_TREE_VIEW(tree), column);
-
     GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
     gtk_container_add(GTK_CONTAINER(scroll), tree);
-
     if (out_store) *out_store = store;
     if (out_tree) *out_tree = tree;
-
     return scroll;
 }
 
-// Widget creation function
+static gboolean initial_populate_idle(gpointer data) {
+    cui_widget_t *cw = (cui_widget_t *)data;
+    update_tree_data(cw);
+    return G_SOURCE_REMOVE;
+}
+
 static ddb_gtkui_widget_t *cui_create_widget(void) {
     cui_widget_t *cw = malloc(sizeof(cui_widget_t));
     memset(cw, 0, sizeof(cui_widget_t));
-
     ddb_gtkui_widget_t *w = &cw->base;
     w->type = "deadbeef_cui";
-    
-    // Create the triple-pane facet view
     GtkWidget *pane1 = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
     GtkWidget *pane2 = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
-
     GtkWidget *col_genre = create_column("Genre", &cw->store_genre, &cw->tree_genre);
     GtkWidget *col_artist = create_column("Album Artist", &cw->store_artist, &cw->tree_artist);
     GtkWidget *col_album = create_column("Album", &cw->store_album, &cw->tree_album);
-
     gtk_paned_pack1(GTK_PANED(pane2), col_artist, TRUE, FALSE);
     gtk_paned_pack2(GTK_PANED(pane2), col_album, TRUE, FALSE);
-
     gtk_paned_pack1(GTK_PANED(pane1), col_genre, TRUE, FALSE);
     gtk_paned_pack2(GTK_PANED(pane1), pane2, TRUE, FALSE);
-
     gtk_widget_show_all(pane1);
-    
     w->widget = pane1;
     w->destroy = cui_destroy;
-
-    // This is required for design mode
     if (gtkui_plugin && gtkui_plugin->w_override_signals) {
         gtkui_plugin->w_override_signals(w->widget, w);
     }
-
-    if (!ml_source && medialib_plugin && medialib_plugin->create_source) {
-        ml_source = medialib_plugin->create_source("deadbeef");
-        if (ml_source) {
-            medialib_plugin->refresh(ml_source);
-        }
-    }
-
-    if (medialib_plugin && ml_source) {
-        cw->listener_id = medialib_plugin->add_listener(ml_source, ml_listener_cb, cw);
-    }
-
-    // Attach signals
     GtkTreeSelection *sel_genre = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->tree_genre));
     g_signal_connect(sel_genre, "changed", G_CALLBACK(on_genre_changed), cw);
-
     GtkTreeSelection *sel_artist = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->tree_artist));
     g_signal_connect(sel_artist, "changed", G_CALLBACK(on_artist_changed), cw);
-
     GtkTreeSelection *sel_album = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->tree_album));
     g_signal_connect(sel_album, "changed", G_CALLBACK(on_album_changed), cw);
-
     g_signal_connect(cw->tree_genre, "row-activated", G_CALLBACK(on_row_activated), cw);
     g_signal_connect(cw->tree_artist, "row-activated", G_CALLBACK(on_row_activated), cw);
     g_signal_connect(cw->tree_album, "row-activated", G_CALLBACK(on_row_activated), cw);
-
-    // Populate initial data
-    update_tree_data(cw);
-
+    
+    // Defer initial population to ensure other plugins are ready
+    g_idle_add(initial_populate_idle, cw);
     return w;
-}
-
-static int cui_message(uint32_t id, uintptr_t ctx, uint32_t p1, uint32_t p2) {
-    return 0;
 }
 
 int cui_start(void) {
     shutting_down = 0;
     gtkui_plugin = (ddb_gtkui_t *)deadbeef_api->plug_get_for_id(DDB_GTKUI_PLUGIN_ID);
-    if (!gtkui_plugin) {
-        fprintf(stderr, "deadbeef-cui: GTK UI plugin not found!\n");
-        return -1;
-    }
-
+    if (!gtkui_plugin) return -1;
     medialib_plugin = (DB_mediasource_t *)deadbeef_api->plug_get_for_id("medialib");
-
-    gtkui_plugin->w_reg_widget("CUI Facets v0.3.5", 0, cui_create_widget, "deadbeef_cui", NULL);
-    fprintf(stderr, "deadbeef-cui: Facets v0.3.5 registered successfully.\n");
-
+    gtkui_plugin->w_reg_widget("CUI Facets v0.3.6", 0, cui_create_widget, "deadbeef_cui", NULL);
     return 0;
 }
 
 int cui_stop(void) {
-    fprintf(stderr, "deadbeef-cui: [DEBUG] cui_stop starting\n");
     shutting_down = 1;
-    
     if (gtkui_plugin) {
-        fprintf(stderr, "deadbeef-cui: [DEBUG] Unregistering widget\n");
         gtkui_plugin->w_unreg_widget("deadbeef_cui");
     }
-
     ml_source = NULL;
     my_preset = NULL;
-
-    fprintf(stderr, "deadbeef-cui: [DEBUG] cui_stop finished\n");
     return 0;
 }
 
@@ -550,7 +485,6 @@ static DB_misc_t plugin = {
     .plugin.website = "https://github.com/bdkl/deadbeef-cui",
     .plugin.start = cui_start,
     .plugin.stop = cui_stop,
-    .plugin.message = cui_message,
 };
 
 DB_plugin_t * ddb_misc_cui_GTK3_load(DB_functions_t *api) {
