@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <dlfcn.h>
 
 static DB_functions_t *deadbeef_api;
 static ddb_gtkui_t *gtkui_plugin;
@@ -12,13 +11,64 @@ static DB_mediasource_t *medialib_plugin;
 static ddb_mediasource_source_t *ml_source;
 static int shutting_down = 0;
 
-static ddb_scriptable_item_t* (*scriptableItemAlloc)(void) = NULL;
-static void (*scriptableItemFree)(ddb_scriptable_item_t *item) = NULL;
-static void (*scriptableItemSetPropertyValueForKey)(ddb_scriptable_item_t *item, const char *key, const char *value) = NULL;
-static void (*scriptableItemAddSubItem)(ddb_scriptable_item_t *parent, ddb_scriptable_item_t *child) = NULL;
-static void (*scriptableItemFlagsAdd)(ddb_scriptable_item_t *item, uint64_t flags) = NULL;
+// --- Internal Scriptable types mirroring DeaDBeeF source ---
+typedef struct scriptableKeyValue_s {
+    struct scriptableKeyValue_s *next;
+    char *key;
+    char *value;
+} scriptableKeyValue_t;
+
+typedef struct scriptableItem_s {
+    struct scriptableItem_s *next;
+    uint64_t flags;
+    scriptableKeyValue_t *properties;
+    struct scriptableItem_s *parent;
+    struct scriptableItem_s *children;
+    struct scriptableItem_s *childrenTail;
+    char *type;
+    char *configDialog;
+    void *overrides;
+} scriptableItem_t;
 
 #define SCRIPTABLE_FLAG_IS_LIST (1 << 2)
+
+// Safe creation/freeing of scriptable items
+static scriptableItem_t *my_scriptable_alloc(void) {
+    return calloc(1, sizeof(scriptableItem_t));
+}
+
+static void my_scriptable_free(scriptableItem_t *item) {
+    if (!item) return;
+    scriptableItem_t *child = item->children;
+    while (child) {
+        scriptableItem_t *next = child->next;
+        my_scriptable_free(child);
+        child = next;
+    }
+    scriptableKeyValue_t *kv = item->properties;
+    while (kv) {
+        scriptableKeyValue_t *next = kv->next;
+        free(kv->key); free(kv->value); free(kv);
+        kv = next;
+    }
+    free(item->type); free(item->configDialog); free(item);
+}
+
+static void my_scriptable_set_prop(scriptableItem_t *item, const char *key, const char *value) {
+    scriptableKeyValue_t *kv = calloc(1, sizeof(scriptableKeyValue_t));
+    kv->key = strdup(key);
+    kv->value = strdup(value);
+    kv->next = item->properties;
+    item->properties = kv;
+}
+
+static void my_scriptable_add_child(scriptableItem_t *parent, scriptableItem_t *child) {
+    if (parent->childrenTail) parent->childrenTail->next = child;
+    else parent->children = child;
+    parent->childrenTail = child;
+    child->parent = parent;
+}
+
 #define ALL_GENRES "[ All Genres ]"
 #define ALL_ARTISTS "[ All Artists ]"
 #define ALL_ALBUMS "[ All Albums ]"
@@ -35,83 +85,51 @@ typedef struct {
 
 static ddb_scriptable_item_t *my_preset = NULL;
 
-static void resolve_medialib_api(void) {
-    if (scriptableItemAlloc) return;
-    scriptableItemAlloc = dlsym(RTLD_DEFAULT, "scriptableItemAlloc");
-    if (!scriptableItemAlloc) {
-        void *h = dlopen("medialib.so", RTLD_NOW | RTLD_GLOBAL);
-        if (!h) h = dlopen("/usr/lib64/deadbeef/medialib.so", RTLD_NOW | RTLD_GLOBAL);
-        if (h) scriptableItemAlloc = dlsym(h, "scriptableItemAlloc");
-    }
-    if (scriptableItemAlloc) {
-        void *h = RTLD_DEFAULT;
-        scriptableItemFree = dlsym(h, "scriptableItemFree");
-        scriptableItemSetPropertyValueForKey = dlsym(h, "scriptableItemSetPropertyValueForKey");
-        scriptableItemAddSubItem = dlsym(h, "scriptableItemAddSubItem");
-        scriptableItemFlagsAdd = dlsym(h, "scriptableItemFlagsAdd");
-    }
-}
-
 static void init_my_preset(void) {
     if (my_preset) return;
-    resolve_medialib_api();
-    if (!scriptableItemAlloc) return;
-    my_preset = scriptableItemAlloc();
-    if (!my_preset) return;
-    if (scriptableItemFlagsAdd) scriptableItemFlagsAdd(my_preset, SCRIPTABLE_FLAG_IS_LIST);
-    if (scriptableItemSetPropertyValueForKey) {
-        scriptableItemSetPropertyValueForKey(my_preset, "name", "Facets");
-        scriptableItemSetPropertyValueForKey(my_preset, "type", "deadbeef.medialib.tfquery");
-    }
+    scriptableItem_t *p = my_scriptable_alloc();
+    p->flags = SCRIPTABLE_FLAG_IS_LIST;
+    p->type = strdup("deadbeef.medialib.tfquery");
+    my_scriptable_set_prop(p, "name", "Facets");
     const char *tfs[] = {"%genre%", "%album artist%", "%album%", "%title%"};
     for (int i = 0; i < 4; i++) {
-        ddb_scriptable_item_t *child = scriptableItemAlloc();
-        if (child) {
-            if (scriptableItemSetPropertyValueForKey) {
-                scriptableItemSetPropertyValueForKey(child, "name", tfs[i]);
-                scriptableItemSetPropertyValueForKey(child, "type", "deadbeef.medialib.tfstring");
-            }
-            if (scriptableItemAddSubItem) scriptableItemAddSubItem(my_preset, child);
-        }
+        scriptableItem_t *c = my_scriptable_alloc();
+        c->type = strdup("deadbeef.medialib.tfstring");
+        my_scriptable_set_prop(c, "name", tfs[i]);
+        my_scriptable_add_child(p, c);
     }
+    my_preset = (ddb_scriptable_item_t *)p;
 }
 
-static void add_tracks_recursive_multi(const ddb_medialib_item_t *node, int current_level, cui_widget_t *cw, ddb_playlist_t *plt, DB_playItem_t **after) {
-    if (cw->sel_genre_text && current_level == 1) {
+static void add_tracks_recursive_multi(const ddb_medialib_item_t *node, int cl, cui_widget_t *cw, ddb_playlist_t *plt, DB_playItem_t **after) {
+    if (cw->sel_genre_text && cl == 1) {
         const char *t = medialib_plugin->tree_item_get_text(node);
         if (!t || strcmp(t, cw->sel_genre_text)) return;
     }
-    if (cw->sel_artist_text && current_level == 2) {
+    if (cw->sel_artist_text && cl == 2) {
         const char *t = medialib_plugin->tree_item_get_text(node);
         if (!t || strcmp(t, cw->sel_artist_text)) return;
     }
-    if (cw->sel_album_text && current_level == 3) {
+    if (cw->sel_album_text && cl == 3) {
         const char *t = medialib_plugin->tree_item_get_text(node);
         if (!t || strcmp(t, cw->sel_album_text)) return;
     }
-    DB_playItem_t *track = medialib_plugin->tree_item_get_track(node);
-    if (track) {
+    DB_playItem_t *tr = medialib_plugin->tree_item_get_track(node);
+    if (tr) {
         DB_playItem_t *tn = deadbeef_api->pl_item_alloc();
-        deadbeef_api->pl_item_copy(tn, track);
+        deadbeef_api->pl_item_copy(tn, tr);
         *after = deadbeef_api->plt_insert_item(plt, *after, tn);
         deadbeef_api->pl_item_unref(tn);
     }
     const ddb_medialib_item_t *c = medialib_plugin->tree_item_get_children(node);
-    while (c) {
-        add_tracks_recursive_multi(c, current_level + 1, cw, plt, after);
-        c = medialib_plugin->tree_item_get_next(c);
-    }
+    while (c) { add_tracks_recursive_multi(c, cl + 1, cw, plt, after); c = medialib_plugin->tree_item_get_next(c); }
 }
 
 static void update_playlist_from_cui(cui_widget_t *cw) {
     if (!cw->cached_tree || !deadbeef_api || !medialib_plugin) return;
-    ddb_playlist_t *plt = deadbeef_api->plt_get_curr();
-    if (!plt) return;
-    deadbeef_api->pl_lock();
-    deadbeef_api->plt_clear(plt);
-    DB_playItem_t *after = NULL;
-    const ddb_medialib_item_t *root = cw->cached_tree;
-    int rl = 0;
+    ddb_playlist_t *plt = deadbeef_api->plt_get_curr(); if (!plt) return;
+    deadbeef_api->pl_lock(); deadbeef_api->plt_clear(plt); DB_playItem_t *after = NULL;
+    const ddb_medialib_item_t *root = cw->cached_tree; int rl = 0;
     if (cw->sel_album_node) { root = cw->sel_album_node; rl = 3; }
     else if (cw->sel_artist_node) { root = cw->sel_artist_node; rl = 2; }
     else if (cw->sel_genre_node) { root = cw->sel_genre_node; rl = 1; }
@@ -120,8 +138,8 @@ static void update_playlist_from_cui(cui_widget_t *cw) {
         const ddb_medialib_item_t *c = medialib_plugin->tree_item_get_children(root);
         while (c) { add_tracks_recursive_multi(c, rl + 1, cw, plt, &after); c = medialib_plugin->tree_item_get_next(c); }
     }
-    deadbeef_api->plt_modified(plt); deadbeef_api->pl_unlock();
-    deadbeef_api->plt_unref(plt); deadbeef_api->sendmessage(DB_EV_PLAYLISTCHANGED, 0, 0, 0);
+    deadbeef_api->plt_modified(plt); deadbeef_api->pl_unlock(); deadbeef_api->plt_unref(plt);
+    deadbeef_api->sendmessage(DB_EV_PLAYLISTCHANGED, 0, 0, 0);
 }
 
 static void aggregate_recursive_multi(GtkListStore *store, const ddb_medialib_item_t *node, int cl, int tl, cui_widget_t *cw, GHashTable *seen) {
@@ -174,8 +192,7 @@ static const ddb_medialib_item_t *find_node_by_text(const ddb_medialib_item_t *p
 
 static void update_tree_data(cui_widget_t *cw);
 static gboolean repopulate_ui_idle(gpointer data) {
-    cui_widget_t *cw = (cui_widget_t *)data; cw->idle_id = 0;
-    if (!shutting_down) update_tree_data(cw);
+    cui_widget_t *cw = (cui_widget_t *)data; cw->idle_id = 0; if (!shutting_down) update_tree_data(cw);
     return G_SOURCE_REMOVE;
 }
 static void ml_listener_cb(ddb_mediasource_event_type_t ev, void *ud) {
@@ -191,7 +208,7 @@ static void update_tree_data(cui_widget_t *cw) {
     if (!medialib_plugin) medialib_plugin = (DB_mediasource_t *)deadbeef_api->plug_get_for_id("medialib");
     if (!medialib_plugin) return;
     if (!ml_source) {
-        ml_source = medialib_plugin->create_source(NULL);
+        ml_source = medialib_plugin->create_source("deadbeef");
         if (ml_source) {
             medialib_plugin->refresh(ml_source);
             if (!cw->listener_id) cw->listener_id = medialib_plugin->add_listener(ml_source, ml_listener_cb, cw);
@@ -201,10 +218,8 @@ static void update_tree_data(cui_widget_t *cw) {
     init_my_preset(); if (!my_preset) return;
     if (cw->cached_tree) { medialib_plugin->free_item_tree(ml_source, cw->cached_tree); cw->cached_tree = NULL; }
     cw->sel_genre_node = cw->sel_artist_node = cw->sel_album_node = NULL;
-    fprintf(stderr, "deadbeef-cui: [DEBUG] Calling create_item_tree...\n");
     cw->cached_tree = medialib_plugin->create_item_tree(ml_source, my_preset, NULL);
-    if (!cw->cached_tree) { fprintf(stderr, "deadbeef-cui: [DEBUG] create_item_tree returned NULL.\n"); return; }
-    fprintf(stderr, "deadbeef-cui: [DEBUG] create_item_tree success.\n");
+    if (!cw->cached_tree) return;
     populate_list_multi(cw->store_genre, 1, cw, ALL_GENRES);
     populate_list_multi(cw->store_artist, 2, cw, ALL_ARTISTS);
     populate_list_multi(cw->store_album, 3, cw, ALL_ALBUMS);
@@ -278,8 +293,8 @@ static GtkWidget *create_column(const char *title, GtkListStore **os, GtkWidget 
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(s), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
     gtk_container_add(GTK_CONTAINER(s), tree); if (os) *os = store; if (ot) *ot = tree; return s;
 }
-static gboolean initial_populate_timeout(gpointer data) {
-    cui_widget_t *cw = (cui_widget_t *)data; cw->idle_id = 0; update_tree_data(cw); return G_SOURCE_REMOVE;
+static gboolean initial_populate_idle(gpointer data) {
+    cui_widget_t *cw = (cui_widget_t *)data; update_tree_data(cw); return G_SOURCE_REMOVE;
 }
 static ddb_gtkui_widget_t *cui_create_widget(void) {
     cui_widget_t *cw = calloc(1, sizeof(cui_widget_t)); ddb_gtkui_widget_t *w = &cw->base; w->type = "deadbeef_cui";
@@ -300,14 +315,18 @@ static ddb_gtkui_widget_t *cui_create_widget(void) {
     g_signal_connect(cw->tree_genre, "row-activated", G_CALLBACK(on_row_activated), cw);
     g_signal_connect(cw->tree_artist, "row-activated", G_CALLBACK(on_row_activated), cw);
     g_signal_connect(cw->tree_album, "row-activated", G_CALLBACK(on_row_activated), cw);
-    cw->idle_id = g_timeout_add(5000, initial_populate_timeout, cw); return w;
+    g_idle_add(initial_populate_idle, cw); return w;
 }
 int cui_start(void) {
     shutting_down = 0; gtkui_plugin = (ddb_gtkui_t *)deadbeef_api->plug_get_for_id(DDB_GTKUI_PLUGIN_ID);
     if (!gtkui_plugin) return -1; medialib_plugin = (DB_mediasource_t *)deadbeef_api->plug_get_for_id("medialib");
-    gtkui_plugin->w_reg_widget("CUI Facets v0.3.9", 0, cui_create_widget, "deadbeef_cui", NULL); return 0;
+    gtkui_plugin->w_reg_widget("Facet Browser (CUI)", 0, cui_create_widget, "deadbeef_cui", NULL); return 0;
 }
-int cui_stop(void) { shutting_down = 1; if (gtkui_plugin) gtkui_plugin->w_unreg_widget("deadbeef_cui"); ml_source = NULL; my_preset = NULL; return 0; }
+int cui_stop(void) {
+    shutting_down = 1; if (gtkui_plugin) gtkui_plugin->w_unreg_widget("deadbeef_cui");
+    if (my_preset) { my_scriptable_free((scriptableItem_t *)my_preset); my_preset = NULL; }
+    ml_source = NULL; return 0;
+}
 static DB_misc_t plugin = {
     .plugin.type = DB_PLUGIN_MISC, .plugin.api_vmajor = 1, .plugin.api_vminor = 0, .plugin.version_major = 0, .plugin.version_minor = 3,
     .plugin.id = "deadbeef_cui", .plugin.name = "Columns UI for DeaDBeeF", .plugin.descr = "A faceted library browser for DeaDBeeF.",
