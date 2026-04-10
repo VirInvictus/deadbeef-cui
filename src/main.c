@@ -95,6 +95,7 @@ typedef struct {
     GtkWidget *tree_artist;
     GtkWidget *tree_album;
     int listener_id;
+    guint idle_id;
 
     ddb_medialib_item_t *cached_tree;
     const ddb_medialib_item_t *sel_genre_node;
@@ -281,6 +282,7 @@ static void update_tree_data(cui_widget_t *cw) {
 
 static gboolean repopulate_ui_idle(gpointer data) {
     cui_widget_t *cw = (cui_widget_t *)data;
+    cw->idle_id = 0;
     if (medialib_plugin && ml_source && medialib_plugin->scanner_state(ml_source) == DDB_MEDIASOURCE_STATE_IDLE) {
         update_tree_data(cw);
     }
@@ -288,8 +290,10 @@ static gboolean repopulate_ui_idle(gpointer data) {
 }
 
 static void ml_listener_cb(ddb_mediasource_event_type_t event, void *user_data) {
+    cui_widget_t *cw = (cui_widget_t *)user_data;
     if (event == DDB_MEDIASOURCE_EVENT_STATE_DID_CHANGE || event == DDB_MEDIASOURCE_EVENT_CONTENT_DID_CHANGE) {
-        g_idle_add(repopulate_ui_idle, user_data);
+        if (cw->idle_id) g_source_remove(cw->idle_id);
+        cw->idle_id = g_idle_add(repopulate_ui_idle, user_data);
     }
 }
 
@@ -377,6 +381,10 @@ static void on_row_activated(GtkTreeView *tree_view, GtkTreePath *path, GtkTreeV
 // Widget destruction callback
 static void cui_destroy(ddb_gtkui_widget_t *w) {
     cui_widget_t *cw = (cui_widget_t *)w;
+    if (cw->idle_id) {
+        g_source_remove(cw->idle_id);
+        cw->idle_id = 0;
+    }
     if (medialib_plugin && ml_source && cw->listener_id) {
         medialib_plugin->remove_listener(ml_source, cw->listener_id);
         cw->listener_id = 0;
