@@ -108,7 +108,7 @@ typedef struct {
 } cui_widget_t;
 
 static ddb_scriptable_item_t *my_preset = NULL;
-static cui_widget_t *active_widget = NULL;
+static GList *all_cui_widgets = NULL;
 
 static void init_my_preset(void) {
     if (my_preset) return;
@@ -307,19 +307,20 @@ static void update_tree_data(cui_widget_t *cw) {
 }
 
 static gboolean repopulate_ui_idle(gpointer data) {
-    (void)data;
-    if (shutting_down || !active_widget) return G_SOURCE_REMOVE;
-    if (medialib_plugin && ml_source) {
-        update_tree_data(active_widget);
+    if (shutting_down) return G_SOURCE_REMOVE;
+    cui_widget_t *cw = (cui_widget_t *)data;
+    if (g_list_find(all_cui_widgets, cw)) {
+        if (medialib_plugin && ml_source) {
+            update_tree_data(cw);
+        }
     }
     return G_SOURCE_REMOVE;
 }
 
 static void ml_listener_cb(ddb_mediasource_event_type_t event, void *user_data) {
-    (void)user_data;
     if (shutting_down) return;
     if (event == DDB_MEDIASOURCE_EVENT_STATE_DID_CHANGE || event == DDB_MEDIASOURCE_EVENT_CONTENT_DID_CHANGE) {
-        g_idle_add(repopulate_ui_idle, NULL);
+        g_idle_add(repopulate_ui_idle, user_data);
     }
 }
 
@@ -398,6 +399,10 @@ static void on_album_changed(GtkTreeSelection *selection, gpointer data) {
 }
 
 static void on_row_activated(GtkTreeView *tree_view, GtkTreePath *path, GtkTreeViewColumn *column, gpointer data) {
+    (void)tree_view;
+    (void)path;
+    (void)column;
+    (void)data;
     ddb_playlist_t *plt = deadbeef_api->plt_get_curr();
     if (plt) {
         deadbeef_api->plt_set_cursor(plt, 0, PL_MAIN);
@@ -411,9 +416,7 @@ static void on_row_activated(GtkTreeView *tree_view, GtkTreePath *path, GtkTreeV
 static void cui_destroy(ddb_gtkui_widget_t *w) {
     cui_widget_t *cw = (cui_widget_t *)w;
 
-    if (active_widget == cw) {
-        active_widget = NULL;
-    }
+    all_cui_widgets = g_list_remove(all_cui_widgets, cw);
 
     if (medialib_plugin && ml_source) {
         if (cw->listener_id) {
@@ -503,7 +506,7 @@ static ddb_gtkui_widget_t *cui_create_widget(void) {
     g_signal_connect(cw->tree_artist, "row-activated", G_CALLBACK(on_row_activated), cw);
     g_signal_connect(cw->tree_album, "row-activated", G_CALLBACK(on_row_activated), cw);
 
-    active_widget = cw;
+    all_cui_widgets = g_list_append(all_cui_widgets, cw);
     update_tree_data(cw);
 
     return w;
@@ -512,6 +515,9 @@ static ddb_gtkui_widget_t *cui_create_widget(void) {
 // --- Plugin entry points ---
 
 static int cui_message(uint32_t id, uintptr_t ctx, uint32_t p1, uint32_t p2) {
+    (void)ctx;
+    (void)p1;
+    (void)p2;
     if (id == DB_EV_TERMINATE) {
         shutting_down = 1;
     }
