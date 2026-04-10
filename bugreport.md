@@ -2,9 +2,9 @@
 
 ## 1. Memory Management & Teardown
 **Status:** Fixed
-* **The Leak:** `cui_create_widget` allocates `cui_widget_t` via `malloc`. The `cui_destroy` callback tears down the DeaDBeeF listeners and cached tree, but never actually calls `free(cw)`. Every layout change or tab close leaks the widget struct.
+* **The Leak:** `cui_create_widget` allocates `cui_widget_t` via `malloc`. The `cui_destroy` callback tears down the DeaDBeeF listeners and cached tree, but didn't initially call `free(cw)`. We previously added `free(cw)` but it caused a double-free because GTKUI manages widget destruction.
 * **The Dirty Exit:** `my_preset` is allocated as a custom scriptable linked list in `init_my_preset`. It is never freed in `cui_stop()`. While the OS reclaims this on application exit, it's terrible hygiene for a C plugin.
-* **Fix:** Added `free(cw);` to `cui_destroy`. Wrote a recursive teardown function for `ddb_scriptable_item_t` and invoke it in `cui_stop`.
+* **Fix:** Removed `free(cw);` from `cui_destroy` (relying on GTKUI lifecycle to handle the base widget). Wrote a recursive teardown function for `ddb_scriptable_item_t` and invoke it in `cui_stop`. Removed `gtkui_plugin->w_unreg_widget("cui");` from `cui_stop` to prevent a segfault when closing the application.
 
 ## 2. Tree Traversal & Hardcoded Depths
 **Status:** Fixed

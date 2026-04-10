@@ -22,6 +22,10 @@ CompileCommand.json
 *.swp
 *~
 
+# Debug logs
+*.log
+gdb_cmds*
+
 # OS
 .DS_Store
 Thumbs.db

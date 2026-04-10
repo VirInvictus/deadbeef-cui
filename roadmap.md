@@ -1,6 +1,6 @@
 # deadbeef-cui — Roadmap
 
-What's done, what's next. Updated as of v0.3.0-alpha.
+What's done, what's next. Updated as of v0.6.0-alpha.
 
 ---
 

@@ -1,6 +1,46 @@
 # deadbeef-cui — Patch Notes
 
-## v0.3.0-alpha (Current)
+## v0.6.0-alpha (Current)
+
+---
+
+### Bug Fixes
+
+**Fixed Shutdown Crash (Double-Free / Segfault).** Root-caused a double-free on application exit during widget destruction. `cui_destroy` incorrectly called `free(cw)` on a widget that was already managed by the GTKUI framework, leading to a crash on teardown. Also removed the `gtkui_plugin->w_unreg_widget("cui")` call during `cui_stop` to resolve a subsequent GTK segfault when DeaDBeeF was unloading the GUI plugin.
+
+## v0.5.0-alpha
+
+---
+
+### Bug Fixes
+
+**Fixed Shutdown Crash (SEGV in `create_item_tree`).** Root-caused a use-after-free during DeaDBeeF shutdown. The GTK `quit_gtk_cb` destroys our widget (freeing `cw`), but a pending `g_idle_add` callback from the medialib listener still held a pointer to the freed struct. Fixed by using a global `active_widget` pointer: the idle callback reads the global (set to NULL in `cui_destroy`) instead of dereferencing the stale callback data. Since both run on the GTK main thread, there is no race.
+**Own Medialib Source.** Switched from `create_source("deadbeef")` (shared with GTKUI) to `create_source("cui")` with synced folder config. Two source instances sharing the same database path caused concurrent access conflicts in `_create_item_tree_from_collection`.
+**Scanner State Guard in `update_tree_data`.** Added `scanner_state == IDLE` check directly in `update_tree_data` (not just the idle callback), so the initial call from `cui_create_widget` is also protected against calling `create_item_tree` while the scanner is still running.
+
+### Enhancements
+
+**`DB_EV_TERMINATE` Handling.** The `cui_message` handler catches `DB_EV_TERMINATE` as defense-in-depth, setting `shutting_down` early in the shutdown sequence.
+**Thread-Safe Listener Callback.** The medialib listener (called from a background thread) now passes `NULL` to `g_idle_add` instead of `cw`, avoiding any background-thread access to widget state.
+
+## v0.4.0-alpha
+
+---
+
+### Bug Fixes
+
+**Restored Shared Media Library Source.** Reverted `create_source` name from `"deadbeef_cui"` back to `"deadbeef"`, fixing a regression where the plugin created its own empty database instead of sharing the main media library.
+**Restored Scanner State Check.** Re-added the `scanner_state == IDLE` guard before repopulating the UI, preventing incomplete tree data from being displayed while the scanner is still active.
+**Fixed Stale Selection Filters.** Restored clearing of selection text strings (`sel_genre_text`, `sel_artist_text`, `sel_album_text`) during tree refresh, preventing stale filters from corrupting results after a library update.
+**Restored Widget Type Consistency.** Changed widget type back to `"cui"` to maintain compatibility with saved layouts.
+**Restored Plugin ID.** Changed plugin ID back to `"cui"` for consistency and layout compatibility.
+**Restored Direct Initialization.** Moved media source creation back to widget init instead of lazy-loading in `update_tree_data`, ensuring proper listener setup on first load.
+
+### Code Quality
+
+**Reformatted Source.** Restored readable, properly indented formatting throughout `main.c` (was compressed to single-line statements).
+
+## v0.3.0-alpha
 
 ---
 
