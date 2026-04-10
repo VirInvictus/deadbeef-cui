@@ -30,3 +30,8 @@
 **Status:** Fixed
 * **The Flaw:** The plugin originally created its own `"cui"` media library source, causing DeaDBeeF to scan the user's entire music folder twice on startup (once for the main UI, once for the CUI plugin). This caused massive disk I/O contention and a 2-4 second delay before the UI populated.
 * **Fix:** Implemented a robust workaround using `dlopen` and `dlsym` to dynamically acquire the `gtkui_medialib_get_source` function from the loaded GTK3 plugin. The Facet Browser now safely piggybacks on the main interface's media library, completely eliminating the redundant background scan and startup delay.
+
+## 7. Empty Whitespace Side-Scrolling
+**Status:** Fixed
+* **The Flaw:** The filter columns (Genre, Artist, Album) allowed the user to scroll horizontally into empty whitespace. This happened because GTK tree view columns default to `GTK_TREE_VIEW_COLUMN_GROW_ONLY`. If a column grew to fit long text, it never shrank when the list was updated with shorter text, triggering a wide horizontal scrollbar for empty space.
+* **Fix:** Set the column sizing policy to `GTK_TREE_VIEW_COLUMN_AUTOSIZE` during `create_column`. The column now automatically resizes to match the exact width of the current list content, ensuring horizontal scrollbars only appear when there is actual text extending beyond the pane.

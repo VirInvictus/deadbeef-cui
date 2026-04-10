@@ -20,6 +20,7 @@ What's done, what's next. Updated as of v0.6.0-alpha.
 - [x] **"Various Artists" Fix:** Implemented string-based aggregation for multi-genre artists.
 - [x] **"All" Rows:** Added "All Genres/Artists/Albums" options for broad filtering.
 - [x] **Performance:** Eliminated 2-4 second startup delay by sharing the main UI's media library database.
+- [x] **UI Polish:** Fixed empty whitespace horizontal scrolling in filter boxes.
 
 ---
 
