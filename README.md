@@ -6,6 +6,8 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
 </p>
 
+<img width="1920" height="1193" alt="image" src="https://github.com/user-attachments/assets/fefa72ee-ec51-4ec4-9ca5-ca5e1b49529e" />
+
 A faceted library browser plugin for the [DeaDBeeF](https://deadbeef.sourceforge.io/) music player on Linux. It brings a Columns UI / Facets style triple-filter layout (Genre → Album Artist → Album) to DeaDBeeF.
 
 ## Why this exists
