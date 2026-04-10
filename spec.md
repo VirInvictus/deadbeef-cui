@@ -1,6 +1,6 @@
 # deadbeef-cui — Application Specification
 
-**Version:** 0.1.2-alpha  
+**Version:** 0.3.0-alpha  
 **Language:** C/C++  
 **Dependencies:** DeaDBeeF Plugin API, GTK2/GTK3  
 **License:** MIT
@@ -24,7 +24,10 @@ Three list views (facets) that filter hierarchically:
 - **Album Artist:** Select one or more artists to filter albums.
 - **Album:** Select an album to display its tracks in the active DeaDBeeF playlist.
 
-### 2.3 Database Querying
+### 2.3 Recursive Filter Engine
+A robust recursive aggregation system that ensures hierarchical filtering works correctly at all levels, even when broad "All" categories are selected. It resolves the "Various Artists" collision by aggregating child albums from all matching nodes across the library tree.
+
+### 2.4 Database Querying
 Efficiently queries the internal DeaDBeeF media library database using the `DB_mediasource_t` API. By generating hierarchical tree views and extracting the underlying `DB_playItem_t` tracks, it pumps the results directly into DeaDBeeF's existing playlist view, avoiding the need for a custom track list viewer.
 
 ---

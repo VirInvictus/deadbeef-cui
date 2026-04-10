@@ -1,6 +1,23 @@
 # deadbeef-cui — Patch Notes
 
-## v0.1.2-alpha (Current)
+## v0.3.0-alpha (Current)
+
+---
+
+### Enhancements
+
+**Recursive Filter Engine.** Replaced the legacy hardcoded depth traversal with a robust recursive aggregation system. This ensures that hierarchical filtering works correctly at all levels, even on initial load.
+**Universal "All" Selections.** Added "All Genres", "All Artists", and "All Albums" options to their respective columns. These rows allow for broad filtering and easy navigation to aggregate views.
+**String-Based Multi-Aggregation.** Fixed a major flaw where artists appearing in multiple genres (like "Various Artists") were only partially represented. The plugin now aggregates child albums from *all* matching nodes across the entire library tree when no genre is selected.
+**Dynamic Playlist Synchronization.** Refined the playlist driving logic to ensure that selecting "All" or switching between categories immediately and accurately updates the active DeaDBeeF playlist.
+
+### Bug Fixes
+
+**Critical Memory Leak.** Fixed a bug where `cui_widget_t` was never freed during layout changes or widget destruction.
+**Resource Teardown.** Implemented a recursive cleanup for the custom `scriptableItem_t` tree to ensure a clean exit during plugin shutdown.
+**Idle State Re-population.** Improved the GTK idle-loop handling to ensure the UI only repopulates when the media library scanner is completely idle.
+
+## v0.1.2-alpha
 
 ---
 
@@ -16,7 +33,7 @@
 
 ### Bug Fixes
 
-**Official API Allocation.** Fixed a major segfault by switching from manual struct allocation to the official `scriptableItemAlloc` and related APIs exported by `medialib.so`. This ensures internal metadata state (like bytecode compilation) is correctly initialized.
+**Official API Allocation.** Fixed a major segfault by switching from manual struct allocation to the official `scriptableItemAlloc` and related APIs exported by `medialib.so`.
 **Memory Management.** Fixed a double-free crash during plugin shutdown by aligning with GTKUI's widget ownership model.
 **Data Isolation.** Resolved an issue where the plugin used a separate empty database; it now correctly shares the primary `deadbeef` media source.
 **Pointer Ownership.** Fixed a critical crash on album selection by correctly cloning track items instead of attempting to move internal library pointers.

@@ -38,6 +38,30 @@ static scriptableItem_t *my_scriptable_alloc(void) {
     return calloc(1, sizeof(scriptableItem_t));
 }
 
+static void my_scriptable_free(scriptableItem_t *item) {
+    if (!item) return;
+
+    // Free children
+    scriptableItem_t *child = item->children;
+    while (child) {
+        scriptableItem_t *next = child->next;
+        my_scriptable_free(child);
+        child = next;
+    }
+
+    // Free properties
+    scriptableKeyValue_t *kv = item->properties;
+    while (kv) {
+        scriptableKeyValue_t *next = kv->next;
+        free(kv->key);
+        free(kv->value);
+        free(kv);
+        kv = next;
+    }
+
+    free(item);
+}
+
 static void my_scriptable_set_prop(scriptableItem_t *item, const char *key, const char *value) {
     scriptableKeyValue_t *kv = calloc(1, sizeof(scriptableKeyValue_t));
     kv->key = strdup(key);
@@ -56,6 +80,10 @@ static void my_scriptable_add_child(scriptableItem_t *parent, scriptableItem_t *
     child->parent = parent;
 }
 
+#define ALL_GENRES "[ All Genres ]"
+#define ALL_ARTISTS "[ All Artists ]"
+#define ALL_ALBUMS "[ All Albums ]"
+
 // --- Widget structures ---
 typedef struct {
     ddb_gtkui_widget_t base;
@@ -72,6 +100,10 @@ typedef struct {
     const ddb_medialib_item_t *sel_genre_node;
     const ddb_medialib_item_t *sel_artist_node;
     const ddb_medialib_item_t *sel_album_node;
+
+    char *sel_genre_text;
+    char *sel_artist_text;
+    char *sel_album_text;
 } cui_widget_t;
 
 static ddb_scriptable_item_t *my_preset = NULL;
@@ -92,9 +124,20 @@ static void init_my_preset(void) {
     my_preset = (ddb_scriptable_item_t *)p;
 }
 
-static void add_tracks_recursively(const ddb_medialib_item_t *node, ddb_playlist_t *plt, DB_playItem_t **after) {
-    if (!node || !medialib_plugin) return;
-    
+static void add_tracks_recursive_multi(const ddb_medialib_item_t *node, int current_level, cui_widget_t *cw, ddb_playlist_t *plt, DB_playItem_t **after) {
+    if (cw->sel_genre_text && current_level == 1) {
+        const char *text = medialib_plugin->tree_item_get_text(node);
+        if (!text || strcmp(text, cw->sel_genre_text)) return;
+    }
+    if (cw->sel_artist_text && current_level == 2) {
+        const char *text = medialib_plugin->tree_item_get_text(node);
+        if (!text || strcmp(text, cw->sel_artist_text)) return;
+    }
+    if (cw->sel_album_text && current_level == 3) {
+        const char *text = medialib_plugin->tree_item_get_text(node);
+        if (!text || strcmp(text, cw->sel_album_text)) return;
+    }
+
     DB_playItem_t *track = medialib_plugin->tree_item_get_track(node);
     if (track) {
         DB_playItem_t *track_new = deadbeef_api->pl_item_alloc();
@@ -105,61 +148,95 @@ static void add_tracks_recursively(const ddb_medialib_item_t *node, ddb_playlist
 
     const ddb_medialib_item_t *child = medialib_plugin->tree_item_get_children(node);
     while (child) {
-        add_tracks_recursively(child, plt, after);
+        add_tracks_recursive_multi(child, current_level + 1, cw, plt, after);
         child = medialib_plugin->tree_item_get_next(child);
     }
 }
 
-static void update_playlist_from_node(const ddb_medialib_item_t *node) {
-    if (!node || !deadbeef_api || !medialib_plugin) return;
+static void update_playlist_from_cui(cui_widget_t *cw) {
+    if (!cw->cached_tree || !deadbeef_api || !medialib_plugin) return;
     ddb_playlist_t *plt = deadbeef_api->plt_get_curr();
     if (!plt) return;
 
     deadbeef_api->pl_lock();
     deadbeef_api->plt_clear(plt);
     DB_playItem_t *after = NULL;
-    add_tracks_recursively(node, plt, &after);
+    
+    const ddb_medialib_item_t *root_node = cw->cached_tree;
+    int root_level = 0;
+
+    if (cw->sel_album_node) { root_node = cw->sel_album_node; root_level = 3; }
+    else if (cw->sel_artist_node) { root_node = cw->sel_artist_node; root_level = 2; }
+    else if (cw->sel_genre_node) { root_node = cw->sel_genre_node; root_level = 1; }
+
+    if (root_level == 3) {
+        add_tracks_recursive_multi(root_node, 3, cw, plt, &after);
+    } else {
+        const ddb_medialib_item_t *child = medialib_plugin->tree_item_get_children(root_node);
+        while (child) {
+            add_tracks_recursive_multi(child, root_level + 1, cw, plt, &after);
+            child = medialib_plugin->tree_item_get_next(child);
+        }
+    }
+
     deadbeef_api->plt_modified(plt);
     deadbeef_api->pl_unlock();
     deadbeef_api->plt_unref(plt);
     deadbeef_api->sendmessage(DB_EV_PLAYLISTCHANGED, 0, 0, 0);
 }
 
-static void populate_list(GtkListStore *store, const ddb_medialib_item_t *parent_node) {
-    gtk_list_store_clear(store);
-    if (!parent_node || !medialib_plugin) return;
-    
-    const ddb_medialib_item_t *child = medialib_plugin->tree_item_get_children(parent_node);
-    GtkTreeIter iter;
-    while (child) {
-        const char *text = medialib_plugin->tree_item_get_text(child);
-        if (text) {
+static void aggregate_recursive_multi(GtkListStore *store, const ddb_medialib_item_t *node, int current_level, int target_level, cui_widget_t *cw, GHashTable *seen) {
+    if (current_level == target_level) {
+        const char *text = medialib_plugin->tree_item_get_text(node);
+        if (text && !g_hash_table_contains(seen, text)) {
+            GtkTreeIter iter;
             gtk_list_store_append(store, &iter);
             gtk_list_store_set(store, &iter, 0, text, -1);
+            g_hash_table_add(seen, g_strdup(text));
         }
+        return;
+    }
+
+    if (cw->sel_genre_text && current_level == 1) {
+        const char *text = medialib_plugin->tree_item_get_text(node);
+        if (!text || strcmp(text, cw->sel_genre_text)) return;
+    }
+    if (cw->sel_artist_text && current_level == 2) {
+        const char *text = medialib_plugin->tree_item_get_text(node);
+        if (!text || strcmp(text, cw->sel_artist_text)) return;
+    }
+
+    const ddb_medialib_item_t *child = medialib_plugin->tree_item_get_children(node);
+    while (child) {
+        aggregate_recursive_multi(store, child, current_level + 1, target_level, cw, seen);
         child = medialib_plugin->tree_item_get_next(child);
     }
 }
 
-static void populate_list_aggregated(GtkListStore *store, const ddb_medialib_item_t *parent_node) {
+static void populate_list_multi(GtkListStore *store, int target_level, cui_widget_t *cw, const char *all_text) {
     gtk_list_store_clear(store);
-    if (!parent_node || !medialib_plugin) return;
+    if (!cw->cached_tree || !medialib_plugin) return;
 
     GHashTable *seen = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
-    const ddb_medialib_item_t *lvl1 = medialib_plugin->tree_item_get_children(parent_node);
-    while (lvl1) {
-        const ddb_medialib_item_t *lvl2 = medialib_plugin->tree_item_get_children(lvl1);
-        while (lvl2) {
-            const char *text = medialib_plugin->tree_item_get_text(lvl2);
-            if (text && !g_hash_table_contains(seen, text)) {
-                GtkTreeIter iter;
-                gtk_list_store_append(store, &iter);
-                gtk_list_store_set(store, &iter, 0, text, -1);
-                g_hash_table_add(seen, g_strdup(text));
-            }
-            lvl2 = medialib_plugin->tree_item_get_next(lvl2);
-        }
-        lvl1 = medialib_plugin->tree_item_get_next(lvl1);
+
+    if (all_text) {
+        GtkTreeIter iter;
+        gtk_list_store_append(store, &iter);
+        gtk_list_store_set(store, &iter, 0, all_text, -1);
+        g_hash_table_add(seen, g_strdup(all_text));
+    }
+    
+    const ddb_medialib_item_t *root_node = cw->cached_tree;
+    int root_level = 0;
+
+    if (target_level > 3 && cw->sel_album_node) { root_node = cw->sel_album_node; root_level = 3; }
+    else if (target_level > 2 && cw->sel_artist_node) { root_node = cw->sel_artist_node; root_level = 2; }
+    else if (target_level > 1 && cw->sel_genre_node) { root_node = cw->sel_genre_node; root_level = 1; }
+
+    const ddb_medialib_item_t *child = medialib_plugin->tree_item_get_children(root_node);
+    while (child) {
+        aggregate_recursive_multi(store, child, root_level + 1, target_level, cw, seen);
+        child = medialib_plugin->tree_item_get_next(child);
     }
     g_hash_table_destroy(seen);
 }
@@ -188,11 +265,18 @@ static void update_tree_data(cui_widget_t *cw) {
     cw->sel_artist_node = NULL;
     cw->sel_album_node = NULL;
 
+    g_free(cw->sel_genre_text); cw->sel_genre_text = NULL;
+    g_free(cw->sel_artist_text); cw->sel_artist_text = NULL;
+    g_free(cw->sel_album_text); cw->sel_album_text = NULL;
+
     init_my_preset();
     cw->cached_tree = medialib_plugin->create_item_tree(ml_source, my_preset, NULL);
-    populate_list(cw->store_genre, cw->cached_tree);
-    populate_list_aggregated(cw->store_artist, cw->cached_tree);
-    populate_list_aggregated(cw->store_album, cw->cached_tree);
+    
+    populate_list_multi(cw->store_genre, 1, cw, ALL_GENRES);
+    populate_list_multi(cw->store_artist, 2, cw, ALL_ARTISTS);
+    populate_list_multi(cw->store_album, 3, cw, ALL_ALBUMS);
+
+    update_playlist_from_cui(cw);
 }
 
 static gboolean repopulate_ui_idle(gpointer data) {
@@ -209,31 +293,29 @@ static void ml_listener_cb(ddb_mediasource_event_type_t event, void *user_data) 
     }
 }
 
+static void on_artist_changed(GtkTreeSelection *selection, gpointer data);
+static void on_album_changed(GtkTreeSelection *selection, gpointer data);
+
 static void on_genre_changed(GtkTreeSelection *selection, gpointer data) {
     cui_widget_t *cw = (cui_widget_t *)data;
     GtkTreeIter iter;
     GtkTreeModel *model;
     cw->sel_genre_node = NULL;
-    cw->sel_artist_node = NULL;
-    cw->sel_album_node = NULL;
+    g_free(cw->sel_genre_text);
+    cw->sel_genre_text = NULL;
 
     if (gtk_tree_selection_get_selected(selection, &model, &iter)) {
         gchar *genre;
         gtk_tree_model_get(model, &iter, 0, &genre, -1);
-        if (genre) {
+        if (genre && strcmp(genre, ALL_GENRES)) {
+            cw->sel_genre_text = g_strdup(genre);
             cw->sel_genre_node = find_node_by_text(cw->cached_tree, genre);
-            g_free(genre);
         }
+        g_free(genre);
     }
     
-    if (cw->sel_genre_node) {
-        populate_list(cw->store_artist, cw->sel_genre_node);
-        populate_list_aggregated(cw->store_album, cw->sel_genre_node);
-        update_playlist_from_node(cw->sel_genre_node);
-    } else {
-        populate_list_aggregated(cw->store_artist, cw->cached_tree);
-        populate_list_aggregated(cw->store_album, cw->cached_tree);
-    }
+    populate_list_multi(cw->store_artist, 2, cw, ALL_ARTISTS);
+    on_artist_changed(gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->tree_artist)), cw);
 }
 
 static void on_artist_changed(GtkTreeSelection *selection, gpointer data) {
@@ -241,33 +323,23 @@ static void on_artist_changed(GtkTreeSelection *selection, gpointer data) {
     GtkTreeIter iter;
     GtkTreeModel *model;
     cw->sel_artist_node = NULL;
-    cw->sel_album_node = NULL;
+    g_free(cw->sel_artist_text);
+    cw->sel_artist_text = NULL;
 
     if (gtk_tree_selection_get_selected(selection, &model, &iter)) {
         gchar *artist;
         gtk_tree_model_get(model, &iter, 0, &artist, -1);
-        if (artist) {
+        if (artist && strcmp(artist, ALL_ARTISTS)) {
+            cw->sel_artist_text = g_strdup(artist);
             if (cw->sel_genre_node) {
                 cw->sel_artist_node = find_node_by_text(cw->sel_genre_node, artist);
-            } else {
-                const ddb_medialib_item_t *g = medialib_plugin->tree_item_get_children(cw->cached_tree);
-                while (g) {
-                    cw->sel_artist_node = find_node_by_text(g, artist);
-                    if (cw->sel_artist_node) break;
-                    g = medialib_plugin->tree_item_get_next(g);
-                }
             }
-            g_free(artist);
         }
+        g_free(artist);
     }
-    
-    if (cw->sel_artist_node) {
-        populate_list(cw->store_album, cw->sel_artist_node);
-        update_playlist_from_node(cw->sel_artist_node);
-    } else {
-        if (cw->sel_genre_node) populate_list_aggregated(cw->store_album, cw->sel_genre_node);
-        else populate_list_aggregated(cw->store_album, cw->cached_tree);
-    }
+
+    populate_list_multi(cw->store_album, 3, cw, ALL_ALBUMS);
+    on_album_changed(gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->tree_album)), cw);
 }
 
 static void on_album_changed(GtkTreeSelection *selection, gpointer data) {
@@ -275,43 +347,25 @@ static void on_album_changed(GtkTreeSelection *selection, gpointer data) {
     GtkTreeIter iter;
     GtkTreeModel *model;
     cw->sel_album_node = NULL;
+    g_free(cw->sel_album_text);
+    cw->sel_album_text = NULL;
 
     if (gtk_tree_selection_get_selected(selection, &model, &iter)) {
         gchar *album;
         gtk_tree_model_get(model, &iter, 0, &album, -1);
-        if (album) {
+        if (album && strcmp(album, ALL_ALBUMS)) {
+            cw->sel_album_text = g_strdup(album);
             if (cw->sel_artist_node) {
                 cw->sel_album_node = find_node_by_text(cw->sel_artist_node, album);
-            } else if (cw->sel_genre_node) {
-                const ddb_medialib_item_t *art = medialib_plugin->tree_item_get_children(cw->sel_genre_node);
-                while (art) {
-                    cw->sel_album_node = find_node_by_text(art, album);
-                    if (cw->sel_album_node) break;
-                    art = medialib_plugin->tree_item_get_next(art);
-                }
-            } else {
-                const ddb_medialib_item_t *g = medialib_plugin->tree_item_get_children(cw->cached_tree);
-                while (g) {
-                    const ddb_medialib_item_t *art = medialib_plugin->tree_item_get_children(g);
-                    while (art) {
-                        cw->sel_album_node = find_node_by_text(art, album);
-                        if (cw->sel_album_node) break;
-                        art = medialib_plugin->tree_item_get_next(art);
-                    }
-                    if (cw->sel_album_node) break;
-                    g = medialib_plugin->tree_item_get_next(g);
-                }
-            }
-            g_free(album);
-            if (cw->sel_album_node) {
-                update_playlist_from_node(cw->sel_album_node);
             }
         }
+        g_free(album);
     }
+
+    update_playlist_from_cui(cw);
 }
 
 static void on_row_activated(GtkTreeView *tree_view, GtkTreePath *path, GtkTreeViewColumn *column, gpointer data) {
-    cui_widget_t *cw = (cui_widget_t *)data;
     ddb_playlist_t *plt = deadbeef_api->plt_get_curr();
     if (plt) {
         deadbeef_api->plt_set_cursor(plt, 0, PL_MAIN);
@@ -331,6 +385,10 @@ static void cui_destroy(ddb_gtkui_widget_t *w) {
         medialib_plugin->free_item_tree(ml_source, cw->cached_tree);
         cw->cached_tree = NULL;
     }
+    g_free(cw->sel_genre_text);
+    g_free(cw->sel_artist_text);
+    g_free(cw->sel_album_text);
+    free(cw);
 }
 
 // Helper to create a single list column
@@ -413,9 +471,7 @@ static ddb_gtkui_widget_t *cui_create_widget(void) {
     g_signal_connect(cw->tree_album, "row-activated", G_CALLBACK(on_row_activated), cw);
 
     // Populate initial data
-    if (medialib_plugin && ml_source && medialib_plugin->scanner_state(ml_source) == DDB_MEDIASOURCE_STATE_IDLE) {
-        update_tree_data(cw);
-    }
+    update_tree_data(cw);
 
     return w;
 }
@@ -436,8 +492,8 @@ int cui_start(void) {
         fprintf(stderr, "deadbeef-cui: medialib plugin not found or unsupported!\n");
     }
 
-    gtkui_plugin->w_reg_widget("Facet Browser (CUI)", 0, cui_create_widget, "cui", NULL);
-    fprintf(stderr, "deadbeef-cui: Facet Browser registered successfully.\n");
+    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v0.3", 0, cui_create_widget, "cui", NULL);
+    fprintf(stderr, "deadbeef-cui: Facet Browser v0.3 registered successfully.\n");
 
     return 0;
 }
@@ -450,6 +506,10 @@ int cui_stop(void) {
         medialib_plugin->free_source(ml_source);
         ml_source = NULL;
     }
+    if (my_preset) {
+        my_scriptable_free(my_preset);
+        my_preset = NULL;
+    }
     return 0;
 }
 
@@ -458,7 +518,7 @@ static DB_misc_t plugin = {
     .plugin.api_vmajor = 1,
     .plugin.api_vminor = 0,
     .plugin.version_major = 0,
-    .plugin.version_minor = 2,
+    .plugin.version_minor = 3,
     .plugin.id = "cui",
     .plugin.name = "Columns UI for DeaDBeeF",
     .plugin.descr = "A faceted library browser for DeaDBeeF.",

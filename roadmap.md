@@ -1,6 +1,6 @@
 # deadbeef-cui — Roadmap
 
-What's done, what's next. Updated as of v0.1.2-alpha.
+What's done, what's next. Updated as of v0.3.0-alpha.
 
 ---
 
@@ -15,6 +15,10 @@ What's done, what's next. Updated as of v0.1.2-alpha.
 - [x] **Playlist Driving:** Dynamically populate the active playlist based on facet selection.
 - [x] **Playback Integration:** Automatically trigger playback on selection double-click.
 - [x] **Stability Fixes:** Correct pointer handling and official API usage to prevent segfaults.
+- [x] **Memory Management:** Resolved memory leaks in widget destruction and plugin shutdown.
+- [x] **Robust Traversal:** Replaced hardcoded depth traversal with a recursive aggregation system.
+- [x] **"Various Artists" Fix:** Implemented string-based aggregation for multi-genre artists.
+- [x] **"All" Rows:** Added "All Genres/Artists/Albums" options for broad filtering.
 
 ---
 
