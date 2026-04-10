@@ -7,6 +7,11 @@
 ### Bug Fixes
 
 **Fixed Shutdown Crash (Double-Free / Segfault).** Root-caused a double-free on application exit during widget destruction. `cui_destroy` incorrectly called `free(cw)` on a widget that was already managed by the GTKUI framework, leading to a crash on teardown. Also removed the `gtkui_plugin->w_unreg_widget("cui")` call during `cui_stop` to resolve a subsequent GTK segfault when DeaDBeeF was unloading the GUI plugin.
+**Thread-Safe Multi-Widget Support.** Replaced a single global `active_widget` pointer with a GTK main-thread global list (`all_cui_widgets`). This fixes use-after-free conditions that could occur if a user had multiple UI tabs or splits containing the Facet Browser and one was destroyed while the background scanner was running.
+
+### Code Quality
+
+**Compiler Warnings Resolved.** Silenced unused parameter warnings in GTK tree-view callbacks and the main DeaDBeeF message loop. Cleaned up syntax warnings from duplicated code blocks. The plugin now compiles completely warning-free.
 
 ## v0.5.0-alpha
 
