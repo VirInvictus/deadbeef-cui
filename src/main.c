@@ -257,7 +257,7 @@ static const ddb_medialib_item_t *find_node_by_text(const ddb_medialib_item_t *p
 }
 
 static void update_tree_data(cui_widget_t *cw) {
-    if (!medialib_plugin || !ml_source) return;
+    if (shutting_down || !medialib_plugin || !ml_source) return;
     
     if (cw->cached_tree) {
         medialib_plugin->free_item_tree(ml_source, cw->cached_tree);
@@ -284,7 +284,7 @@ static void update_tree_data(cui_widget_t *cw) {
 static gboolean repopulate_ui_idle(gpointer data) {
     cui_widget_t *cw = (cui_widget_t *)data;
     cw->idle_id = 0;
-    if (medialib_plugin && ml_source && medialib_plugin->scanner_state(ml_source) == DDB_MEDIASOURCE_STATE_IDLE) {
+    if (!shutting_down && medialib_plugin && ml_source && medialib_plugin->scanner_state(ml_source) == DDB_MEDIASOURCE_STATE_IDLE) {
         update_tree_data(cw);
     }
     return G_SOURCE_REMOVE;
@@ -292,7 +292,7 @@ static gboolean repopulate_ui_idle(gpointer data) {
 
 static void ml_listener_cb(ddb_mediasource_event_type_t event, void *user_data) {
     cui_widget_t *cw = (cui_widget_t *)user_data;
-    if (event == DDB_MEDIASOURCE_EVENT_STATE_DID_CHANGE || event == DDB_MEDIASOURCE_EVENT_CONTENT_DID_CHANGE) {
+    if (!shutting_down && (event == DDB_MEDIASOURCE_EVENT_STATE_DID_CHANGE || event == DDB_MEDIASOURCE_EVENT_CONTENT_DID_CHANGE)) {
         if (cw->idle_id) g_source_remove(cw->idle_id);
         cw->idle_id = g_idle_add(repopulate_ui_idle, user_data);
     }
@@ -432,7 +432,7 @@ static ddb_gtkui_widget_t *cui_create_widget(void) {
     memset(cw, 0, sizeof(cui_widget_t));
 
     ddb_gtkui_widget_t *w = &cw->base;
-    w->type = "cui";
+    w->type = "deadbeef_cui";
     
     // Create the triple-pane facet view
     GtkWidget *pane1 = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
@@ -506,8 +506,8 @@ int cui_start(void) {
         fprintf(stderr, "deadbeef-cui: medialib plugin not found or unsupported!\n");
     }
 
-    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v0.3.1", 0, cui_create_widget, "cui", NULL);
-    fprintf(stderr, "deadbeef-cui: Facet Browser v0.3.1 registered successfully.\n");
+    gtkui_plugin->w_reg_widget("CUI Facets v0.3.2", 0, cui_create_widget, "deadbeef_cui", NULL);
+    fprintf(stderr, "deadbeef-cui: Facets v0.3.2 registered successfully.\n");
 
     return 0;
 }
@@ -515,11 +515,12 @@ int cui_start(void) {
 int cui_stop(void) {
     shutting_down = 1;
     if (gtkui_plugin) {
-        gtkui_plugin->w_unreg_widget("cui");
+        gtkui_plugin->w_unreg_widget("deadbeef_cui");
     }
-    // Note: Do NOT free ml_source here.
-    // medialib likely stops before us, and any calls to it during shutdown are risky.
-    ml_source = NULL;
+    if (medialib_plugin && ml_source) {
+        medialib_plugin->free_source(ml_source);
+        ml_source = NULL;
+    }
     
     if (my_preset) {
         my_scriptable_free(my_preset);
@@ -534,7 +535,7 @@ static DB_misc_t plugin = {
     .plugin.api_vminor = 0,
     .plugin.version_major = 0,
     .plugin.version_minor = 3,
-    .plugin.id = "cui",
+    .plugin.id = "deadbeef_cui",
     .plugin.name = "Columns UI for DeaDBeeF",
     .plugin.descr = "A faceted library browser for DeaDBeeF.",
     .plugin.copyright = "MIT License",
