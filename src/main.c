@@ -4,12 +4,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
 
 static DB_functions_t *deadbeef_api;
 static ddb_gtkui_t *gtkui_plugin;
 static DB_mediasource_t *medialib_plugin;
 static ddb_mediasource_source_t *ml_source;
 static int shutting_down = 0;
+static int owns_ml_source = 0;
 
 // --- Internal Scriptable types mirroring medialib.so ---
 // Layout verified against DeaDBeeF source (shared/scriptable/scriptable.c)
@@ -279,7 +281,6 @@ static const ddb_medialib_item_t *find_node_by_text(const ddb_medialib_item_t *p
 
 static void update_tree_data(cui_widget_t *cw) {
     if (shutting_down || !medialib_plugin || !ml_source) return;
-    if (medialib_plugin->scanner_state(ml_source) != DDB_MEDIASOURCE_STATE_IDLE) return;
 
     if (cw->cached_tree) {
         medialib_plugin->free_item_tree(ml_source, cw->cached_tree);
@@ -552,7 +553,7 @@ int cui_stop(void) {
     if (gtkui_plugin) {
         gtkui_plugin->w_unreg_widget("cui");
     }
-    if (medialib_plugin && ml_source) {
+    if (owns_ml_source && medialib_plugin && ml_source) {
         medialib_plugin->free_source(ml_source);
         ml_source = NULL;
     }
