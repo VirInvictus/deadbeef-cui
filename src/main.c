@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <dlfcn.h>
 
 static DB_functions_t *deadbeef_api;
 static ddb_gtkui_t *gtkui_plugin;
@@ -11,75 +12,14 @@ static DB_mediasource_t *medialib_plugin;
 static ddb_mediasource_source_t *ml_source;
 static int shutting_down = 0;
 
-// --- Internal Scriptable types mirroring medialib.so ---
-typedef struct scriptableKeyValue_s {
-    struct scriptableKeyValue_s *next;
-    char *key;
-    char *value;
-} scriptableKeyValue_t;
-
-typedef struct scriptableItem_s {
-    struct scriptableItem_s *next;
-    uint64_t flags;
-    scriptableKeyValue_t *properties;
-    struct scriptableItem_s *parent;
-    struct scriptableItem_s *children;
-    struct scriptableItem_s *childrenTail;
-    char *type;
-    char *configDialog;
-    void *overrides;
-} scriptableItem_t;
-
-typedef struct scriptableItem_s ddb_scriptable_item_t;
+// --- Medialib Scriptable API Function Pointers ---
+static ddb_scriptable_item_t* (*scriptableItemAlloc)(void);
+static void (*scriptableItemFree)(ddb_scriptable_item_t *item);
+static void (*scriptableItemSetPropertyValueForKey)(ddb_scriptable_item_t *item, const char *key, const char *value);
+static void (*scriptableItemAddSubItem)(ddb_scriptable_item_t *parent, ddb_scriptable_item_t *child);
+static void (*scriptableItemFlagsAdd)(ddb_scriptable_item_t *item, uint64_t flags);
 
 #define SCRIPTABLE_FLAG_IS_LIST (1 << 2)
-
-// Safe creation of scriptable items without external dependencies
-static scriptableItem_t *my_scriptable_alloc(void) {
-    return calloc(1, sizeof(scriptableItem_t));
-}
-
-static void my_scriptable_free(scriptableItem_t *item) {
-    if (!item) return;
-
-    // Free children
-    scriptableItem_t *child = item->children;
-    while (child) {
-        scriptableItem_t *next = child->next;
-        my_scriptable_free(child);
-        child = next;
-    }
-
-    // Free properties
-    scriptableKeyValue_t *kv = item->properties;
-    while (kv) {
-        scriptableKeyValue_t *next = kv->next;
-        free(kv->key);
-        free(kv->value);
-        free(kv);
-        kv = next;
-    }
-
-    free(item);
-}
-
-static void my_scriptable_set_prop(scriptableItem_t *item, const char *key, const char *value) {
-    scriptableKeyValue_t *kv = calloc(1, sizeof(scriptableKeyValue_t));
-    kv->key = strdup(key);
-    kv->value = strdup(value);
-    kv->next = item->properties;
-    item->properties = kv;
-}
-
-static void my_scriptable_add_child(scriptableItem_t *parent, scriptableItem_t *child) {
-    if (parent->childrenTail) {
-        parent->childrenTail->next = child;
-    } else {
-        parent->children = child;
-    }
-    parent->childrenTail = child;
-    child->parent = parent;
-}
 
 #define ALL_GENRES "[ All Genres ]"
 #define ALL_ARTISTS "[ All Artists ]"
@@ -111,19 +51,18 @@ typedef struct {
 static ddb_scriptable_item_t *my_preset = NULL;
 
 static void init_my_preset(void) {
-    if (my_preset) return;
+    if (my_preset || !scriptableItemAlloc) return;
     
-    scriptableItem_t *p = my_scriptable_alloc();
-    p->flags = SCRIPTABLE_FLAG_IS_LIST;
-    my_scriptable_set_prop(p, "name", "Facets");
+    my_preset = scriptableItemAlloc();
+    if (scriptableItemFlagsAdd) scriptableItemFlagsAdd(my_preset, SCRIPTABLE_FLAG_IS_LIST);
+    if (scriptableItemSetPropertyValueForKey) scriptableItemSetPropertyValueForKey(my_preset, "name", "Facets");
 
     const char *tfs[] = {"%genre%", "%album artist%", "%album%", "%title%"};
     for (int i = 0; i < 4; i++) {
-        scriptableItem_t *child = my_scriptable_alloc();
-        my_scriptable_set_prop(child, "name", tfs[i]);
-        my_scriptable_add_child(p, child);
+        ddb_scriptable_item_t *child = scriptableItemAlloc();
+        if (scriptableItemSetPropertyValueForKey) scriptableItemSetPropertyValueForKey(child, "name", tfs[i]);
+        if (scriptableItemAddSubItem) scriptableItemAddSubItem(my_preset, child);
     }
-    my_preset = (ddb_scriptable_item_t *)p;
 }
 
 static void add_tracks_recursive_multi(const ddb_medialib_item_t *node, int current_level, cui_widget_t *cw, ddb_playlist_t *plt, DB_playItem_t **after) {
@@ -516,8 +455,19 @@ int cui_start(void) {
         fprintf(stderr, "deadbeef-cui: medialib plugin not found or unsupported!\n");
     }
 
-    gtkui_plugin->w_reg_widget("CUI Facets v0.3.2", 0, cui_create_widget, "deadbeef_cui", NULL);
-    fprintf(stderr, "deadbeef-cui: Facets v0.3.2 registered successfully.\n");
+    // Official API resolution
+    void *ml_handle = dlopen("/usr/lib64/deadbeef/medialib.so", RTLD_NOW | RTLD_GLOBAL);
+    if (ml_handle) {
+        scriptableItemAlloc = dlsym(ml_handle, "scriptableItemAlloc");
+        scriptableItemFree = dlsym(ml_handle, "scriptableItemFree");
+        scriptableItemSetPropertyValueForKey = dlsym(ml_handle, "scriptableItemSetPropertyValueForKey");
+        scriptableItemAddSubItem = dlsym(ml_handle, "scriptableItemAddSubItem");
+        scriptableItemFlagsAdd = dlsym(ml_handle, "scriptableItemFlagsAdd");
+        // We don't close the handle to keep it loaded
+    }
+
+    gtkui_plugin->w_reg_widget("CUI Facets v0.3.3", 0, cui_create_widget, "deadbeef_cui", NULL);
+    fprintf(stderr, "deadbeef-cui: Facets v0.3.3 registered successfully.\n");
 
     return 0;
 }
@@ -531,11 +481,13 @@ int cui_stop(void) {
         gtkui_plugin->w_unreg_widget("deadbeef_cui");
     }
 
-    // Note: We are now RELYING on the OS/DeaDBeeF cleanup for the medialib source
-    // and our scriptable tree. Manual cleanup here often triggers races with
-    // other plugins (like medialib itself) already being gone.
     ml_source = NULL;
-    my_preset = NULL;
+    
+    if (my_preset && scriptableItemFree) {
+        fprintf(stderr, "deadbeef-cui: [DEBUG] Freeing my_preset %p via medialib API\n", my_preset);
+        scriptableItemFree(my_preset);
+        my_preset = NULL;
+    }
 
     fprintf(stderr, "deadbeef-cui: [DEBUG] cui_stop finished\n");
     return 0;
