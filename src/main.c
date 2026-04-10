@@ -9,6 +9,7 @@ static DB_functions_t *deadbeef_api;
 static ddb_gtkui_t *gtkui_plugin;
 static DB_mediasource_t *medialib_plugin;
 static ddb_mediasource_source_t *ml_source;
+static int shutting_down = 0;
 
 // --- Internal Scriptable types mirroring medialib.so ---
 typedef struct scriptableKeyValue_s {
@@ -385,14 +386,18 @@ static void cui_destroy(ddb_gtkui_widget_t *w) {
         g_source_remove(cw->idle_id);
         cw->idle_id = 0;
     }
-    if (medialib_plugin && ml_source && cw->listener_id) {
-        medialib_plugin->remove_listener(ml_source, cw->listener_id);
-        cw->listener_id = 0;
+
+    if (!shutting_down && medialib_plugin && ml_source) {
+        if (cw->listener_id) {
+            medialib_plugin->remove_listener(ml_source, cw->listener_id);
+            cw->listener_id = 0;
+        }
+        if (cw->cached_tree) {
+            medialib_plugin->free_item_tree(ml_source, cw->cached_tree);
+            cw->cached_tree = NULL;
+        }
     }
-    if (medialib_plugin && ml_source && cw->cached_tree) {
-        medialib_plugin->free_item_tree(ml_source, cw->cached_tree);
-        cw->cached_tree = NULL;
-    }
+    
     g_free(cw->sel_genre_text);
     g_free(cw->sel_artist_text);
     g_free(cw->sel_album_text);
@@ -489,6 +494,7 @@ static int cui_message(uint32_t id, uintptr_t ctx, uint32_t p1, uint32_t p2) {
 }
 
 int cui_start(void) {
+    shutting_down = 0;
     gtkui_plugin = (ddb_gtkui_t *)deadbeef_api->plug_get_for_id(DDB_GTKUI_PLUGIN_ID);
     if (!gtkui_plugin) {
         fprintf(stderr, "deadbeef-cui: GTK UI plugin not found!\n");
@@ -500,20 +506,21 @@ int cui_start(void) {
         fprintf(stderr, "deadbeef-cui: medialib plugin not found or unsupported!\n");
     }
 
-    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v0.3", 0, cui_create_widget, "cui", NULL);
-    fprintf(stderr, "deadbeef-cui: Facet Browser v0.3 registered successfully.\n");
+    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v0.3.1", 0, cui_create_widget, "cui", NULL);
+    fprintf(stderr, "deadbeef-cui: Facet Browser v0.3.1 registered successfully.\n");
 
     return 0;
 }
 
 int cui_stop(void) {
+    shutting_down = 1;
     if (gtkui_plugin) {
         gtkui_plugin->w_unreg_widget("cui");
     }
-    if (medialib_plugin && ml_source) {
-        medialib_plugin->free_source(ml_source);
-        ml_source = NULL;
-    }
+    // Note: Do NOT free ml_source here.
+    // medialib likely stops before us, and any calls to it during shutdown are risky.
+    ml_source = NULL;
+    
     if (my_preset) {
         my_scriptable_free(my_preset);
         my_preset = NULL;
