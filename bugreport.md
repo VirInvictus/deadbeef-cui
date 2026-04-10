@@ -25,3 +25,8 @@
     3.  **Cascading State:** Selections correctly cascade through the UI, ensuring all columns and the playlist stay synchronized even when broad categories are selected.
 
 #5 When nothing is selected, the all of each filter should be default. (Fixed)
+
+## 6. Startup Delay (Duplicate Media Library Scan)
+**Status:** Fixed
+* **The Flaw:** The plugin originally created its own `"cui"` media library source, causing DeaDBeeF to scan the user's entire music folder twice on startup (once for the main UI, once for the CUI plugin). This caused massive disk I/O contention and a 2-4 second delay before the UI populated.
+* **Fix:** Implemented a robust workaround using `dlopen` and `dlsym` to dynamically acquire the `gtkui_medialib_get_source` function from the loaded GTK3 plugin. The Facet Browser now safely piggybacks on the main interface's media library, completely eliminating the redundant background scan and startup delay.

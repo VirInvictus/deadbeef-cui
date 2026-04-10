@@ -13,6 +13,10 @@
 
 **Compiler Warnings Resolved.** Silenced unused parameter warnings in GTK tree-view callbacks and the main DeaDBeeF message loop. Cleaned up syntax warnings from duplicated code blocks. The plugin now compiles completely warning-free.
 
+### Performance
+
+**Eliminated Startup Delay.** The plugin no longer creates its own duplicate media library database on startup. By using `dlopen`/`dlsym` to acquire the internal GTKUI media library source, the plugin now perfectly shares the main database. This eliminates a redundant background scan, saving CPU, memory, and resolving a 2-4 second startup delay.
+
 ## v0.5.0-alpha
 
 ---
