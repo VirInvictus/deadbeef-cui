@@ -74,15 +74,24 @@ static void init_my_preset(void) {
     if (my_preset) return;
     resolve_medialib_api();
     if (!scriptableItemAlloc) return;
+    
     my_preset = scriptableItemAlloc();
     if (!my_preset) return;
+    
     if (scriptableItemFlagsAdd) scriptableItemFlagsAdd(my_preset, SCRIPTABLE_FLAG_IS_LIST);
-    if (scriptableItemSetPropertyValueForKey) scriptableItemSetPropertyValueForKey(my_preset, "name", "Facets");
+    if (scriptableItemSetPropertyValueForKey) {
+        scriptableItemSetPropertyValueForKey(my_preset, "name", "Facets");
+        scriptableItemSetPropertyValueForKey(my_preset, "type", "root");
+    }
+
     const char *tfs[] = {"%genre%", "%album artist%", "%album%", "%title%"};
     for (int i = 0; i < 4; i++) {
         ddb_scriptable_item_t *child = scriptableItemAlloc();
         if (child) {
-            if (scriptableItemSetPropertyValueForKey) scriptableItemSetPropertyValueForKey(child, "name", tfs[i]);
+            if (scriptableItemSetPropertyValueForKey) {
+                scriptableItemSetPropertyValueForKey(child, "name", tfs[i]);
+                scriptableItemSetPropertyValueForKey(child, "type", "tf");
+            }
             if (scriptableItemAddSubItem) scriptableItemAddSubItem(my_preset, child);
         }
     }
@@ -385,7 +394,7 @@ int cui_start(void) {
     gtkui_plugin = (ddb_gtkui_t *)deadbeef_api->plug_get_for_id(DDB_GTKUI_PLUGIN_ID);
     if (!gtkui_plugin) return -1;
     medialib_plugin = (DB_mediasource_t *)deadbeef_api->plug_get_for_id("medialib");
-    gtkui_plugin->w_reg_widget("CUI Facets v0.3.7", 0, cui_create_widget, "deadbeef_cui", NULL);
+    gtkui_plugin->w_reg_widget("CUI Facets v0.3.8", 0, cui_create_widget, "deadbeef_cui", NULL);
     return 0;
 }
 
