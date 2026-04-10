@@ -382,26 +382,36 @@ static void on_row_activated(GtkTreeView *tree_view, GtkTreePath *path, GtkTreeV
 // Widget destruction callback
 static void cui_destroy(ddb_gtkui_widget_t *w) {
     cui_widget_t *cw = (cui_widget_t *)w;
+    fprintf(stderr, "deadbeef-cui: [DEBUG] cui_destroy starting for widget %p (shutting_down=%d)\n", cw, shutting_down);
+
     if (cw->idle_id) {
+        fprintf(stderr, "deadbeef-cui: [DEBUG] Removing pending idle handler %u\n", cw->idle_id);
         g_source_remove(cw->idle_id);
         cw->idle_id = 0;
     }
 
     if (!shutting_down && medialib_plugin && ml_source) {
         if (cw->listener_id) {
+            fprintf(stderr, "deadbeef-cui: [DEBUG] Removing ml listener %d\n", cw->listener_id);
             medialib_plugin->remove_listener(ml_source, cw->listener_id);
             cw->listener_id = 0;
         }
         if (cw->cached_tree) {
+            fprintf(stderr, "deadbeef-cui: [DEBUG] Freeing cached tree %p\n", cw->cached_tree);
             medialib_plugin->free_item_tree(ml_source, cw->cached_tree);
             cw->cached_tree = NULL;
         }
+    } else {
+        fprintf(stderr, "deadbeef-cui: [DEBUG] Skipping medialib cleanup (shutting_down=%d, plugin=%p, source=%p)\n", 
+                shutting_down, medialib_plugin, ml_source);
     }
     
+    fprintf(stderr, "deadbeef-cui: [DEBUG] Freeing selection strings and widget struct\n");
     g_free(cw->sel_genre_text);
     g_free(cw->sel_artist_text);
     g_free(cw->sel_album_text);
     free(cw);
+    fprintf(stderr, "deadbeef-cui: [DEBUG] cui_destroy finished\n");
 }
 
 // Helper to create a single list column
@@ -513,19 +523,24 @@ int cui_start(void) {
 }
 
 int cui_stop(void) {
+    fprintf(stderr, "deadbeef-cui: [DEBUG] cui_stop starting\n");
     shutting_down = 1;
     if (gtkui_plugin) {
+        fprintf(stderr, "deadbeef-cui: [DEBUG] Unregistering widget\n");
         gtkui_plugin->w_unreg_widget("deadbeef_cui");
     }
     if (medialib_plugin && ml_source) {
+        fprintf(stderr, "deadbeef-cui: [DEBUG] Freeing ml_source %p\n", ml_source);
         medialib_plugin->free_source(ml_source);
         ml_source = NULL;
     }
     
     if (my_preset) {
+        fprintf(stderr, "deadbeef-cui: [DEBUG] Freeing my_preset %p\n", my_preset);
         my_scriptable_free(my_preset);
         my_preset = NULL;
     }
+    fprintf(stderr, "deadbeef-cui: [DEBUG] cui_stop finished\n");
     return 0;
 }
 
