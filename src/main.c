@@ -53,16 +53,27 @@ static ddb_scriptable_item_t *my_preset = NULL;
 static void resolve_medialib_api(void) {
     if (scriptableItemAlloc) return;
 
-    // Use RTLD_DEFAULT to find symbols already loaded in the process space.
-    // This is safer than dlopening the absolute path which might be different or not yet ready.
-    scriptableItemAlloc = dlsym(RTLD_DEFAULT, "scriptableItemAlloc");
-    scriptableItemFree = dlsym(RTLD_DEFAULT, "scriptableItemFree");
-    scriptableItemSetPropertyValueForKey = dlsym(RTLD_DEFAULT, "scriptableItemSetPropertyValueForKey");
-    scriptableItemAddSubItem = dlsym(RTLD_DEFAULT, "scriptableItemAddSubItem");
-    scriptableItemFlagsAdd = dlsym(RTLD_DEFAULT, "scriptableItemFlagsAdd");
+    void *handle = RTLD_DEFAULT;
+    
+    // Try explicit load first to ensure symbols are available
+    void *ml_handle = dlopen("/usr/lib64/deadbeef/medialib.so", RTLD_NOW | RTLD_GLOBAL);
+    if (ml_handle) {
+        handle = ml_handle;
+        fprintf(stderr, "deadbeef-cui: [DEBUG] Successfully dlopened medialib.so\n");
+    } else {
+        fprintf(stderr, "deadbeef-cui: [DEBUG] dlopen medialib.so failed: %s, falling back to RTLD_DEFAULT\n", dlerror());
+    }
+
+    scriptableItemAlloc = dlsym(handle, "scriptableItemAlloc");
+    scriptableItemFree = dlsym(handle, "scriptableItemFree");
+    scriptableItemSetPropertyValueForKey = dlsym(handle, "scriptableItemSetPropertyValueForKey");
+    scriptableItemAddSubItem = dlsym(handle, "scriptableItemAddSubItem");
+    scriptableItemFlagsAdd = dlsym(handle, "scriptableItemFlagsAdd");
     
     if (!scriptableItemAlloc) {
-        fprintf(stderr, "deadbeef-cui: [DEBUG] Failed to resolve scriptableItemAlloc from RTLD_DEFAULT\n");
+        fprintf(stderr, "deadbeef-cui: [ERROR] Failed to resolve scriptableItemAlloc!\n");
+    } else {
+        fprintf(stderr, "deadbeef-cui: [DEBUG] All scriptableItem symbols resolved successfully.\n");
     }
 }
 
@@ -73,14 +84,18 @@ static void init_my_preset(void) {
     if (!scriptableItemAlloc) return;
     
     my_preset = scriptableItemAlloc();
+    if (!my_preset) return;
+
     if (scriptableItemFlagsAdd) scriptableItemFlagsAdd(my_preset, SCRIPTABLE_FLAG_IS_LIST);
     if (scriptableItemSetPropertyValueForKey) scriptableItemSetPropertyValueForKey(my_preset, "name", "Facets");
 
     const char *tfs[] = {"%genre%", "%album artist%", "%album%", "%title%"};
     for (int i = 0; i < 4; i++) {
         ddb_scriptable_item_t *child = scriptableItemAlloc();
-        if (scriptableItemSetPropertyValueForKey) scriptableItemSetPropertyValueForKey(child, "name", tfs[i]);
-        if (scriptableItemAddSubItem) scriptableItemAddSubItem(my_preset, child);
+        if (child) {
+            if (scriptableItemSetPropertyValueForKey) scriptableItemSetPropertyValueForKey(child, "name", tfs[i]);
+            if (scriptableItemAddSubItem) scriptableItemAddSubItem(my_preset, child);
+        }
     }
 }
 
@@ -214,14 +229,47 @@ static const ddb_medialib_item_t *find_node_by_text(const ddb_medialib_item_t *p
     return NULL;
 }
 
+static void update_tree_data(cui_widget_t *cw);
+
+static gboolean repopulate_ui_idle(gpointer data) {
+    cui_widget_t *cw = (cui_widget_t *)data;
+    cw->idle_id = 0;
+    if (!shutting_down) {
+        update_tree_data(cw);
+    }
+    return G_SOURCE_REMOVE;
+}
+
+static void ml_listener_cb(ddb_mediasource_event_type_t event, void *user_data) {
+    cui_widget_t *cw = (cui_widget_t *)user_data;
+    if (!shutting_down && (event == DDB_MEDIASOURCE_EVENT_STATE_DID_CHANGE || event == DDB_MEDIASOURCE_EVENT_CONTENT_DID_CHANGE)) {
+        if (cw->idle_id) g_source_remove(cw->idle_id);
+        cw->idle_id = g_idle_add(repopulate_ui_idle, user_data);
+    }
+}
+
 static void update_tree_data(cui_widget_t *cw) {
-    if (shutting_down || !ml_source) return;
+    if (shutting_down) return;
     
-    // Ensure plugin pointer is up to date if it wasn't available at start
     if (!medialib_plugin) {
         medialib_plugin = (DB_mediasource_t *)deadbeef_api->plug_get_for_id("medialib");
     }
-    if (!medialib_plugin) return;
+    if (!medialib_plugin) {
+        fprintf(stderr, "deadbeef-cui: [DEBUG] medialib plugin not available in update_tree_data\n");
+        return;
+    }
+
+    if (!ml_source) {
+        ml_source = medialib_plugin->create_source("deadbeef");
+        if (ml_source) {
+            medialib_plugin->refresh(ml_source);
+            // Re-add listener if it was missed
+            if (!cw->listener_id) {
+                cw->listener_id = medialib_plugin->add_listener(ml_source, ml_listener_cb, cw);
+            }
+        }
+    }
+    if (!ml_source) return;
 
     if (cw->cached_tree) {
         medialib_plugin->free_item_tree(ml_source, cw->cached_tree);
@@ -236,33 +284,23 @@ static void update_tree_data(cui_widget_t *cw) {
     g_free(cw->sel_album_text); cw->sel_album_text = NULL;
 
     init_my_preset();
-    if (!my_preset) return;
+    if (!my_preset) {
+        fprintf(stderr, "deadbeef-cui: [ERROR] Failed to initialize preset in update_tree_data\n");
+        return;
+    }
 
     cw->cached_tree = medialib_plugin->create_item_tree(ml_source, my_preset, NULL);
-    if (!cw->cached_tree) return;
+    if (!cw->cached_tree) {
+        fprintf(stderr, "deadbeef-cui: [DEBUG] create_item_tree returned NULL (scanner state: %d)\n", 
+                medialib_plugin->scanner_state(ml_source));
+        return;
+    }
     
     populate_list_multi(cw->store_genre, 1, cw, ALL_GENRES);
     populate_list_multi(cw->store_artist, 2, cw, ALL_ARTISTS);
     populate_list_multi(cw->store_album, 3, cw, ALL_ALBUMS);
 
     update_playlist_from_cui(cw);
-}
-
-static gboolean repopulate_ui_idle(gpointer data) {
-    cui_widget_t *cw = (cui_widget_t *)data;
-    cw->idle_id = 0;
-    if (!shutting_down && medialib_plugin && ml_source && medialib_plugin->scanner_state(ml_source) == DDB_MEDIASOURCE_STATE_IDLE) {
-        update_tree_data(cw);
-    }
-    return G_SOURCE_REMOVE;
-}
-
-static void ml_listener_cb(ddb_mediasource_event_type_t event, void *user_data) {
-    cui_widget_t *cw = (cui_widget_t *)user_data;
-    if (!shutting_down && (event == DDB_MEDIASOURCE_EVENT_STATE_DID_CHANGE || event == DDB_MEDIASOURCE_EVENT_CONTENT_DID_CHANGE)) {
-        if (cw->idle_id) g_source_remove(cw->idle_id);
-        cw->idle_id = g_idle_add(repopulate_ui_idle, user_data);
-    }
 }
 
 static void on_artist_changed(GtkTreeSelection *selection, gpointer data);
@@ -368,9 +406,6 @@ static void cui_destroy(ddb_gtkui_widget_t *w) {
             medialib_plugin->free_item_tree(ml_source, cw->cached_tree);
             cw->cached_tree = NULL;
         }
-    } else {
-        fprintf(stderr, "deadbeef-cui: [DEBUG] Skipping medialib cleanup (shutting_down=%d, plugin=%p, source=%p)\n", 
-                shutting_down, medialib_plugin, ml_source);
     }
     
     fprintf(stderr, "deadbeef-cui: [DEBUG] Freeing selection strings and widget struct\n");
@@ -479,10 +514,9 @@ int cui_start(void) {
     }
 
     medialib_plugin = (DB_mediasource_t *)deadbeef_api->plug_get_for_id("medialib");
-    // If medialib is not ready yet, we'll try to get it later in update_tree_data
 
-    gtkui_plugin->w_reg_widget("CUI Facets v0.3.4", 0, cui_create_widget, "deadbeef_cui", NULL);
-    fprintf(stderr, "deadbeef-cui: Facets v0.3.4 registered successfully.\n");
+    gtkui_plugin->w_reg_widget("CUI Facets v0.3.5", 0, cui_create_widget, "deadbeef_cui", NULL);
+    fprintf(stderr, "deadbeef-cui: Facets v0.3.5 registered successfully.\n");
 
     return 0;
 }
@@ -497,12 +531,7 @@ int cui_stop(void) {
     }
 
     ml_source = NULL;
-    
-    if (my_preset && scriptableItemFree) {
-        fprintf(stderr, "deadbeef-cui: [DEBUG] Freeing my_preset %p via medialib API\n", my_preset);
-        scriptableItemFree(my_preset);
-        my_preset = NULL;
-    }
+    my_preset = NULL;
 
     fprintf(stderr, "deadbeef-cui: [DEBUG] cui_stop finished\n");
     return 0;
