@@ -525,21 +525,18 @@ int cui_start(void) {
 int cui_stop(void) {
     fprintf(stderr, "deadbeef-cui: [DEBUG] cui_stop starting\n");
     shutting_down = 1;
+    
     if (gtkui_plugin) {
         fprintf(stderr, "deadbeef-cui: [DEBUG] Unregistering widget\n");
         gtkui_plugin->w_unreg_widget("deadbeef_cui");
     }
-    if (medialib_plugin && ml_source) {
-        fprintf(stderr, "deadbeef-cui: [DEBUG] Freeing ml_source %p\n", ml_source);
-        medialib_plugin->free_source(ml_source);
-        ml_source = NULL;
-    }
-    
-    if (my_preset) {
-        fprintf(stderr, "deadbeef-cui: [DEBUG] Freeing my_preset %p\n", my_preset);
-        my_scriptable_free(my_preset);
-        my_preset = NULL;
-    }
+
+    // Note: We are now RELYING on the OS/DeaDBeeF cleanup for the medialib source
+    // and our scriptable tree. Manual cleanup here often triggers races with
+    // other plugins (like medialib itself) already being gone.
+    ml_source = NULL;
+    my_preset = NULL;
+
     fprintf(stderr, "deadbeef-cui: [DEBUG] cui_stop finished\n");
     return 0;
 }
