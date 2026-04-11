@@ -16,7 +16,7 @@ A faceted library browser plugin for the [DeaDBeeF](https://deadbeef.sourceforge
 
 Right now, DeaDBeeF is inherently playlist-focused. For users with large libraries who navigate via metadata filtering rather than manual playlists, a faceted search is the only thing missing to make DeaDBeeF the perfect Linux music player. 
 
-This plugin implements a triple-filter view of the library, mirroring foobar2000's Columns UI or Facets component:
+This plugin implements a triple-filter view of the media library (set in settings), mirroring foobar2000's Columns UI or Facets component:
 1. **Genre**
 2. **Album Artist**
 3. **Album**
