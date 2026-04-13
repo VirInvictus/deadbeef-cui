@@ -1,6 +1,20 @@
 # deadbeef-cui — Patch Notes
 
-## v0.6.0-alpha (Current)
+## v0.7.0-alpha (Current)
+
+---
+
+### Enhancements
+
+**Alphabetical Ordering.** Fixed the "jumping" behavior by ensuring all facet lists are strictly sorted alphabetically. A custom sort function keeps "[ All ]" rows pinned to the top while ordering all other metadata strings using UTF-8 collation.
+**Track Counting (Selection Count).** Each facet row now displays the total number of tracks it contains in a dedicated "Count" column. This is calculated through a recursive traversal of the media library tree for every unique metadata entry.
+**Header Sort Buttons.** Columns are now interactive. Users can toggle between Alphabetical (Name) and Item Count (Descending) sorting by clicking the respective column headers.
+
+### UI Polish
+
+**Proportional Column Layout.** Updated the tree view columns to better utilize space; the main metadata column now expands to fill available width while the "Count" column remains right-aligned and autosized to its content.
+
+## v0.6.0-alpha
 
 ---
 

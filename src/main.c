@@ -138,7 +138,49 @@ static void sync_source_config(void) {
     deadbeef_api->conf_set_str("medialib." CUI_SOURCE_PATH ".enabled", "1");
 }
 
-// --- Track insertion ---
+// --- Track counting ---
+
+static int count_tracks_recursive(const ddb_medialib_item_t *node) {
+    int count = 0;
+    if (medialib_plugin->tree_item_get_track(node)) {
+        count = 1;
+    }
+    const ddb_medialib_item_t *child = medialib_plugin->tree_item_get_children(node);
+    while (child) {
+        count += count_tracks_recursive(child);
+        child = medialib_plugin->tree_item_get_next(child);
+    }
+    return count;
+}
+
+static int sort_func(GtkTreeModel *model, GtkTreeIter *a, GtkTreeIter *b, gpointer user_data) {
+    int sort_col = GPOINTER_TO_INT(user_data);
+    gchar *name_a, *name_b;
+    int count_a, count_b;
+    gtk_tree_model_get(model, a, 0, &name_a, 1, &count_a, -1);
+    gtk_tree_model_get(model, b, 0, &name_b, 1, &count_b, -1);
+
+    int result = 0;
+    if (name_a && name_b) {
+        int is_all_a = (name_a[0] == '[');
+        int is_all_b = (name_b[0] == '[');
+
+        if (is_all_a && !is_all_b) result = -1;
+        else if (!is_all_a && is_all_b) result = 1;
+        else {
+            if (sort_col == 1) { // Count
+                result = count_b - count_a; // Descending by default for counts
+                if (result == 0) result = g_utf8_collate(name_a, name_b);
+            } else { // Name
+                result = g_utf8_collate(name_a, name_b);
+            }
+        }
+    }
+
+    g_free(name_a);
+    g_free(name_b);
+    return result;
+}
 
 static void add_tracks_recursive_multi(const ddb_medialib_item_t *node, int current_level,
                                         cui_widget_t *cw, ddb_playlist_t *plt, DB_playItem_t **after) {
@@ -204,16 +246,21 @@ static void update_playlist_from_cui(cui_widget_t *cw) {
 
 // --- Aggregation / population ---
 
-static void aggregate_recursive_multi(GtkListStore *store, const ddb_medialib_item_t *node,
+static void aggregate_recursive_multi(const ddb_medialib_item_t *node,
                                        int current_level, int target_level,
                                        cui_widget_t *cw, GHashTable *seen) {
     if (current_level == target_level) {
         const char *text = medialib_plugin->tree_item_get_text(node);
-        if (text && !g_hash_table_contains(seen, text)) {
-            GtkTreeIter iter;
-            gtk_list_store_append(store, &iter);
-            gtk_list_store_set(store, &iter, 0, text, -1);
-            g_hash_table_add(seen, g_strdup(text));
+        if (text) {
+            int tracks = count_tracks_recursive(node);
+            int *count_ptr = g_hash_table_lookup(seen, text);
+            if (count_ptr) {
+                *count_ptr += tracks;
+            } else {
+                count_ptr = g_new(int, 1);
+                *count_ptr = tracks;
+                g_hash_table_insert(seen, g_strdup(text), count_ptr);
+            }
         }
         return;
     }
@@ -229,7 +276,7 @@ static void aggregate_recursive_multi(GtkListStore *store, const ddb_medialib_it
 
     const ddb_medialib_item_t *child = medialib_plugin->tree_item_get_children(node);
     while (child) {
-        aggregate_recursive_multi(store, child, current_level + 1, target_level, cw, seen);
+        aggregate_recursive_multi(child, current_level + 1, target_level, cw, seen);
         child = medialib_plugin->tree_item_get_next(child);
     }
 }
@@ -238,14 +285,7 @@ static void populate_list_multi(GtkListStore *store, int target_level, cui_widge
     gtk_list_store_clear(store);
     if (!cw->cached_tree || !medialib_plugin) return;
 
-    GHashTable *seen = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
-
-    if (all_text) {
-        GtkTreeIter iter;
-        gtk_list_store_append(store, &iter);
-        gtk_list_store_set(store, &iter, 0, all_text, -1);
-        g_hash_table_add(seen, g_strdup(all_text));
-    }
+    GHashTable *seen = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 
     const ddb_medialib_item_t *root_node = cw->cached_tree;
     int root_level = 0;
@@ -256,9 +296,28 @@ static void populate_list_multi(GtkListStore *store, int target_level, cui_widge
 
     const ddb_medialib_item_t *child = medialib_plugin->tree_item_get_children(root_node);
     while (child) {
-        aggregate_recursive_multi(store, child, root_level + 1, target_level, cw, seen);
+        aggregate_recursive_multi(child, root_level + 1, target_level, cw, seen);
         child = medialib_plugin->tree_item_get_next(child);
     }
+
+    int total_count = 0;
+    GList *keys = g_hash_table_get_keys(seen);
+    for (GList *l = keys; l; l = l->next) {
+        char *text = (char *)l->data;
+        int *count_ptr = g_hash_table_lookup(seen, text);
+        GtkTreeIter iter;
+        gtk_list_store_append(store, &iter);
+        gtk_list_store_set(store, &iter, 0, text, 1, *count_ptr, -1);
+        total_count += *count_ptr;
+    }
+    g_list_free(keys);
+
+    if (all_text) {
+        GtkTreeIter iter;
+        gtk_list_store_prepend(store, &iter);
+        gtk_list_store_set(store, &iter, 0, all_text, 1, total_count, -1);
+    }
+
     g_hash_table_destroy(seen);
 }
 
@@ -436,16 +495,29 @@ static void cui_destroy(ddb_gtkui_widget_t *w) {
 }
 
 static GtkWidget *create_column(const char *title, GtkListStore **out_store, GtkWidget **out_tree) {
-    GtkListStore *store = gtk_list_store_new(1, G_TYPE_STRING);
+    GtkListStore *store = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_INT);
     GtkWidget *tree = gtk_tree_view_new_with_model(GTK_TREE_MODEL(store));
     g_object_unref(store);
+
+    gtk_tree_sortable_set_sort_func(GTK_TREE_SORTABLE(store), 0, sort_func, GINT_TO_POINTER(0), NULL);
+    gtk_tree_sortable_set_sort_func(GTK_TREE_SORTABLE(store), 1, sort_func, GINT_TO_POINTER(1), NULL);
+    gtk_tree_sortable_set_sort_column_id(GTK_TREE_SORTABLE(store), 0, GTK_SORT_ASCENDING);
 
     gtk_tree_view_set_headers_visible(GTK_TREE_VIEW(tree), TRUE);
 
     GtkCellRenderer *renderer = gtk_cell_renderer_text_new();
     GtkTreeViewColumn *column = gtk_tree_view_column_new_with_attributes(title, renderer, "text", 0, NULL);
     gtk_tree_view_column_set_sizing(column, GTK_TREE_VIEW_COLUMN_AUTOSIZE);
+    gtk_tree_view_column_set_sort_column_id(column, 0);
+    gtk_tree_view_column_set_expand(column, TRUE);
     gtk_tree_view_append_column(GTK_TREE_VIEW(tree), column);
+
+    GtkCellRenderer *count_renderer = gtk_cell_renderer_text_new();
+    g_object_set(count_renderer, "xalign", 1.0, NULL);
+    GtkTreeViewColumn *count_column = gtk_tree_view_column_new_with_attributes("Count", count_renderer, "text", 1, NULL);
+    gtk_tree_view_column_set_sizing(count_column, GTK_TREE_VIEW_COLUMN_AUTOSIZE);
+    gtk_tree_view_column_set_sort_column_id(count_column, 1);
+    gtk_tree_view_append_column(GTK_TREE_VIEW(tree), count_column);
 
     GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
@@ -540,8 +612,8 @@ int cui_start(void) {
         fprintf(stderr, "deadbeef-cui: medialib plugin not found or unsupported!\n");
     }
 
-    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v0.6", 0, cui_create_widget, "cui", NULL);
-    fprintf(stderr, "deadbeef-cui: Facet Browser v0.6 registered successfully.\n");
+    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v0.7", 0, cui_create_widget, "cui", NULL);
+    fprintf(stderr, "deadbeef-cui: Facet Browser v0.7 registered successfully.\n");
 
     return 0;
 }
@@ -571,7 +643,7 @@ static DB_misc_t plugin = {
     .plugin.api_vmajor = 1,
     .plugin.api_vminor = 0,
     .plugin.version_major = 0,
-    .plugin.version_minor = 6,
+    .plugin.version_minor = 7,
     .plugin.id = "cui",
     .plugin.name = "Columns UI for DeaDBeeF",
     .plugin.descr = "A faceted library browser for DeaDBeeF.",
