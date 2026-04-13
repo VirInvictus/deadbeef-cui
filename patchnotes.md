@@ -15,6 +15,8 @@
 
 **Debug Logging.** Added a `DEADBEEF_CUI_DEBUG` environment variable toggle. When launched with `DEADBEEF_CUI_DEBUG=1 deadbeef`, the plugin will emit verbose lifecycle and state evaluation logs to `stderr` to aid in deeper bug fixing and issue reporting.
 
+**Optimized Multi-Selection Performance.** Added a robust debouncing mechanism to column selection updates. This resolves an exponential recursion issue where GTK's native "changed" signal would fire simultaneously for every single item added to a multi-selection block, drastically reducing redundant computations and CPU spikes.
+
 ## v0.7.2-alpha
 
 ---

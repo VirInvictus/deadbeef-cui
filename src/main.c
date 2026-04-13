@@ -106,6 +106,9 @@ typedef struct {
     int listener_id;
     ddb_medialib_item_t *cached_tree;
     GHashTable *track_counts_cache;
+
+    guint changed_timeout_id;
+    int changed_col_idx;
 } cui_widget_t;
 
 static ddb_scriptable_item_t *my_preset = NULL;
@@ -416,9 +419,41 @@ static void update_selection_hash(GtkTreeSelection *selection, GHashTable **hash
     }
 }
 
+static gboolean deferred_column_changed_cb(gpointer data) {
+    cui_widget_t *cw = (cui_widget_t *)data;
+    cw->changed_timeout_id = 0;
+
+    int start_col = cw->changed_col_idx;
+    cw->changed_col_idx = -1;
+
+    if (start_col == -1 || shutting_down) return G_SOURCE_REMOVE;
+
+    for (int col_idx = start_col; col_idx < cw->num_columns; col_idx++) {
+        GtkTreeSelection *selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->trees[col_idx]));
+
+        char all_text[256];
+        snprintf(all_text, sizeof(all_text), "[ All %s ]", cw->titles[col_idx]);
+
+        update_selection_hash(selection, &cw->sel_texts[col_idx], all_text);
+
+        if (col_idx + 1 < cw->num_columns) {
+            char next_all[256];
+            snprintf(next_all, sizeof(next_all), "[ All %s ]", cw->titles[col_idx + 1]);
+
+            GtkTreeSelection *next_sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->trees[col_idx + 1]));
+            g_signal_handlers_block_by_func(next_sel, (gpointer)on_column_changed, cw);
+            populate_list_multi(cw->stores[col_idx + 1], col_idx + 2, cw, next_all);
+            g_signal_handlers_unblock_by_func(next_sel, (gpointer)on_column_changed, cw);
+        }
+    }
+
+    update_playlist_from_cui(cw);
+    return G_SOURCE_REMOVE;
+}
+
 static void on_column_changed(GtkTreeSelection *selection, gpointer data) {
     cui_widget_t *cw = (cui_widget_t *)data;
-    
+
     int col_idx = -1;
     for (int i = 0; i < cw->num_columns; i++) {
         if (gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->trees[i])) == selection) {
@@ -428,20 +463,12 @@ static void on_column_changed(GtkTreeSelection *selection, gpointer data) {
     }
     if (col_idx == -1) return;
 
-    char all_text[256];
-    snprintf(all_text, sizeof(all_text), "[ All %s ]", cw->titles[col_idx]);
+    if (cw->changed_col_idx == -1 || col_idx < cw->changed_col_idx) {
+        cw->changed_col_idx = col_idx;
+    }
 
-    update_selection_hash(selection, &cw->sel_texts[col_idx], all_text);
-
-    if (col_idx + 1 < cw->num_columns) {
-        char next_all[256];
-        snprintf(next_all, sizeof(next_all), "[ All %s ]", cw->titles[col_idx + 1]);
-        populate_list_multi(cw->stores[col_idx + 1], col_idx + 2, cw, next_all);
-        
-        GtkTreeSelection *next_sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->trees[col_idx + 1]));
-        on_column_changed(next_sel, cw);
-    } else {
-        update_playlist_from_cui(cw);
+    if (cw->changed_timeout_id == 0) {
+        cw->changed_timeout_id = g_timeout_add(10, deferred_column_changed_cb, cw);
     }
 }
 
@@ -518,6 +545,11 @@ static void on_row_activated(GtkTreeView *tree_view, GtkTreePath *path, GtkTreeV
 static void cui_destroy(ddb_gtkui_widget_t *w) {
     cui_widget_t *cw = (cui_widget_t *)w;
 
+    if (cw->changed_timeout_id) {
+        g_source_remove(cw->changed_timeout_id);
+        cw->changed_timeout_id = 0;
+    }
+
     all_cui_widgets = g_list_remove(all_cui_widgets, cw);
 
     if (medialib_plugin && ml_source) {
@@ -587,6 +619,7 @@ static ddb_gtkui_widget_t *cui_create_widget(void) {
     if (!my_preset) init_my_preset();
 
     cui_widget_t *cw = calloc(1, sizeof(cui_widget_t));
+    cw->changed_col_idx = -1;
     ddb_gtkui_widget_t *w = &cw->base;
     w->type = "cui";
 
