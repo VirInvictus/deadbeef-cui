@@ -9,7 +9,7 @@
 A faceted library browser plugin for the [DeaDBeeF](https://deadbeef.sourceforge.io/) music player on Linux. It brings a Columns UI / Facets style triple-filter layout (Genre → Album Artist → Album) to DeaDBeeF.
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/98bec4b3-6ba1-4b8d-a3c5-80ba5aa090d2" alt="DeaDBeeF CUI Plugin Screenshot" style="max-width: 100%; border-radius: 8px;">
+  <img src="https://github.com/user-attachments/assets/7c2549b2-de7e-4c11-add1-3ad276b4906d" alt="DeaDBeeF CUI Plugin Screenshot" style="max-width: 100%; border-radius: 8px;">
 </p>
 
 ## Why this exists
