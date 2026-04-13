@@ -1,6 +1,18 @@
 # deadbeef-cui — Patch Notes
 
-## v0.7.1-alpha (Current)
+## v0.7.2-alpha (Current)
+
+---
+
+### Enhancements
+
+**Track Count Caching.** Implemented a `GHashTable` based memoization system for recursive track counting. This drastically speeds up the calculation of track counts for each facet entry, reducing CPU load when navigating the media library, especially for huge collections (50k+ tracks).
+
+### UI Polish
+
+**Count Column Padding.** Added `xpad` to the GTK cell renderer for the "Count" column to prevent the count numbers from visually bleeding into the scrollbar on some desktop themes.
+
+## v0.7.1-alpha
 
 ---
 

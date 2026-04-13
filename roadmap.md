@@ -38,8 +38,8 @@ What's done, what's next. Sequenced for feature-parity with foobar2000's Columns
 - [x] **Header Sort Buttons:** Implement toggleable sort modes (Alphabetical vs. Item Count) accessible via column headers.
 - [x] **Selection Count:** Display the total number of items in each category next to the label in a dedicated "Count" column.
 - [ ] **Multi-Selection:** Support selecting multiple entries in a column (Ctrl/Shift-click) to aggregate filters across multiple genres/artists.
-- [ ] **Track Count Caching:** Pre-calculate track counts during initial library load to ensure instantaneous filtering for large libraries (50k+ tracks).
-- [ ] **Fix Scroll bar / Count being blended into each other:** Might look bad on some themes.
+- [x] **Track Count Caching:** Pre-calculate track counts during initial library load to ensure instantaneous filtering for large libraries (50k+ tracks).
+- [x] **Fix Scroll bar / Count being blended into each other:** Might look bad on some themes.
 
 ## Phase 4: Customization & Formatting
 *Extending the flexibility of the column metadata.*

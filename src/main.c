@@ -100,6 +100,7 @@ typedef struct {
     int listener_id;
 
     ddb_medialib_item_t *cached_tree;
+    GHashTable *track_counts_cache;
     const ddb_medialib_item_t *sel_genre_node;
     const ddb_medialib_item_t *sel_artist_node;
     const ddb_medialib_item_t *sel_album_node;
@@ -140,15 +141,26 @@ static void sync_source_config(void) {
 
 // --- Track counting ---
 
-static int count_tracks_recursive(const ddb_medialib_item_t *node) {
+static int count_tracks_recursive(const ddb_medialib_item_t *node, GHashTable *cache) {
+    if (cache) {
+        gpointer cached = g_hash_table_lookup(cache, node);
+        if (cached) {
+            return GPOINTER_TO_INT(cached) - 1;
+        }
+    }
+
     int count = 0;
     if (medialib_plugin->tree_item_get_track(node)) {
         count = 1;
     }
     const ddb_medialib_item_t *child = medialib_plugin->tree_item_get_children(node);
     while (child) {
-        count += count_tracks_recursive(child);
+        count += count_tracks_recursive(child, cache);
         child = medialib_plugin->tree_item_get_next(child);
+    }
+
+    if (cache) {
+        g_hash_table_insert(cache, (gpointer)node, GINT_TO_POINTER(count + 1));
     }
     return count;
 }
@@ -260,7 +272,7 @@ static void aggregate_recursive_multi(const ddb_medialib_item_t *node,
     if (current_level == target_level) {
         const char *text = medialib_plugin->tree_item_get_text(node);
         if (text) {
-            int tracks = count_tracks_recursive(node);
+            int tracks = count_tracks_recursive(node, cw->track_counts_cache);
             int *count_ptr = g_hash_table_lookup(seen, text);
             if (count_ptr) {
                 *count_ptr += tracks;
@@ -353,6 +365,11 @@ static void update_tree_data(cui_widget_t *cw) {
         medialib_plugin->free_item_tree(ml_source, cw->cached_tree);
         cw->cached_tree = NULL;
     }
+    if (cw->track_counts_cache) {
+        g_hash_table_destroy(cw->track_counts_cache);
+        cw->track_counts_cache = NULL;
+    }
+    
     cw->sel_genre_node = NULL;
     cw->sel_artist_node = NULL;
     cw->sel_album_node = NULL;
@@ -366,6 +383,8 @@ static void update_tree_data(cui_widget_t *cw) {
 
     cw->cached_tree = medialib_plugin->create_item_tree(ml_source, my_preset, NULL);
     if (!cw->cached_tree) return;
+    
+    cw->track_counts_cache = g_hash_table_new(g_direct_hash, g_direct_equal);
 
     populate_list_multi(cw->store_genre, 1, cw, ALL_GENRES);
     populate_list_multi(cw->store_artist, 2, cw, ALL_ARTISTS);
@@ -495,6 +514,10 @@ static void cui_destroy(ddb_gtkui_widget_t *w) {
             medialib_plugin->free_item_tree(ml_source, cw->cached_tree);
             cw->cached_tree = NULL;
         }
+        if (cw->track_counts_cache) {
+            g_hash_table_destroy(cw->track_counts_cache);
+            cw->track_counts_cache = NULL;
+        }
     }
 
     g_free(cw->sel_genre_text); cw->sel_genre_text = NULL;
@@ -524,7 +547,7 @@ static GtkWidget *create_column(const char *title, GtkListStore **out_store, Gtk
     gtk_tree_view_append_column(GTK_TREE_VIEW(tree), column);
 
     GtkCellRenderer *count_renderer = gtk_cell_renderer_text_new();
-    g_object_set(count_renderer, "xalign", 1.0, NULL);
+    g_object_set(count_renderer, "xalign", 1.0, "xpad", 6, NULL);
     GtkTreeViewColumn *count_column = gtk_tree_view_column_new_with_attributes("Count", count_renderer, "text", 1, NULL);
     gtk_tree_view_column_set_sizing(count_column, GTK_TREE_VIEW_COLUMN_AUTOSIZE);
     gtk_tree_view_column_set_sort_column_id(count_column, 1);
@@ -624,8 +647,8 @@ int cui_start(void) {
         fprintf(stderr, "deadbeef-cui: medialib plugin not found or unsupported!\n");
     }
 
-    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v0.7.1", 0, cui_create_widget, "cui", NULL);
-    fprintf(stderr, "deadbeef-cui: Facet Browser v0.7.1 registered successfully.\n");
+    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v0.7.2", 0, cui_create_widget, "cui", NULL);
+    fprintf(stderr, "deadbeef-cui: Facet Browser v0.7.2 registered successfully.\n");
 
     return 0;
 }
