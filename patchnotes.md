@@ -1,6 +1,17 @@
 # deadbeef-cui — Patch Notes
 
-## v0.7.2-alpha (Current)
+## v0.8.0-alpha (Current)
+
+---
+
+### Major Features
+
+**Dynamic User-Configurable Columns.** The hardcoded triple-pane layout has been completely rewritten into a dynamic, recursive engine. Users can now define anywhere from 1 to 5 columns in the plugin settings, customizing both the column title and the underlying metadata query.
+**Custom Search Formatting.** Each column now fully supports DeaDBeeF's title formatting syntax. You can use simple tags like `%genre%` or complex logic like `$if2(%album artist%,%artist%)` to power your facet queries.
+**Album Artist Standardization.** By utilizing title formatting for columns, "Album Artist" now properly evaluates priority logic (`$if2(%album artist%,%artist%)` by default) resolving fragmentation across different file types (FLAC, MP3, Opus).
+**Prefix Handling (Article Ignoral).** Added a new configuration toggle to automatically ignore leading articles ("The ", "A ", "An ") when sorting rows alphabetically.
+
+## v0.7.2-alpha
 
 ---
 

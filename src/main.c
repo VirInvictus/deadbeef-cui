@@ -6,6 +6,9 @@
 #include <string.h>
 #include <sys/time.h>
 
+#define MAX_COLUMNS 5
+#define CUI_SOURCE_PATH "cui"
+
 static DB_functions_t *deadbeef_api;
 static ddb_gtkui_t *gtkui_plugin;
 static DB_mediasource_t *medialib_plugin;
@@ -13,8 +16,11 @@ static ddb_mediasource_source_t *ml_source;
 static int shutting_down = 0;
 static int owns_ml_source = 0;
 
+static int ignore_prefix = 0;
+static char global_titles[MAX_COLUMNS][256] = {0};
+static int global_num_columns = 0;
+
 // --- Internal Scriptable types mirroring medialib.so ---
-// Layout verified against DeaDBeeF source (shared/scriptable/scriptable.c)
 typedef struct scriptableKeyValue_s {
     struct scriptableKeyValue_s *next;
     char *key;
@@ -81,52 +87,93 @@ static void my_scriptable_add_child(scriptableItem_t *parent, scriptableItem_t *
     child->parent = parent;
 }
 
-#define ALL_GENRES "[ All Genres ]"
-#define ALL_ARTISTS "[ All Artists ]"
-#define ALL_ALBUMS "[ All Albums ]"
-
-#define CUI_SOURCE_PATH "cui"
-
 // --- Widget structures ---
 typedef struct {
     ddb_gtkui_widget_t base;
-    GtkListStore *store_genre;
-    GtkListStore *store_artist;
-    GtkListStore *store_album;
+    int num_columns;
+    GtkListStore *stores[MAX_COLUMNS];
+    GtkWidget *trees[MAX_COLUMNS];
+    GHashTable *sel_texts[MAX_COLUMNS];
+    char *titles[MAX_COLUMNS];
 
-    GtkWidget *tree_genre;
-    GtkWidget *tree_artist;
-    GtkWidget *tree_album;
     int listener_id;
-
     ddb_medialib_item_t *cached_tree;
     GHashTable *track_counts_cache;
-
-    GHashTable *sel_genre_texts;
-    GHashTable *sel_artist_texts;
-    GHashTable *sel_album_texts;
 } cui_widget_t;
 
 static ddb_scriptable_item_t *my_preset = NULL;
 static GList *all_cui_widgets = NULL;
 
 static void init_my_preset(void) {
-    if (my_preset) return;
+    if (my_preset) {
+        my_scriptable_free((scriptableItem_t *)my_preset);
+        my_preset = NULL;
+    }
+    
+    deadbeef_api->conf_lock();
+    ignore_prefix = deadbeef_api->conf_get_int("cui.ignore_prefix", 0);
+    
+    // Default configs if empty
+    if (!deadbeef_api->conf_get_str_fast("cui.col1_format", NULL)) {
+        deadbeef_api->conf_set_str("cui.col1_title", "Genre");
+        deadbeef_api->conf_set_str("cui.col1_format", "%genre%");
+        deadbeef_api->conf_set_str("cui.col2_title", "Album Artist");
+        deadbeef_api->conf_set_str("cui.col2_format", "$if2(%album artist%,%artist%)");
+        deadbeef_api->conf_set_str("cui.col3_title", "Album");
+        deadbeef_api->conf_set_str("cui.col3_format", "%album%");
+        deadbeef_api->conf_set_int("cui.ignore_prefix", 0);
+    }
+    deadbeef_api->conf_unlock();
 
     scriptableItem_t *p = my_scriptable_alloc();
     p->flags = SCRIPTABLE_FLAG_IS_LIST;
     my_scriptable_set_prop(p, "name", "Facets");
 
-    const char *tfs[] = {"%genre%", "%album artist%", "%album%", "%title%"};
-    for (int i = 0; i < 4; i++) {
-        scriptableItem_t *child = my_scriptable_alloc();
-        my_scriptable_set_prop(child, "name", tfs[i]);
-        my_scriptable_add_child(p, child);
+    global_num_columns = 0;
+
+    for (int i = 0; i < MAX_COLUMNS; i++) {
+        char key_title[32];
+        char key_format[32];
+        snprintf(key_title, sizeof(key_title), "cui.col%d_title", i + 1);
+        snprintf(key_format, sizeof(key_format), "cui.col%d_format", i + 1);
+        
+        deadbeef_api->conf_lock();
+        const char *title = deadbeef_api->conf_get_str_fast(key_title, "");
+        const char *format = deadbeef_api->conf_get_str_fast(key_format, "");
+        deadbeef_api->conf_unlock();
+        
+        char title_copy[256] = {0};
+        char format_copy[256] = {0};
+        
+        if (title) strncpy(title_copy, title, sizeof(title_copy) - 1);
+        if (format) strncpy(format_copy, format, sizeof(format_copy) - 1);
+
+        if (title_copy[0] && format_copy[0]) {
+            scriptableItem_t *child = my_scriptable_alloc();
+            my_scriptable_set_prop(child, "name", format_copy);
+            my_scriptable_add_child(p, child);
+            
+            strncpy(global_titles[global_num_columns], title_copy, 255);
+            global_num_columns++;
+        }
     }
+    
+    // Fallback if user cleared everything
+    if (global_num_columns == 0) {
+        scriptableItem_t *child = my_scriptable_alloc();
+        my_scriptable_set_prop(child, "name", "$if2(%album artist%,%artist%)");
+        my_scriptable_add_child(p, child);
+        strcpy(global_titles[0], "Album Artist");
+        global_num_columns = 1;
+    }
+
+    scriptableItem_t *track_child = my_scriptable_alloc();
+    my_scriptable_set_prop(track_child, "name", "%title%");
+    my_scriptable_add_child(p, track_child);
+    
     my_preset = (ddb_scriptable_item_t *)p;
 }
 
-// Copy the main medialib folder config to our source's config namespace
 static void sync_source_config(void) {
     char paths[4096];
     deadbeef_api->conf_get_str("medialib.deadbeef.paths", "", paths, sizeof(paths));
@@ -162,6 +209,14 @@ static int count_tracks_recursive(const ddb_medialib_item_t *node, GHashTable *c
     return count;
 }
 
+static const char *skip_prefix(const char *str) {
+    if (!ignore_prefix || !str) return str;
+    if (strncasecmp(str, "The ", 4) == 0) return str + 4;
+    if (strncasecmp(str, "A ", 2) == 0) return str + 2;
+    if (strncasecmp(str, "An ", 3) == 0) return str + 3;
+    return str;
+}
+
 static int sort_func(GtkTreeModel *model, GtkTreeIter *a, GtkTreeIter *b, gpointer user_data) {
     int sort_col = GPOINTER_TO_INT(user_data);
     gint current_sort_col;
@@ -179,17 +234,15 @@ static int sort_func(GtkTreeModel *model, GtkTreeIter *a, GtkTreeIter *b, gpoint
         int is_all_b = (name_b[0] == '[');
 
         if (is_all_a && !is_all_b) {
-            // [All] always comes first. GTK negates results in descending mode,
-            // so we return 1 in descending mode to counteract that.
             result = (order == GTK_SORT_ASCENDING) ? -1 : 1;
         } else if (!is_all_a && is_all_b) {
             result = (order == GTK_SORT_ASCENDING) ? 1 : -1;
         } else {
             if (sort_col == 1) { // Count
-                result = count_b - count_a; // Descending by default for counts
-                if (result == 0) result = g_utf8_collate(name_a, name_b);
+                result = count_b - count_a;
+                if (result == 0) result = g_utf8_collate(skip_prefix(name_a), skip_prefix(name_b));
             } else { // Name
-                result = g_utf8_collate(name_a, name_b);
+                result = g_utf8_collate(skip_prefix(name_a), skip_prefix(name_b));
             }
         }
     }
@@ -201,17 +254,11 @@ static int sort_func(GtkTreeModel *model, GtkTreeIter *a, GtkTreeIter *b, gpoint
 
 static void add_tracks_recursive_multi(const ddb_medialib_item_t *node, int current_level,
                                         cui_widget_t *cw, ddb_playlist_t *plt, DB_playItem_t **after) {
-    if (cw->sel_genre_texts && current_level == 1) {
-        const char *text = medialib_plugin->tree_item_get_text(node);
-        if (!text || !g_hash_table_contains(cw->sel_genre_texts, text)) return;
-    }
-    if (cw->sel_artist_texts && current_level == 2) {
-        const char *text = medialib_plugin->tree_item_get_text(node);
-        if (!text || !g_hash_table_contains(cw->sel_artist_texts, text)) return;
-    }
-    if (cw->sel_album_texts && current_level == 3) {
-        const char *text = medialib_plugin->tree_item_get_text(node);
-        if (!text || !g_hash_table_contains(cw->sel_album_texts, text)) return;
+    if (current_level >= 1 && current_level <= cw->num_columns) {
+        if (cw->sel_texts[current_level - 1]) {
+            const char *text = medialib_plugin->tree_item_get_text(node);
+            if (!text || !g_hash_table_contains(cw->sel_texts[current_level - 1], text)) return;
+        }
     }
 
     DB_playItem_t *track = medialib_plugin->tree_item_get_track(node);
@@ -274,13 +321,11 @@ static void aggregate_recursive_multi(const ddb_medialib_item_t *node,
         return;
     }
 
-    if (cw->sel_genre_texts && current_level == 1) {
-        const char *text = medialib_plugin->tree_item_get_text(node);
-        if (!text || !g_hash_table_contains(cw->sel_genre_texts, text)) return;
-    }
-    if (cw->sel_artist_texts && current_level == 2) {
-        const char *text = medialib_plugin->tree_item_get_text(node);
-        if (!text || !g_hash_table_contains(cw->sel_artist_texts, text)) return;
+    if (current_level >= 1 && current_level <= cw->num_columns) {
+        if (cw->sel_texts[current_level - 1]) {
+            const char *text = medialib_plugin->tree_item_get_text(node);
+            if (!text || !g_hash_table_contains(cw->sel_texts[current_level - 1], text)) return;
+        }
     }
 
     const ddb_medialib_item_t *child = medialib_plugin->tree_item_get_children(node);
@@ -326,61 +371,9 @@ static void populate_list_multi(GtkListStore *store, int target_level, cui_widge
     g_hash_table_destroy(seen);
 }
 
-// --- Tree data refresh ---
-
-static void update_tree_data(cui_widget_t *cw) {
-    if (shutting_down || !medialib_plugin || !ml_source) return;
-
-    if (cw->cached_tree) {
-        medialib_plugin->free_item_tree(ml_source, cw->cached_tree);
-        cw->cached_tree = NULL;
-    }
-    if (cw->track_counts_cache) {
-        g_hash_table_destroy(cw->track_counts_cache);
-        cw->track_counts_cache = NULL;
-    }
-    
-    if (cw->sel_genre_texts) { g_hash_table_destroy(cw->sel_genre_texts); cw->sel_genre_texts = NULL; }
-    if (cw->sel_artist_texts) { g_hash_table_destroy(cw->sel_artist_texts); cw->sel_artist_texts = NULL; }
-    if (cw->sel_album_texts) { g_hash_table_destroy(cw->sel_album_texts); cw->sel_album_texts = NULL; }
-
-    init_my_preset();
-    if (!my_preset) return;
-
-    cw->cached_tree = medialib_plugin->create_item_tree(ml_source, my_preset, NULL);
-    if (!cw->cached_tree) return;
-    
-    cw->track_counts_cache = g_hash_table_new(g_direct_hash, g_direct_equal);
-
-    populate_list_multi(cw->store_genre, 1, cw, ALL_GENRES);
-    populate_list_multi(cw->store_artist, 2, cw, ALL_ARTISTS);
-    populate_list_multi(cw->store_album, 3, cw, ALL_ALBUMS);
-
-    update_playlist_from_cui(cw);
-}
-
-static gboolean repopulate_ui_idle(gpointer data) {
-    if (shutting_down) return G_SOURCE_REMOVE;
-    cui_widget_t *cw = (cui_widget_t *)data;
-    if (g_list_find(all_cui_widgets, cw)) {
-        if (medialib_plugin && ml_source) {
-            update_tree_data(cw);
-        }
-    }
-    return G_SOURCE_REMOVE;
-}
-
-static void ml_listener_cb(ddb_mediasource_event_type_t event, void *user_data) {
-    if (shutting_down) return;
-    if (event == DDB_MEDIASOURCE_EVENT_STATE_DID_CHANGE || event == DDB_MEDIASOURCE_EVENT_CONTENT_DID_CHANGE) {
-        g_idle_add(repopulate_ui_idle, user_data);
-    }
-}
-
 // --- Selection handlers ---
 
-static void on_artist_changed(GtkTreeSelection *selection, gpointer data);
-static void on_album_changed(GtkTreeSelection *selection, gpointer data);
+static void on_column_changed(GtkTreeSelection *selection, gpointer data);
 
 static void update_selection_hash(GtkTreeSelection *selection, GHashTable **hash_ptr, const char *all_text) {
     if (*hash_ptr) {
@@ -414,24 +407,87 @@ static void update_selection_hash(GtkTreeSelection *selection, GHashTable **hash
     }
 }
 
-static void on_genre_changed(GtkTreeSelection *selection, gpointer data) {
+static void on_column_changed(GtkTreeSelection *selection, gpointer data) {
     cui_widget_t *cw = (cui_widget_t *)data;
-    update_selection_hash(selection, &cw->sel_genre_texts, ALL_GENRES);
-    populate_list_multi(cw->store_artist, 2, cw, ALL_ARTISTS);
-    on_artist_changed(gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->tree_artist)), cw);
+    
+    int col_idx = -1;
+    for (int i = 0; i < cw->num_columns; i++) {
+        if (gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->trees[i])) == selection) {
+            col_idx = i;
+            break;
+        }
+    }
+    if (col_idx == -1) return;
+
+    char all_text[256];
+    snprintf(all_text, sizeof(all_text), "[ All %s ]", cw->titles[col_idx]);
+
+    update_selection_hash(selection, &cw->sel_texts[col_idx], all_text);
+
+    if (col_idx + 1 < cw->num_columns) {
+        char next_all[256];
+        snprintf(next_all, sizeof(next_all), "[ All %s ]", cw->titles[col_idx + 1]);
+        populate_list_multi(cw->stores[col_idx + 1], col_idx + 2, cw, next_all);
+        
+        GtkTreeSelection *next_sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->trees[col_idx + 1]));
+        on_column_changed(next_sel, cw);
+    } else {
+        update_playlist_from_cui(cw);
+    }
 }
 
-static void on_artist_changed(GtkTreeSelection *selection, gpointer data) {
-    cui_widget_t *cw = (cui_widget_t *)data;
-    update_selection_hash(selection, &cw->sel_artist_texts, ALL_ARTISTS);
-    populate_list_multi(cw->store_album, 3, cw, ALL_ALBUMS);
-    on_album_changed(gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->tree_album)), cw);
+// --- Tree data refresh ---
+
+static void update_tree_data(cui_widget_t *cw) {
+    if (shutting_down || !medialib_plugin || !ml_source) return;
+
+    if (cw->cached_tree) {
+        medialib_plugin->free_item_tree(ml_source, cw->cached_tree);
+        cw->cached_tree = NULL;
+    }
+    if (cw->track_counts_cache) {
+        g_hash_table_destroy(cw->track_counts_cache);
+        cw->track_counts_cache = NULL;
+    }
+    
+    for (int i = 0; i < cw->num_columns; i++) {
+        if (cw->sel_texts[i]) {
+            g_hash_table_destroy(cw->sel_texts[i]);
+            cw->sel_texts[i] = NULL;
+        }
+    }
+
+    if (!my_preset) init_my_preset();
+
+    cw->cached_tree = medialib_plugin->create_item_tree(ml_source, my_preset, NULL);
+    if (!cw->cached_tree) return;
+    
+    cw->track_counts_cache = g_hash_table_new(g_direct_hash, g_direct_equal);
+
+    char all_text[256];
+    snprintf(all_text, sizeof(all_text), "[ All %s ]", cw->titles[0]);
+    populate_list_multi(cw->stores[0], 1, cw, all_text);
+
+    GtkTreeSelection *first_sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->trees[0]));
+    on_column_changed(first_sel, cw);
 }
 
-static void on_album_changed(GtkTreeSelection *selection, gpointer data) {
+static gboolean repopulate_ui_idle(gpointer data) {
+    if (shutting_down) return G_SOURCE_REMOVE;
     cui_widget_t *cw = (cui_widget_t *)data;
-    update_selection_hash(selection, &cw->sel_album_texts, ALL_ALBUMS);
-    update_playlist_from_cui(cw);
+    if (g_list_find(all_cui_widgets, cw)) {
+        if (medialib_plugin && ml_source) {
+            update_tree_data(cw);
+        }
+    }
+    return G_SOURCE_REMOVE;
+}
+
+static void ml_listener_cb(ddb_mediasource_event_type_t event, void *user_data) {
+    if (shutting_down) return;
+    if (event == DDB_MEDIASOURCE_EVENT_STATE_DID_CHANGE || event == DDB_MEDIASOURCE_EVENT_CONTENT_DID_CHANGE) {
+        g_idle_add(repopulate_ui_idle, user_data);
+    }
 }
 
 static void on_row_activated(GtkTreeView *tree_view, GtkTreePath *path, GtkTreeViewColumn *column, gpointer data) {
@@ -469,9 +525,13 @@ static void cui_destroy(ddb_gtkui_widget_t *w) {
         }
     }
 
-    if (cw->sel_genre_texts) { g_hash_table_destroy(cw->sel_genre_texts); cw->sel_genre_texts = NULL; }
-    if (cw->sel_artist_texts) { g_hash_table_destroy(cw->sel_artist_texts); cw->sel_artist_texts = NULL; }
-    if (cw->sel_album_texts) { g_hash_table_destroy(cw->sel_album_texts); cw->sel_album_texts = NULL; }
+    for (int i = 0; i < cw->num_columns; i++) {
+        if (cw->sel_texts[i]) {
+            g_hash_table_destroy(cw->sel_texts[i]);
+            cw->sel_texts[i] = NULL;
+        }
+        g_free(cw->titles[i]);
+    }
 }
 
 static GtkWidget *create_column(const char *title, GtkListStore **out_store, GtkWidget **out_tree) {
@@ -503,7 +563,6 @@ static GtkWidget *create_column(const char *title, GtkListStore **out_store, Gtk
     gtk_tree_view_append_column(GTK_TREE_VIEW(tree), count_column);
 
     GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
-    // Disable horizontal scrolling to force ellipsizing of the name column
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
     gtk_container_add(GTK_CONTAINER(scroll), tree);
 
@@ -514,25 +573,36 @@ static GtkWidget *create_column(const char *title, GtkListStore **out_store, Gtk
 }
 
 static ddb_gtkui_widget_t *cui_create_widget(void) {
+    if (!my_preset) init_my_preset();
+
     cui_widget_t *cw = calloc(1, sizeof(cui_widget_t));
     ddb_gtkui_widget_t *w = &cw->base;
     w->type = "cui";
 
-    GtkWidget *pane1 = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
-    GtkWidget *pane2 = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
+    cw->num_columns = global_num_columns;
+    
+    GtkWidget *col_widgets[MAX_COLUMNS];
+    for (int i = 0; i < cw->num_columns; i++) {
+        cw->titles[i] = g_strdup(global_titles[i]);
+        col_widgets[i] = create_column(cw->titles[i], &cw->stores[i], &cw->trees[i]);
+        
+        GtkTreeSelection *sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->trees[i]));
+        gtk_tree_selection_set_mode(sel, GTK_SELECTION_MULTIPLE);
+        g_signal_connect(sel, "changed", G_CALLBACK(on_column_changed), cw);
+        g_signal_connect(cw->trees[i], "row-activated", G_CALLBACK(on_row_activated), cw);
+    }
 
-    GtkWidget *col_genre = create_column("Genre", &cw->store_genre, &cw->tree_genre);
-    GtkWidget *col_artist = create_column("Album Artist", &cw->store_artist, &cw->tree_artist);
-    GtkWidget *col_album = create_column("Album", &cw->store_album, &cw->tree_album);
+    GtkWidget *top_widget = col_widgets[cw->num_columns - 1];
+    for (int i = cw->num_columns - 2; i >= 0; i--) {
+        GtkWidget *pane = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
+        gtk_paned_pack1(GTK_PANED(pane), col_widgets[i], TRUE, FALSE);
+        gtk_paned_pack2(GTK_PANED(pane), top_widget, TRUE, FALSE);
+        top_widget = pane;
+    }
 
-    gtk_paned_pack1(GTK_PANED(pane2), col_artist, TRUE, FALSE);
-    gtk_paned_pack2(GTK_PANED(pane2), col_album, TRUE, FALSE);
-    gtk_paned_pack1(GTK_PANED(pane1), col_genre, TRUE, FALSE);
-    gtk_paned_pack2(GTK_PANED(pane1), pane2, TRUE, FALSE);
+    gtk_widget_show_all(top_widget);
 
-    gtk_widget_show_all(pane1);
-
-    w->widget = pane1;
+    w->widget = top_widget;
     w->destroy = cui_destroy;
 
     if (gtkui_plugin && gtkui_plugin->w_override_signals) {
@@ -551,22 +621,6 @@ static ddb_gtkui_widget_t *cui_create_widget(void) {
         cw->listener_id = medialib_plugin->add_listener(ml_source, ml_listener_cb, cw);
     }
 
-    GtkTreeSelection *sel_genre = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->tree_genre));
-    gtk_tree_selection_set_mode(sel_genre, GTK_SELECTION_MULTIPLE);
-    g_signal_connect(sel_genre, "changed", G_CALLBACK(on_genre_changed), cw);
-
-    GtkTreeSelection *sel_artist = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->tree_artist));
-    gtk_tree_selection_set_mode(sel_artist, GTK_SELECTION_MULTIPLE);
-    g_signal_connect(sel_artist, "changed", G_CALLBACK(on_artist_changed), cw);
-
-    GtkTreeSelection *sel_album = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->tree_album));
-    gtk_tree_selection_set_mode(sel_album, GTK_SELECTION_MULTIPLE);
-    g_signal_connect(sel_album, "changed", G_CALLBACK(on_album_changed), cw);
-
-    g_signal_connect(cw->tree_genre, "row-activated", G_CALLBACK(on_row_activated), cw);
-    g_signal_connect(cw->tree_artist, "row-activated", G_CALLBACK(on_row_activated), cw);
-    g_signal_connect(cw->tree_album, "row-activated", G_CALLBACK(on_row_activated), cw);
-
     all_cui_widgets = g_list_append(all_cui_widgets, cw);
     update_tree_data(cw);
 
@@ -581,6 +635,12 @@ static int cui_message(uint32_t id, uintptr_t ctx, uint32_t p1, uint32_t p2) {
     (void)p2;
     if (id == DB_EV_TERMINATE) {
         shutting_down = 1;
+    }
+    else if (id == DB_EV_CONFIGCHANGED) {
+        deadbeef_api->conf_lock();
+        ignore_prefix = deadbeef_api->conf_get_int("cui.ignore_prefix", 0);
+        deadbeef_api->conf_unlock();
+        // Requires restart for column layout/format string changes.
     }
     return 0;
 }
@@ -599,15 +659,13 @@ int cui_start(void) {
         fprintf(stderr, "deadbeef-cui: medialib plugin not found or unsupported!\n");
     }
 
-    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v0.7.2", 0, cui_create_widget, "cui", NULL);
-    fprintf(stderr, "deadbeef-cui: Facet Browser v0.7.2 registered successfully.\n");
+    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v0.8.0", 0, cui_create_widget, "cui", NULL);
+    fprintf(stderr, "deadbeef-cui: Facet Browser v0.8.0 registered successfully.\n");
 
     return 0;
 }
 
 int cui_stop(void) {
-    fprintf(stderr, "cui_stop called\n");
-    fflush(stderr);
     shutting_down = 1;
 
     if (gtkui_plugin) {
@@ -625,12 +683,26 @@ int cui_stop(void) {
     return 0;
 }
 
+static const char settings_dlg[] =
+    "property \"Column 1 Title\" entry cui.col1_title \"Genre\";\n"
+    "property \"Column 1 Format\" entry cui.col1_format \"%genre%\";\n"
+    "property \"Column 2 Title\" entry cui.col2_title \"Album Artist\";\n"
+    "property \"Column 2 Format\" entry cui.col2_format \"$if2(%album artist%,%artist%)\";\n"
+    "property \"Column 3 Title\" entry cui.col3_title \"Album\";\n"
+    "property \"Column 3 Format\" entry cui.col3_format \"%album%\";\n"
+    "property \"Column 4 Title\" entry cui.col4_title \"\";\n"
+    "property \"Column 4 Format\" entry cui.col4_format \"\";\n"
+    "property \"Column 5 Title\" entry cui.col5_title \"\";\n"
+    "property \"Column 5 Format\" entry cui.col5_format \"\";\n"
+    "property \"Ignore Prefix (The, A, An)\" checkbox cui.ignore_prefix 0;\n"
+    ;
+
 static DB_misc_t plugin = {
     .plugin.type = DB_PLUGIN_MISC,
     .plugin.api_vmajor = 1,
     .plugin.api_vminor = 0,
     .plugin.version_major = 0,
-    .plugin.version_minor = 7,
+    .plugin.version_minor = 8,
     .plugin.id = "cui",
     .plugin.name = "Columns UI for DeaDBeeF",
     .plugin.descr = "A faceted library browser for DeaDBeeF.",
@@ -639,6 +711,7 @@ static DB_misc_t plugin = {
     .plugin.start = cui_start,
     .plugin.stop = cui_stop,
     .plugin.message = cui_message,
+    .plugin.configdialog = settings_dlg,
 };
 
 DB_plugin_t *ddb_misc_cui_GTK3_load(DB_functions_t *api) {

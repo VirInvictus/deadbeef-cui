@@ -44,10 +44,10 @@ What's done, what's next. Sequenced for feature-parity with foobar2000's Columns
 ## Phase 4: Customization & Formatting
 *Extending the flexibility of the column metadata.*
 
-- [ ] **Custom Search Formatting:** Full support for DeaDBeeF title formatting syntax (e.g., `%album% [%year%]`) for column patterns.
-- [ ] **User-Configurable Columns:** UI for adding, removing, and reordering facets (e.g., Year → Genre → Artist).
-- [ ] **Album Artist Logic:** Standardize tag priority handling (TPE2 vs. `ALBUM ARTIST`) across different filetypes (Opus, MP3, FLAC).
-- [ ] **Prefix Handling:** Option to ignore leading articles ("The", "A", "An") during alphabetical sorting.
+- [x] **Custom Search Formatting:** Full support for DeaDBeeF title formatting syntax (e.g., `%album% [%year%]`) for column patterns.
+- [x] **User-Configurable Columns:** UI for adding, removing, and reordering facets (e.g., Year → Genre → Artist).
+- [x] **Album Artist Logic:** Standardize tag priority handling (TPE2 vs. `ALBUM ARTIST`) across different filetypes (Opus, MP3, FLAC).
+- [x] **Prefix Handling:** Option to ignore leading articles ("The", "A", "An") during alphabetical sorting.
 
 ## Phase 5: Advanced CUI Features
 *Deep integration with the DeaDBeeF ecosystem.*
