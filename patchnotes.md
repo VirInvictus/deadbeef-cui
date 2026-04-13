@@ -10,13 +10,13 @@
 **Track Counting (Selection Count).** Each facet row now displays the total number of tracks it contains in a dedicated "Count" column. This is calculated through a recursive traversal of the media library tree for every unique metadata entry.
 **Header Sort Buttons.** Columns are now interactive. Users can toggle between Alphabetical (Name) and Item Count (Descending) sorting by clicking the respective column headers.
 
+### UI Polish
+
+**Fixed Count Column Alignment.** The "Count" column is now pinned to the right edge of each facet. Metadata strings (Genre, Artist, Album) will now automatically ellipsize with "..." if they exceed the available width, ensuring the item counts and headers remain visible at all times without requiring horizontal scrolling.
+
 ### Bug Fixes
 
 **Fixed Hierarchical Track Counts.** Corrected a logic error where track counts were only populating for the Genre column. The aggregation engine now correctly identifies the selected parent node when traversing the Artist and Album facets, ensuring accurate counts are displayed across all columns.
-
-### UI Polish
-
-**Proportional Column Layout.** Updated the tree view columns to better utilize space; the main metadata column now expands to fill available width while the "Count" column remains right-aligned and autosized to its content.
 
 ## v0.6.0-alpha
 
