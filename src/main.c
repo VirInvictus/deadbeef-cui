@@ -506,8 +506,11 @@ static GtkWidget *create_column(const char *title, GtkListStore **out_store, Gtk
     gtk_tree_view_set_headers_visible(GTK_TREE_VIEW(tree), TRUE);
 
     GtkCellRenderer *renderer = gtk_cell_renderer_text_new();
+    g_object_set(renderer, "ellipsize", PANGO_ELLIPSIZE_END, NULL);
     GtkTreeViewColumn *column = gtk_tree_view_column_new_with_attributes(title, renderer, "text", 0, NULL);
-    gtk_tree_view_column_set_sizing(column, GTK_TREE_VIEW_COLUMN_AUTOSIZE);
+    gtk_tree_view_column_set_sizing(column, GTK_TREE_VIEW_COLUMN_FIXED);
+    gtk_tree_view_column_set_min_width(column, 50);
+    gtk_tree_view_column_set_resizable(column, TRUE);
     gtk_tree_view_column_set_sort_column_id(column, 0);
     gtk_tree_view_column_set_expand(column, TRUE);
     gtk_tree_view_append_column(GTK_TREE_VIEW(tree), column);
@@ -520,7 +523,8 @@ static GtkWidget *create_column(const char *title, GtkListStore **out_store, Gtk
     gtk_tree_view_append_column(GTK_TREE_VIEW(tree), count_column);
 
     GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+    // Disable horizontal scrolling to force ellipsizing of the name column
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
     gtk_container_add(GTK_CONTAINER(scroll), tree);
 
     if (out_store) *out_store = store;
