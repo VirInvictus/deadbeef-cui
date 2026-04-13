@@ -1,6 +1,6 @@
 # deadbeef-cui — Roadmap
 
-What's done, what's next. Sequenced for feature-parity with foobar2000's Columns UI. Updated as of v0.7.0-alpha.
+What's done, what's next. Sequenced for feature-parity with foobar2000's Columns UI. Updated as of v0.7.1-alpha.
 
 ---
 

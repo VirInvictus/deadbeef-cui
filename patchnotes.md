@@ -1,6 +1,14 @@
 # deadbeef-cui — Patch Notes
 
-## v0.7.0-alpha (Current)
+## v0.7.1-alpha (Current)
+
+---
+
+### Bug Fixes
+
+**Pinned [All] Row Sorting.** Fixed a bug where the "[ All ]" rows would lose their top position when sorting by Count or descending Alphabetical order. The sort function now explicitly checks the sort direction and ensures the aggregate "All" rows remain fixed at the top regardless of user-selected sorting criteria.
+
+## v0.7.0-alpha
 
 ---
 

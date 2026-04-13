@@ -155,6 +155,10 @@ static int count_tracks_recursive(const ddb_medialib_item_t *node) {
 
 static int sort_func(GtkTreeModel *model, GtkTreeIter *a, GtkTreeIter *b, gpointer user_data) {
     int sort_col = GPOINTER_TO_INT(user_data);
+    gint current_sort_col;
+    GtkSortType order;
+    gtk_tree_sortable_get_sort_column_id(GTK_TREE_SORTABLE(model), &current_sort_col, &order);
+
     gchar *name_a, *name_b;
     int count_a, count_b;
     gtk_tree_model_get(model, a, 0, &name_a, 1, &count_a, -1);
@@ -165,9 +169,13 @@ static int sort_func(GtkTreeModel *model, GtkTreeIter *a, GtkTreeIter *b, gpoint
         int is_all_a = (name_a[0] == '[');
         int is_all_b = (name_b[0] == '[');
 
-        if (is_all_a && !is_all_b) result = -1;
-        else if (!is_all_a && is_all_b) result = 1;
-        else {
+        if (is_all_a && !is_all_b) {
+            // [All] always comes first. GTK negates results in descending mode,
+            // so we return 1 in descending mode to counteract that.
+            result = (order == GTK_SORT_ASCENDING) ? -1 : 1;
+        } else if (!is_all_a && is_all_b) {
+            result = (order == GTK_SORT_ASCENDING) ? 1 : -1;
+        } else {
             if (sort_col == 1) { // Count
                 result = count_b - count_a; // Descending by default for counts
                 if (result == 0) result = g_utf8_collate(name_a, name_b);
@@ -616,8 +624,8 @@ int cui_start(void) {
         fprintf(stderr, "deadbeef-cui: medialib plugin not found or unsupported!\n");
     }
 
-    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v0.7", 0, cui_create_widget, "cui", NULL);
-    fprintf(stderr, "deadbeef-cui: Facet Browser v0.7 registered successfully.\n");
+    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v0.7.1", 0, cui_create_widget, "cui", NULL);
+    fprintf(stderr, "deadbeef-cui: Facet Browser v0.7.1 registered successfully.\n");
 
     return 0;
 }
