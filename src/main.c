@@ -101,13 +101,10 @@ typedef struct {
 
     ddb_medialib_item_t *cached_tree;
     GHashTable *track_counts_cache;
-    const ddb_medialib_item_t *sel_genre_node;
-    const ddb_medialib_item_t *sel_artist_node;
-    const ddb_medialib_item_t *sel_album_node;
 
-    char *sel_genre_text;
-    char *sel_artist_text;
-    char *sel_album_text;
+    GHashTable *sel_genre_texts;
+    GHashTable *sel_artist_texts;
+    GHashTable *sel_album_texts;
 } cui_widget_t;
 
 static ddb_scriptable_item_t *my_preset = NULL;
@@ -204,17 +201,17 @@ static int sort_func(GtkTreeModel *model, GtkTreeIter *a, GtkTreeIter *b, gpoint
 
 static void add_tracks_recursive_multi(const ddb_medialib_item_t *node, int current_level,
                                         cui_widget_t *cw, ddb_playlist_t *plt, DB_playItem_t **after) {
-    if (cw->sel_genre_text && current_level == 1) {
+    if (cw->sel_genre_texts && current_level == 1) {
         const char *text = medialib_plugin->tree_item_get_text(node);
-        if (!text || strcmp(text, cw->sel_genre_text)) return;
+        if (!text || !g_hash_table_contains(cw->sel_genre_texts, text)) return;
     }
-    if (cw->sel_artist_text && current_level == 2) {
+    if (cw->sel_artist_texts && current_level == 2) {
         const char *text = medialib_plugin->tree_item_get_text(node);
-        if (!text || strcmp(text, cw->sel_artist_text)) return;
+        if (!text || !g_hash_table_contains(cw->sel_artist_texts, text)) return;
     }
-    if (cw->sel_album_text && current_level == 3) {
+    if (cw->sel_album_texts && current_level == 3) {
         const char *text = medialib_plugin->tree_item_get_text(node);
-        if (!text || strcmp(text, cw->sel_album_text)) return;
+        if (!text || !g_hash_table_contains(cw->sel_album_texts, text)) return;
     }
 
     DB_playItem_t *track = medialib_plugin->tree_item_get_track(node);
@@ -244,18 +241,10 @@ static void update_playlist_from_cui(cui_widget_t *cw) {
     const ddb_medialib_item_t *root_node = cw->cached_tree;
     int root_level = 0;
 
-    if (cw->sel_album_node) { root_node = cw->sel_album_node; root_level = 3; }
-    else if (cw->sel_artist_node) { root_node = cw->sel_artist_node; root_level = 2; }
-    else if (cw->sel_genre_node) { root_node = cw->sel_genre_node; root_level = 1; }
-
-    if (root_level == 3) {
-        add_tracks_recursive_multi(root_node, 3, cw, plt, &after);
-    } else {
-        const ddb_medialib_item_t *child = medialib_plugin->tree_item_get_children(root_node);
-        while (child) {
-            add_tracks_recursive_multi(child, root_level + 1, cw, plt, &after);
-            child = medialib_plugin->tree_item_get_next(child);
-        }
+    const ddb_medialib_item_t *child = medialib_plugin->tree_item_get_children(root_node);
+    while (child) {
+        add_tracks_recursive_multi(child, root_level + 1, cw, plt, &after);
+        child = medialib_plugin->tree_item_get_next(child);
     }
 
     deadbeef_api->plt_modified(plt);
@@ -285,13 +274,13 @@ static void aggregate_recursive_multi(const ddb_medialib_item_t *node,
         return;
     }
 
-    if (cw->sel_genre_text && current_level == 1) {
+    if (cw->sel_genre_texts && current_level == 1) {
         const char *text = medialib_plugin->tree_item_get_text(node);
-        if (!text || strcmp(text, cw->sel_genre_text)) return;
+        if (!text || !g_hash_table_contains(cw->sel_genre_texts, text)) return;
     }
-    if (cw->sel_artist_text && current_level == 2) {
+    if (cw->sel_artist_texts && current_level == 2) {
         const char *text = medialib_plugin->tree_item_get_text(node);
-        if (!text || strcmp(text, cw->sel_artist_text)) return;
+        if (!text || !g_hash_table_contains(cw->sel_artist_texts, text)) return;
     }
 
     const ddb_medialib_item_t *child = medialib_plugin->tree_item_get_children(node);
@@ -309,10 +298,6 @@ static void populate_list_multi(GtkListStore *store, int target_level, cui_widge
 
     const ddb_medialib_item_t *root_node = cw->cached_tree;
     int root_level = 0;
-
-    // Use current selection as root if possible, to limit search space
-    if (target_level == 2 && cw->sel_genre_node) { root_node = cw->sel_genre_node; root_level = 1; }
-    else if (target_level == 3 && cw->sel_artist_node) { root_node = cw->sel_artist_node; root_level = 2; }
 
     const ddb_medialib_item_t *child = medialib_plugin->tree_item_get_children(root_node);
     while (child) {
@@ -341,21 +326,6 @@ static void populate_list_multi(GtkListStore *store, int target_level, cui_widge
     g_hash_table_destroy(seen);
 }
 
-// --- Tree lookup ---
-
-static const ddb_medialib_item_t *find_node_by_text(const ddb_medialib_item_t *parent_node, const char *search_text) {
-    if (!parent_node || !medialib_plugin || !search_text) return NULL;
-    const ddb_medialib_item_t *child = medialib_plugin->tree_item_get_children(parent_node);
-    while (child) {
-        const char *text = medialib_plugin->tree_item_get_text(child);
-        if (text && !strcmp(text, search_text)) {
-            return child;
-        }
-        child = medialib_plugin->tree_item_get_next(child);
-    }
-    return NULL;
-}
-
 // --- Tree data refresh ---
 
 static void update_tree_data(cui_widget_t *cw) {
@@ -370,13 +340,9 @@ static void update_tree_data(cui_widget_t *cw) {
         cw->track_counts_cache = NULL;
     }
     
-    cw->sel_genre_node = NULL;
-    cw->sel_artist_node = NULL;
-    cw->sel_album_node = NULL;
-
-    g_free(cw->sel_genre_text); cw->sel_genre_text = NULL;
-    g_free(cw->sel_artist_text); cw->sel_artist_text = NULL;
-    g_free(cw->sel_album_text); cw->sel_album_text = NULL;
+    if (cw->sel_genre_texts) { g_hash_table_destroy(cw->sel_genre_texts); cw->sel_genre_texts = NULL; }
+    if (cw->sel_artist_texts) { g_hash_table_destroy(cw->sel_artist_texts); cw->sel_artist_texts = NULL; }
+    if (cw->sel_album_texts) { g_hash_table_destroy(cw->sel_album_texts); cw->sel_album_texts = NULL; }
 
     init_my_preset();
     if (!my_preset) return;
@@ -416,72 +382,55 @@ static void ml_listener_cb(ddb_mediasource_event_type_t event, void *user_data) 
 static void on_artist_changed(GtkTreeSelection *selection, gpointer data);
 static void on_album_changed(GtkTreeSelection *selection, gpointer data);
 
+static void update_selection_hash(GtkTreeSelection *selection, GHashTable **hash_ptr, const char *all_text) {
+    if (*hash_ptr) {
+        g_hash_table_destroy(*hash_ptr);
+        *hash_ptr = NULL;
+    }
+    
+    GtkTreeModel *model;
+    GList *paths = gtk_tree_selection_get_selected_rows(selection, &model);
+    if (paths) {
+        *hash_ptr = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+        for (GList *l = paths; l != NULL; l = l->next) {
+            GtkTreePath *path = (GtkTreePath *)l->data;
+            GtkTreeIter iter;
+            if (gtk_tree_model_get_iter(model, &iter, path)) {
+                gchar *text;
+                gtk_tree_model_get(model, &iter, 0, &text, -1);
+                if (text) {
+                    if (strcmp(text, all_text) == 0) {
+                        g_hash_table_destroy(*hash_ptr);
+                        *hash_ptr = NULL;
+                        g_free(text);
+                        break;
+                    }
+                    g_hash_table_insert(*hash_ptr, g_strdup(text), NULL);
+                    g_free(text);
+                }
+            }
+        }
+        g_list_free_full(paths, (GDestroyNotify)gtk_tree_path_free);
+    }
+}
+
 static void on_genre_changed(GtkTreeSelection *selection, gpointer data) {
     cui_widget_t *cw = (cui_widget_t *)data;
-    GtkTreeIter iter;
-    GtkTreeModel *model;
-    cw->sel_genre_node = NULL;
-    g_free(cw->sel_genre_text);
-    cw->sel_genre_text = NULL;
-
-    if (gtk_tree_selection_get_selected(selection, &model, &iter)) {
-        gchar *genre;
-        gtk_tree_model_get(model, &iter, 0, &genre, -1);
-        if (genre && strcmp(genre, ALL_GENRES)) {
-            cw->sel_genre_text = g_strdup(genre);
-            cw->sel_genre_node = find_node_by_text(cw->cached_tree, genre);
-        }
-        g_free(genre);
-    }
-
+    update_selection_hash(selection, &cw->sel_genre_texts, ALL_GENRES);
     populate_list_multi(cw->store_artist, 2, cw, ALL_ARTISTS);
     on_artist_changed(gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->tree_artist)), cw);
 }
 
 static void on_artist_changed(GtkTreeSelection *selection, gpointer data) {
     cui_widget_t *cw = (cui_widget_t *)data;
-    GtkTreeIter iter;
-    GtkTreeModel *model;
-    cw->sel_artist_node = NULL;
-    g_free(cw->sel_artist_text);
-    cw->sel_artist_text = NULL;
-
-    if (gtk_tree_selection_get_selected(selection, &model, &iter)) {
-        gchar *artist;
-        gtk_tree_model_get(model, &iter, 0, &artist, -1);
-        if (artist && strcmp(artist, ALL_ARTISTS)) {
-            cw->sel_artist_text = g_strdup(artist);
-            if (cw->sel_genre_node) {
-                cw->sel_artist_node = find_node_by_text(cw->sel_genre_node, artist);
-            }
-        }
-        g_free(artist);
-    }
-
+    update_selection_hash(selection, &cw->sel_artist_texts, ALL_ARTISTS);
     populate_list_multi(cw->store_album, 3, cw, ALL_ALBUMS);
     on_album_changed(gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->tree_album)), cw);
 }
 
 static void on_album_changed(GtkTreeSelection *selection, gpointer data) {
     cui_widget_t *cw = (cui_widget_t *)data;
-    GtkTreeIter iter;
-    GtkTreeModel *model;
-    cw->sel_album_node = NULL;
-    g_free(cw->sel_album_text);
-    cw->sel_album_text = NULL;
-
-    if (gtk_tree_selection_get_selected(selection, &model, &iter)) {
-        gchar *album;
-        gtk_tree_model_get(model, &iter, 0, &album, -1);
-        if (album && strcmp(album, ALL_ALBUMS)) {
-            cw->sel_album_text = g_strdup(album);
-            if (cw->sel_artist_node) {
-                cw->sel_album_node = find_node_by_text(cw->sel_artist_node, album);
-            }
-        }
-        g_free(album);
-    }
-
+    update_selection_hash(selection, &cw->sel_album_texts, ALL_ALBUMS);
     update_playlist_from_cui(cw);
 }
 
@@ -520,9 +469,9 @@ static void cui_destroy(ddb_gtkui_widget_t *w) {
         }
     }
 
-    g_free(cw->sel_genre_text); cw->sel_genre_text = NULL;
-    g_free(cw->sel_artist_text); cw->sel_artist_text = NULL;
-    g_free(cw->sel_album_text); cw->sel_album_text = NULL;
+    if (cw->sel_genre_texts) { g_hash_table_destroy(cw->sel_genre_texts); cw->sel_genre_texts = NULL; }
+    if (cw->sel_artist_texts) { g_hash_table_destroy(cw->sel_artist_texts); cw->sel_artist_texts = NULL; }
+    if (cw->sel_album_texts) { g_hash_table_destroy(cw->sel_album_texts); cw->sel_album_texts = NULL; }
 }
 
 static GtkWidget *create_column(const char *title, GtkListStore **out_store, GtkWidget **out_tree) {
@@ -603,12 +552,15 @@ static ddb_gtkui_widget_t *cui_create_widget(void) {
     }
 
     GtkTreeSelection *sel_genre = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->tree_genre));
+    gtk_tree_selection_set_mode(sel_genre, GTK_SELECTION_MULTIPLE);
     g_signal_connect(sel_genre, "changed", G_CALLBACK(on_genre_changed), cw);
 
     GtkTreeSelection *sel_artist = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->tree_artist));
+    gtk_tree_selection_set_mode(sel_artist, GTK_SELECTION_MULTIPLE);
     g_signal_connect(sel_artist, "changed", G_CALLBACK(on_artist_changed), cw);
 
     GtkTreeSelection *sel_album = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->tree_album));
+    gtk_tree_selection_set_mode(sel_album, GTK_SELECTION_MULTIPLE);
     g_signal_connect(sel_album, "changed", G_CALLBACK(on_album_changed), cw);
 
     g_signal_connect(cw->tree_genre, "row-activated", G_CALLBACK(on_row_activated), cw);

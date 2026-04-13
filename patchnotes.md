@@ -6,6 +6,8 @@
 
 ### Enhancements
 
+**Multi-Selection Support.** All facet columns now support GTK multi-selection (Ctrl-click / Shift-click). You can now select multiple genres, artists, or albums simultaneously to aggregate the results in the subsequent columns and the playlist view.
+
 **Track Count Caching.** Implemented a `GHashTable` based memoization system for recursive track counting. This drastically speeds up the calculation of track counts for each facet entry, reducing CPU load when navigating the media library, especially for huge collections (50k+ tracks).
 
 ### UI Polish
