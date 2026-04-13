@@ -566,7 +566,7 @@ static GtkWidget *create_column(const char *title, GtkListStore **out_store, Gtk
     gtk_tree_view_append_column(GTK_TREE_VIEW(tree), column);
 
     GtkCellRenderer *count_renderer = gtk_cell_renderer_text_new();
-    g_object_set(count_renderer, "xalign", 1.0, "xpad", 6, NULL);
+    g_object_set(count_renderer, "xalign", 1.0, "xpad", 16, NULL);
     GtkTreeViewColumn *count_column = gtk_tree_view_column_new_with_attributes("Count", count_renderer, "text", 1, NULL);
     gtk_tree_view_column_set_sizing(count_column, GTK_TREE_VIEW_COLUMN_AUTOSIZE);
     gtk_tree_view_column_set_sort_column_id(count_column, 1);
