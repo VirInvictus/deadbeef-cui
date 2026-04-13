@@ -59,8 +59,8 @@ What's done, what's next. Sequenced for feature-parity with foobar2000's Columns
 ## Phase 6: Visuals & Layout (The 1.0 Milestone)
 *Polishing the aesthetic and reaching feature-parity.*
 
-- [ ] **Album Art Grid:** Optional grid view for the Album facet, showing covers instead of text.
-- [ ] **Art Caching:** High-performance background thumbnailer for cover art.
+- [ ] **Album Art Grid (separate plugin in repo ):** Optional grid view for the Album facet, showing covers instead of text. Also controllable by Facets. But a separate plugin altogether. In the same repo - plugin name: deadbeef-cui-gridview
+- [ ] **Art Caching:** High-performance background thumbnailer for cover art. For deadbeef-cui-gridview.
 - [ ] **Design Mode Integration:** Support for DeaDBeeF's Design Mode for seamless layout embedding.
 - [ ] **1.0.0 Stable Release:** Final documentation, icon assets, and feature-parity verification with foobar2000 Columns UI.
 
