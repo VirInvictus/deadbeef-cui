@@ -290,9 +290,9 @@ static void populate_list_multi(GtkListStore *store, int target_level, cui_widge
     const ddb_medialib_item_t *root_node = cw->cached_tree;
     int root_level = 0;
 
-    if (target_level > 3 && cw->sel_album_node) { root_node = cw->sel_album_node; root_level = 3; }
-    else if (target_level > 2 && cw->sel_artist_node) { root_node = cw->sel_artist_node; root_level = 2; }
-    else if (target_level > 1 && cw->sel_genre_node) { root_node = cw->sel_genre_node; root_level = 1; }
+    // Use current selection as root if possible, to limit search space
+    if (target_level == 2 && cw->sel_genre_node) { root_node = cw->sel_genre_node; root_level = 1; }
+    else if (target_level == 3 && cw->sel_artist_node) { root_node = cw->sel_artist_node; root_level = 2; }
 
     const ddb_medialib_item_t *child = medialib_plugin->tree_item_get_children(root_node);
     while (child) {
