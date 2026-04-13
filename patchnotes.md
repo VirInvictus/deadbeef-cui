@@ -11,6 +11,10 @@
 **Album Artist Standardization.** By utilizing title formatting for columns, "Album Artist" now properly evaluates priority logic (`$if2(%album artist%,%artist%)` by default) resolving fragmentation across different file types (FLAC, MP3, Opus).
 **Prefix Handling (Article Ignoral).** Added a new configuration toggle to automatically ignore leading articles ("The ", "A ", "An ") when sorting rows alphabetically.
 
+### Code Quality & Debugging
+
+**Debug Logging.** Added a `DEADBEEF_CUI_DEBUG` environment variable toggle. When launched with `DEADBEEF_CUI_DEBUG=1 deadbeef`, the plugin will emit verbose lifecycle and state evaluation logs to `stderr` to aid in deeper bug fixing and issue reporting.
+
 ## v0.7.2-alpha
 
 ---

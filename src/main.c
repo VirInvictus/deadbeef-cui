@@ -9,6 +9,13 @@
 #define MAX_COLUMNS 5
 #define CUI_SOURCE_PATH "cui"
 
+#define CUI_DEBUG(...) do { \
+    if (getenv("DEADBEEF_CUI_DEBUG")) { \
+        fprintf(stderr, "[deadbeef-cui debug] " __VA_ARGS__); \
+        fprintf(stderr, "\n"); \
+    } \
+} while(0)
+
 static DB_functions_t *deadbeef_api;
 static ddb_gtkui_t *gtkui_plugin;
 static DB_mediasource_t *medialib_plugin;
@@ -105,6 +112,7 @@ static ddb_scriptable_item_t *my_preset = NULL;
 static GList *all_cui_widgets = NULL;
 
 static void init_my_preset(void) {
+    CUI_DEBUG("init_my_preset called");
     if (my_preset) {
         my_scriptable_free((scriptableItem_t *)my_preset);
         my_preset = NULL;
@@ -277,6 +285,7 @@ static void add_tracks_recursive_multi(const ddb_medialib_item_t *node, int curr
 }
 
 static void update_playlist_from_cui(cui_widget_t *cw) {
+    CUI_DEBUG("update_playlist_from_cui called");
     if (!cw->cached_tree || !deadbeef_api || !medialib_plugin) return;
     ddb_playlist_t *plt = deadbeef_api->plt_get_curr();
     if (!plt) return;
@@ -439,6 +448,7 @@ static void on_column_changed(GtkTreeSelection *selection, gpointer data) {
 // --- Tree data refresh ---
 
 static void update_tree_data(cui_widget_t *cw) {
+    CUI_DEBUG("update_tree_data called");
     if (shutting_down || !medialib_plugin || !ml_source) return;
 
     if (cw->cached_tree) {
@@ -573,6 +583,7 @@ static GtkWidget *create_column(const char *title, GtkListStore **out_store, Gtk
 }
 
 static ddb_gtkui_widget_t *cui_create_widget(void) {
+    CUI_DEBUG("cui_create_widget called");
     if (!my_preset) init_my_preset();
 
     cui_widget_t *cw = calloc(1, sizeof(cui_widget_t));
