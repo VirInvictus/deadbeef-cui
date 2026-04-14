@@ -1,12 +1,14 @@
-# deadbeef-cui
-
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-0.8.2--alpha-blue" alt="Version: 0.8.2-alpha">
+  <img src="https://img.shields.io/badge/Version-0.8.3--alpha-blue" alt="Version: 0.8.3-alpha">
   <img src="https://img.shields.io/badge/Language-C/C++-blue" alt="Language: C/C++">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
 </p>
 
-A faceted library browser plugin for the [DeaDBeeF](https://deadbeef.sourceforge.io/) music player on Linux. It brings a Columns UI / Facets style multi-filter layout to DeaDBeeF.
+---
+
+# deadbeef-cui
+
+A faceted library browser plugin for the [DeaDBeeF](https://deadbeef.sourceforge.io/) music player on Linux. It brings a Columns UI / Facets style multi-filter layout to DeaDBeeF, optimized for users who navigate large collections via metadata rather than static playlists.
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/4ed93103-5148-4cdc-9fba-3d63bb9ce97b" alt="DeaDBeeF CUI Plugin Screenshot" style="max-width: 100%; border-radius: 8px;">
@@ -14,70 +16,39 @@ A faceted library browser plugin for the [DeaDBeeF](https://deadbeef.sourceforge
 
 ## Why this exists
 
-Right now, DeaDBeeF is inherently playlist-focused. For users with large libraries who navigate via metadata filtering rather than manual playlists, a faceted search is the only thing missing to make DeaDBeeF the perfect Linux music player. 
+DeaDBeeF is inherently playlist-focused. For users with libraries exceeding 10,000 tracks, navigating via manual playlists or simple searches is insufficient. `deadbeef-cui` bridges this gap by implementing a dynamic, multi-pane filter layout mirroring foobar2000's Columns UI.
 
-This plugin implements a dynamic, user-configurable multi-pane view of the media library (set in settings), mirroring foobar2000's Columns UI or Facets component. By default it features a triple-filter view:
-1. **Genre**
-2. **Album Artist**
-3. **Album**
-
-However, you can configure anywhere from 1 to 5 columns with custom title formatting!
-
-*Note: Instead of implementing a custom pane for the track list, this plugin seamlessly drives DeaDBeeF's existing playlist view. Selecting items in the facets will dynamically populate the active playlist.*
+The plugin drives DeaDBeeF's existing playlist view seamlessly. Selecting items in the facets dynamically populates the active playlist, combining the power of faceted browsing with the player's lightweight core.
 
 ## Features
 
 | Component | Description |
 |-----------|-------------|
 | **Dynamic Columns** | Configure 1 to 5 interactive list views filtering hierarchically. |
-| **Custom Formatting** | Full support for DeaDBeeF title formatting syntax for column patterns. |
-| **Multi-Selection** | Select multiple entries (Ctrl/Shift-click) to aggregate filters across multiple genres/artists. |
-| **Aggregate Views** | Columns show "Every" item by default if no parent filter is applied. |
-| **Playlist Integration** | Selecting any entry immediately populates the active DeaDBeeF playlist. |
-| **Double-Click Playback** | Double-clicking any entry in any column starts playback of that selection. |
-| **DeaDBeeF Native** | Built as a native C/C++ GTK plugin using the `DB_mediasource_t` API for seamless library integration. |
+| **Custom Formatting** | Full support for DeaDBeeF title formatting syntax. |
+| **Multi-Selection** | Aggregate filters across multiple genres/artists via Ctrl/Shift-click. |
+| **Native Integration** | Built as a native C++ GTK plugin using the `DB_mediasource_t` API. |
 
-## Requirements
+## Development & Build
 
-To build and run this plugin, you need:
-- **GTK+ 3.0** development headers
-- **DeaDBeeF** development headers (usually in `/usr/include/deadbeef`)
-- **CMake** (3.10 or higher)
-- **GCC** or another C11 compatible compiler
-- **PkgConfig**
+### Requirements
+- GTK+ 3.0 development headers
+- DeaDBeeF development headers (`/usr/include/deadbeef`)
+- CMake (3.10+) & GCC
 
-On Fedora, you can install these with:
+### Build Pipeline
 ```bash
-sudo dnf install gtk3-devel deadbeef-devel cmake gcc pkgconf
+cmake -S . -B build
+cmake --build build
 ```
 
-## Build & Install
+### Installation
+```bash
+mkdir -p ~/.local/lib/deadbeef
+cp build/cui.so ~/.local/lib/deadbeef/ddb_misc_cui_GTK3.so
+```
+Enter **Design Mode** in DeaDBeeF to add the **Facet Browser (CUI)** widget to your layout.
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/bdkl/deadbeef-cui.git
-   cd deadbeef-cui
-   ```
+## Acknowledgments
 
-2. **Configure and Build:**
-   ```bash
-   cmake -S . -B build
-   cmake --build build
-   ```
-
-3. **Install:**
-   Copy the compiled plugin to your local DeaDBeeF plugin directory:
-   ```bash
-   mkdir -p ~/.local/lib/deadbeef
-   cp build/cui.so ~/.local/lib/deadbeef/ddb_misc_cui_GTK3.so
-   ```
-
-4. **Restart DeaDBeeF:**
-   Right-click on any UI element, enter **Design Mode**, and add the **Facet Browser (CUI) v0.8.3** widget to your layout.
-
-## Acknowledgments / Thank You
-
-This plugin would not exist without the incredible inspiration and foundation laid by:
-- **[foobar2000](https://www.foobar2000.org/)**: The gold standard for library management that heavily inspired the workflow of this plugin.
-- **[Columns UI (foobar2000 plugin)](https://yuo.be/columns-ui)**: The legendary UI component by *musicmusic* that introduced the power of multi-pane faceted browsing to music players.
-- **[DeaDBeeF](https://deadbeef.sourceforge.io/)**: The amazing open-source, lightweight audio player by Alexey Yakovenko and contributors, which serves as the robust and extensible foundation for this project.
+Inspired by the gold standard of library management: **foobar2000** and its legendary **Columns UI** component.
