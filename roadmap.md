@@ -48,6 +48,7 @@ What's done, what's next. Sequenced for feature-parity with foobar2000's Columns
 - [x] **User-Configurable Columns:** UI for adding, removing, and reordering facets (e.g., Year → Genre → Artist).
 - [x] **Album Artist Logic:** Standardize tag priority handling (TPE2 vs. `ALBUM ARTIST`) across different filetypes (Opus, MP3, FLAC).
 - [x] **Prefix Handling:** Option to ignore leading articles ("The", "A", "An") during alphabetical sorting.
+- [ ] **Show List Number: ** in each column, it should show the number of in the All name (so genre would show All (55 genres) and artists would show All (72 artists), and albums would show All (12 albums). so on top of count, youd have a visusl way to see the size of your selections
 
 ## Phase 5: Advanced CUI Features
 *Deep integration with the DeaDBeeF ecosystem.*
