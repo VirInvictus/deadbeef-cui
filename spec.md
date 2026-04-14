@@ -1,6 +1,6 @@
 # deadbeef-cui — Application Specification
 
-**Version:** 0.8.0-alpha  
+**Version:** 0.8.1-alpha  
 **Language:** C/C++  
 **Dependencies:** DeaDBeeF Plugin API, GTK2/GTK3  
 **License:** MIT

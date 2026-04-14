@@ -1,6 +1,14 @@
 # deadbeef-cui — Patch Notes
 
-## v0.8.0-alpha (Current)
+## v0.8.1-alpha (Current)
+
+---
+
+### Bug Fixes
+
+**Aggregate Row Collision.** Fixed a sorting bug where albums or metadata starting with a bracket (e.g., `[A->B] Life` or `[Led Zeppelin IV]`) were mistakenly treated as the generated aggregate `[ All ]` row. The sort function now relies on a hidden boolean flag in the GTK ListStore rather than string-matching, making the sorting bulletproof against any user metadata.
+
+## v0.8.0-alpha
 
 ---
 

@@ -236,14 +236,12 @@ static int sort_func(GtkTreeModel *model, GtkTreeIter *a, GtkTreeIter *b, gpoint
 
     gchar *name_a, *name_b;
     int count_a, count_b;
-    gtk_tree_model_get(model, a, 0, &name_a, 1, &count_a, -1);
-    gtk_tree_model_get(model, b, 0, &name_b, 1, &count_b, -1);
+    gboolean is_all_a, is_all_b;
+    gtk_tree_model_get(model, a, 0, &name_a, 1, &count_a, 2, &is_all_a, -1);
+    gtk_tree_model_get(model, b, 0, &name_b, 1, &count_b, 2, &is_all_b, -1);
 
     int result = 0;
     if (name_a && name_b) {
-        int is_all_a = (name_a[0] == '[');
-        int is_all_b = (name_b[0] == '[');
-
         if (is_all_a && !is_all_b) {
             result = (order == GTK_SORT_ASCENDING) ? -1 : 1;
         } else if (!is_all_a && is_all_b) {
@@ -657,6 +655,7 @@ static ddb_gtkui_widget_t *cui_create_widget(void) {
         sync_source_config();
         ml_source = medialib_plugin->create_source(CUI_SOURCE_PATH);
         if (ml_source) {
+            owns_ml_source = 1;
             medialib_plugin->refresh(ml_source);
         }
     }
@@ -703,8 +702,8 @@ int cui_start(void) {
         fprintf(stderr, "deadbeef-cui: medialib plugin not found or unsupported!\n");
     }
 
-    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v0.8.0", 0, cui_create_widget, "cui", NULL);
-    fprintf(stderr, "deadbeef-cui: Facet Browser v0.8.0 registered successfully.\n");
+    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v0.8.1", 0, cui_create_widget, "cui", NULL);
+    fprintf(stderr, "deadbeef-cui: Facet Browser v0.8.1 registered successfully.\n");
 
     return 0;
 }
