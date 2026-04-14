@@ -285,11 +285,32 @@ static void add_tracks_recursive_multi(const ddb_medialib_item_t *node, int curr
     }
 }
 
+static ddb_playlist_t *get_or_create_viewer_playlist(void) {
+    int count = deadbeef_api->plt_get_count();
+    for (int i = 0; i < count; i++) {
+        ddb_playlist_t *plt = deadbeef_api->plt_get_for_idx(i);
+        if (plt) {
+            char title[256];
+            deadbeef_api->plt_get_title(plt, title, sizeof(title));
+            if (strcmp(title, "Library Viewer") == 0) {
+                return plt;
+            }
+            deadbeef_api->plt_unref(plt);
+        }
+    }
+    int new_idx = deadbeef_api->plt_add(count, "Library Viewer");
+    if (new_idx >= 0) {
+        return deadbeef_api->plt_get_for_idx(new_idx);
+    }
+    return NULL;
+}
+
 static void update_playlist_from_cui(cui_widget_t *cw) {
     CUI_DEBUG("update_playlist_from_cui called");
     if (!cw->cached_tree || !deadbeef_api || !medialib_plugin) return;
-    ddb_playlist_t *plt = deadbeef_api->plt_get_curr();
+    ddb_playlist_t *plt = get_or_create_viewer_playlist();
     if (!plt) return;
+    deadbeef_api->plt_set_curr(plt);
 
     deadbeef_api->pl_lock();
     deadbeef_api->plt_clear(plt);
@@ -532,8 +553,13 @@ static void on_row_activated(GtkTreeView *tree_view, GtkTreePath *path, GtkTreeV
     (void)data;
     ddb_playlist_t *plt = deadbeef_api->plt_get_curr();
     if (plt) {
-        deadbeef_api->plt_set_cursor(plt, 0, PL_MAIN);
-        deadbeef_api->sendmessage(DB_EV_PLAY_NUM, 0, 0, 0);
+        int order = deadbeef_api->conf_get_int("playback.order", 0);
+        if (order == 1 || order == 2 || order == 3) {
+            deadbeef_api->sendmessage(DB_EV_PLAY_RANDOM, 0, 0, 0);
+        } else {
+            deadbeef_api->plt_set_cursor(plt, 0, PL_MAIN);
+            deadbeef_api->sendmessage(DB_EV_PLAY_NUM, 0, 0, 0);
+        }
         deadbeef_api->plt_unref(plt);
     }
 }
@@ -702,8 +728,8 @@ int cui_start(void) {
         fprintf(stderr, "deadbeef-cui: medialib plugin not found or unsupported!\n");
     }
 
-    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v0.8.1", 0, cui_create_widget, "cui", NULL);
-    fprintf(stderr, "deadbeef-cui: Facet Browser v0.8.1 registered successfully.\n");
+    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v0.8.2", 0, cui_create_widget, "cui", NULL);
+    fprintf(stderr, "deadbeef-cui: Facet Browser v0.8.2 registered successfully.\n");
 
     return 0;
 }

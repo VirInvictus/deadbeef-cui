@@ -1,7 +1,7 @@
 # deadbeef-cui
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-0.8.0--alpha-blue" alt="Version: 0.8.0-alpha">
+  <img src="https://img.shields.io/badge/Version-0.8.2--alpha-blue" alt="Version: 0.8.2-alpha">
   <img src="https://img.shields.io/badge/Language-C/C++-blue" alt="Language: C/C++">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
 </p>
@@ -73,7 +73,7 @@ sudo dnf install gtk3-devel deadbeef-devel cmake gcc pkgconf
    ```
 
 4. **Restart DeaDBeeF:**
-   Right-click on any UI element, enter **Design Mode**, and add the **Facet Browser (CUI) v0.8.1** widget to your layout.
+   Right-click on any UI element, enter **Design Mode**, and add the **Facet Browser (CUI) v0.8.2** widget to your layout.
 
 ## Acknowledgments / Thank You
 

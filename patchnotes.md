@@ -1,6 +1,15 @@
 # deadbeef-cui — Patch Notes
 
-## v0.8.1-alpha (Current)
+## v0.8.2-alpha (Current)
+
+---
+
+### Major Features
+
+**Dedicated Library Viewer Playlist.** To prevent accidental deletion of user playlists, the plugin now dynamically creates and targets a dedicated "Library Viewer" playlist for all facet selections.
+**Smart Random Playback.** Double-clicking any facet row now respects your current playback order. If Shuffle or Random modes are active, the plugin will immediately trigger a random track from the current selection.
+
+## v0.8.1-alpha
 
 ---
 
