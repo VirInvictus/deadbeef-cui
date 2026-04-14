@@ -1,6 +1,14 @@
 # deadbeef-cui — Patch Notes
 
-## v0.8.2-alpha (Current)
+## v0.8.3-alpha (Current)
+
+---
+
+### Bug Fixes
+
+**Atomic Sorting & Aggregate Pinning.** Refactored the GTK ListStore to use atomic row insertion (`insert_with_values`) and a dedicated hidden boolean flag for aggregate rows. This ensures that "[ All ]" rows are correctly identified and pinned to the top even when metadata contains numbers or symbols that would otherwise sort higher.
+
+## v0.8.2-alpha
 
 ---
 

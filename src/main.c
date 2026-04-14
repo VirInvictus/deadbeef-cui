@@ -387,16 +387,14 @@ static void populate_list_multi(GtkListStore *store, int target_level, cui_widge
         char *text = (char *)l->data;
         int *count_ptr = g_hash_table_lookup(seen, text);
         GtkTreeIter iter;
-        gtk_list_store_append(store, &iter);
-        gtk_list_store_set(store, &iter, 0, text, 1, *count_ptr, -1);
+        gtk_list_store_insert_with_values(store, &iter, -1, 0, text, 1, *count_ptr, 2, FALSE, -1);
         total_count += *count_ptr;
     }
     g_list_free(keys);
 
     if (all_text) {
         GtkTreeIter iter;
-        gtk_list_store_prepend(store, &iter);
-        gtk_list_store_set(store, &iter, 0, all_text, 1, total_count, -1);
+        gtk_list_store_insert_with_values(store, &iter, 0, 0, all_text, 1, total_count, 2, TRUE, -1);
     }
 
     g_hash_table_destroy(seen);
@@ -601,7 +599,7 @@ static void cui_destroy(ddb_gtkui_widget_t *w) {
 }
 
 static GtkWidget *create_column(const char *title, GtkListStore **out_store, GtkWidget **out_tree) {
-    GtkListStore *store = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_INT);
+    GtkListStore *store = gtk_list_store_new(3, G_TYPE_STRING, G_TYPE_INT, G_TYPE_BOOLEAN);
     GtkWidget *tree = gtk_tree_view_new_with_model(GTK_TREE_MODEL(store));
     g_object_unref(store);
 
@@ -728,8 +726,8 @@ int cui_start(void) {
         fprintf(stderr, "deadbeef-cui: medialib plugin not found or unsupported!\n");
     }
 
-    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v0.8.2", 0, cui_create_widget, "cui", NULL);
-    fprintf(stderr, "deadbeef-cui: Facet Browser v0.8.2 registered successfully.\n");
+    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v0.8.3", 0, cui_create_widget, "cui", NULL);
+    fprintf(stderr, "deadbeef-cui: Facet Browser v0.8.3 registered successfully.\n");
 
     return 0;
 }

@@ -73,7 +73,7 @@ sudo dnf install gtk3-devel deadbeef-devel cmake gcc pkgconf
    ```
 
 4. **Restart DeaDBeeF:**
-   Right-click on any UI element, enter **Design Mode**, and add the **Facet Browser (CUI) v0.8.2** widget to your layout.
+   Right-click on any UI element, enter **Design Mode**, and add the **Facet Browser (CUI) v0.8.3** widget to your layout.
 
 ## Acknowledgments / Thank You
 
