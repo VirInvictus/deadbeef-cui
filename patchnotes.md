@@ -1,6 +1,14 @@
 # deadbeef-cui — Patch Notes
 
-## v0.8.8-alpha (Current)
+## v0.8.9-alpha (Current)
+
+---
+
+### Bug Fixes
+
+**Search UX Conflict.** Fixed a confusing user experience issue where pressing `CTRL-F` or typing while a column was focused would trigger GTK's native `GtkTreeView` interactive search (a small popup at the bottom of the list that only highlights text, not filters). GTK's native interactive search has now been explicitly disabled on all columns. `CTRL-F` now correctly focuses the *plugin's* integrated Search Bar at the top of the interface, which appropriately filters all columns.
+
+## v0.8.8-alpha
 
 ---
 

@@ -743,6 +743,8 @@ static ddb_gtkui_widget_t *cui_create_widget(void) {
         gtk_tree_selection_set_mode(sel, GTK_SELECTION_MULTIPLE);
         g_signal_connect(sel, "changed", G_CALLBACK(on_column_changed), cw);
         g_signal_connect(cw->trees[i], "row-activated", G_CALLBACK(on_row_activated), cw);
+        g_signal_connect(cw->trees[i], "key-press-event", G_CALLBACK(on_key_press), cw);
+        gtk_tree_view_set_enable_search(GTK_TREE_VIEW(cw->trees[i]), FALSE);
     }
 
     GtkWidget *top_widget = col_widgets[cw->num_columns - 1];
@@ -757,6 +759,7 @@ static ddb_gtkui_widget_t *cui_create_widget(void) {
 
     cw->search_entry = gtk_search_entry_new();
     g_signal_connect(cw->search_entry, "changed", G_CALLBACK(on_search_changed), cw);
+    g_signal_connect(cw->search_entry, "key-press-event", G_CALLBACK(on_key_press), cw);
     gtk_widget_set_no_show_all(cw->search_entry, TRUE);
     gtk_widget_hide(cw->search_entry);
 
@@ -825,8 +828,8 @@ int cui_start(void) {
         fprintf(stderr, "deadbeef-cui: medialib plugin not found or unsupported!\n");
     }
 
-    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v0.8.8", 0, cui_create_widget, "cui", NULL);
-    fprintf(stderr, "deadbeef-cui: Facet Browser v0.8.8 registered successfully.\n");
+    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v0.8.9", 0, cui_create_widget, "cui", NULL);
+    fprintf(stderr, "deadbeef-cui: Facet Browser v0.8.9 registered successfully.\n");
 
     return 0;
 }
