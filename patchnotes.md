@@ -1,6 +1,14 @@
 # deadbeef-cui — Patch Notes
 
-## v0.8.6-alpha (Current)
+## v0.8.7-alpha (Current)
+
+---
+
+### Major Features
+
+**Integrated Search Bar.** Added a dynamic search bar (activated via `CTRL-F`) that filters all facets in real-time. Typing a search term instantly narrows the displayed genres, artists, and albums to only show those containing tracks where the Title or Artist metadata matches the query. The search bar hides cleanly when pressing `Escape`, instantly clearing the filter and restoring the full library view.
+
+## v0.8.6-alpha
 
 ---
 

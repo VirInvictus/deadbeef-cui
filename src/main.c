@@ -109,6 +109,9 @@ typedef struct {
 
     guint changed_timeout_id;
     int changed_col_idx;
+
+    GtkWidget *search_entry;
+    char *search_text;
 } cui_widget_t;
 
 static ddb_scriptable_item_t *my_preset = NULL;
@@ -196,7 +199,31 @@ static void sync_source_config(void) {
 
 // --- Track counting ---
 
-static int count_tracks_recursive(const ddb_medialib_item_t *node, GHashTable *cache) {
+static int track_matches_search(DB_playItem_t *track, const char *search_text) {
+    if (!search_text || !search_text[0]) return 1;
+
+    deadbeef_api->pl_lock();
+    const char *title = deadbeef_api->pl_find_meta_raw(track, "title");
+    const char *artist = deadbeef_api->pl_find_meta_raw(track, "artist");
+
+    int match = 0;
+    if (title || artist) {
+        gchar *title_down = title ? g_utf8_strdown(title, -1) : NULL;
+        gchar *artist_down = artist ? g_utf8_strdown(artist, -1) : NULL;
+        
+        if (title_down && strstr(title_down, search_text)) match = 1;
+        else if (artist_down && strstr(artist_down, search_text)) match = 1;
+
+        g_free(title_down);
+        g_free(artist_down);
+    }
+    deadbeef_api->pl_unlock();
+
+    return match;
+}
+
+static int count_tracks_recursive(const ddb_medialib_item_t *node, cui_widget_t *cw) {
+    GHashTable *cache = cw->search_text ? NULL : cw->track_counts_cache;
     if (cache) {
         gpointer cached = g_hash_table_lookup(cache, node);
         if (cached) {
@@ -205,12 +232,15 @@ static int count_tracks_recursive(const ddb_medialib_item_t *node, GHashTable *c
     }
 
     int count = 0;
-    if (medialib_plugin->tree_item_get_track(node)) {
-        count = 1;
+    DB_playItem_t *track = medialib_plugin->tree_item_get_track(node);
+    if (track) {
+        if (track_matches_search(track, cw->search_text)) {
+            count = 1;
+        }
     }
     const ddb_medialib_item_t *child = medialib_plugin->tree_item_get_children(node);
     while (child) {
-        count += count_tracks_recursive(child, cache);
+        count += count_tracks_recursive(child, cw);
         child = medialib_plugin->tree_item_get_next(child);
     }
 
@@ -271,10 +301,12 @@ static void add_tracks_recursive_multi(const ddb_medialib_item_t *node, int curr
 
     DB_playItem_t *track = medialib_plugin->tree_item_get_track(node);
     if (track) {
-        DB_playItem_t *track_new = deadbeef_api->pl_item_alloc();
-        deadbeef_api->pl_item_copy(track_new, track);
-        *after = deadbeef_api->plt_insert_item(plt, *after, track_new);
-        deadbeef_api->pl_item_unref(track_new);
+        if (track_matches_search(track, cw->search_text)) {
+            DB_playItem_t *track_new = deadbeef_api->pl_item_alloc();
+            deadbeef_api->pl_item_copy(track_new, track);
+            *after = deadbeef_api->plt_insert_item(plt, *after, track_new);
+            deadbeef_api->pl_item_unref(track_new);
+        }
     }
 
     const ddb_medialib_item_t *child = medialib_plugin->tree_item_get_children(node);
@@ -338,14 +370,16 @@ static void aggregate_recursive_multi(const ddb_medialib_item_t *node,
     if (current_level == target_level) {
         const char *text = medialib_plugin->tree_item_get_text(node);
         if (text) {
-            int tracks = count_tracks_recursive(node, cw->track_counts_cache);
-            int *count_ptr = g_hash_table_lookup(seen, text);
-            if (count_ptr) {
-                *count_ptr += tracks;
-            } else {
-                count_ptr = g_new(int, 1);
-                *count_ptr = tracks;
-                g_hash_table_insert(seen, g_strdup(text), count_ptr);
+            int tracks = count_tracks_recursive(node, cw);
+            if (tracks > 0) {
+                int *count_ptr = g_hash_table_lookup(seen, text);
+                if (count_ptr) {
+                    *count_ptr += tracks;
+                } else {
+                    count_ptr = g_new(int, 1);
+                    *count_ptr = tracks;
+                    g_hash_table_insert(seen, g_strdup(text), count_ptr);
+                }
             }
         }
         return;
@@ -605,6 +639,9 @@ static void cui_destroy(ddb_gtkui_widget_t *w) {
         }
         g_free(cw->titles[i]);
     }
+    
+    g_free(cw->search_text);
+    cw->search_text = NULL;
 }
 
 static GtkWidget *create_column(const char *title, GtkListStore **out_store, GtkWidget **out_tree) {
@@ -645,6 +682,47 @@ static GtkWidget *create_column(const char *title, GtkListStore **out_store, Gtk
     return scroll;
 }
 
+static void update_tree_data(cui_widget_t *cw);
+
+static void on_search_changed(GtkSearchEntry *entry, gpointer user_data) {
+    cui_widget_t *cw = (cui_widget_t *)user_data;
+    const char *text = gtk_entry_get_text(GTK_ENTRY(entry));
+    if (cw->search_text) {
+        g_free(cw->search_text);
+        cw->search_text = NULL;
+    }
+    if (text && text[0]) {
+        cw->search_text = g_strdup(text);
+    }
+    update_tree_data(cw);
+}
+
+static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data) {
+    (void)widget;
+    cui_widget_t *cw = (cui_widget_t *)user_data;
+    
+    if ((event->state & GDK_CONTROL_MASK) && (event->keyval == GDK_KEY_f || event->keyval == GDK_KEY_F)) {
+        gtk_widget_show(cw->search_entry);
+        gtk_widget_grab_focus(cw->search_entry);
+        return TRUE;
+    }
+    
+    if (event->keyval == GDK_KEY_Escape) {
+        if (gtk_widget_get_visible(cw->search_entry)) {
+            gtk_entry_set_text(GTK_ENTRY(cw->search_entry), "");
+            gtk_widget_hide(cw->search_entry);
+            
+            // Return focus to the first column
+            if (cw->num_columns > 0 && cw->trees[0]) {
+                gtk_widget_grab_focus(cw->trees[0]);
+            }
+            return TRUE;
+        }
+    }
+    
+    return FALSE;
+}
+
 static ddb_gtkui_widget_t *cui_create_widget(void) {
     CUI_DEBUG("cui_create_widget called");
     if (!my_preset) init_my_preset();
@@ -677,8 +755,20 @@ static ddb_gtkui_widget_t *cui_create_widget(void) {
 
     gtk_widget_show_all(top_widget);
 
-    w->widget = top_widget;
+    cw->search_entry = gtk_search_entry_new();
+    g_signal_connect(cw->search_entry, "search-changed", G_CALLBACK(on_search_changed), cw);
+    gtk_widget_set_no_show_all(cw->search_entry, TRUE);
+    gtk_widget_hide(cw->search_entry);
+
+    GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_box_pack_start(GTK_BOX(vbox), cw->search_entry, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(vbox), top_widget, TRUE, TRUE, 0);
+    gtk_widget_show_all(vbox);
+
+    w->widget = vbox;
     w->destroy = cui_destroy;
+
+    g_signal_connect(w->widget, "key-press-event", G_CALLBACK(on_key_press), cw);
 
     if (gtkui_plugin && gtkui_plugin->w_override_signals) {
         gtkui_plugin->w_override_signals(w->widget, w);
@@ -735,8 +825,8 @@ int cui_start(void) {
         fprintf(stderr, "deadbeef-cui: medialib plugin not found or unsupported!\n");
     }
 
-    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v0.8.3", 0, cui_create_widget, "cui", NULL);
-    fprintf(stderr, "deadbeef-cui: Facet Browser v0.8.3 registered successfully.\n");
+    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v0.8.7", 0, cui_create_widget, "cui", NULL);
+    fprintf(stderr, "deadbeef-cui: Facet Browser v0.8.7 registered successfully.\n");
 
     return 0;
 }
