@@ -26,6 +26,7 @@ The plugin drives DeaDBeeF's existing playlist view seamlessly. To prevent accid
 |-----------|-------------|
 | **Dynamic Columns** | Configure 1 to 5 interactive list views filtering hierarchically. |
 | **Custom Formatting** | Full support for DeaDBeeF title formatting syntax. |
+| **Integrated Search** | Filter facets dynamically via a `CTRL-F` search bar. |
 | **Multi-Selection** | Aggregate filters across multiple genres/artists via Ctrl/Shift-click. |
 | **Native Integration** | Built as a native C++ GTK plugin using the `DB_mediasource_t` API. |
 
