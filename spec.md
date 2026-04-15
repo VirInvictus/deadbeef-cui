@@ -47,4 +47,4 @@ Efficiently queries the internal DeaDBeeF media library database using the `DB_m
 
 - **Not a standalone player:** It is strictly a plugin for DeaDBeeF.
 - **Not a tagger:** It reads and filters by existing tags; it does not edit them.
-- **Not a custom playlist viewer:** It relies on DeaDBeeF's native playlist widget for displaying and playing the actual tracks.
+- **Not a custom playlist viewer:** It creates a dedicated "Library Viewer" playlist and relies on DeaDBeeF's native playlist widget for displaying and playing the actual tracks.

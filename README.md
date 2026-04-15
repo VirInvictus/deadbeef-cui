@@ -18,7 +18,7 @@ A faceted library browser plugin for the [DeaDBeeF](https://deadbeef.sourceforge
 
 DeaDBeeF is inherently playlist-focused. For users with libraries exceeding 10,000 tracks, navigating via manual playlists or simple searches is insufficient. `deadbeef-cui` bridges this gap by implementing a dynamic, multi-pane filter layout mirroring foobar2000's Columns UI.
 
-The plugin drives DeaDBeeF's existing playlist view seamlessly. Selecting items in the facets dynamically populates the active playlist, combining the power of faceted browsing with the player's lightweight core.
+The plugin drives DeaDBeeF's existing playlist view seamlessly. To prevent accidental deletion of your manual playlists, the plugin dynamically creates and targets a dedicated "Library Viewer" playlist. Selecting items in the facets automatically populates this playlist with the corresponding tracks, combining the power of faceted browsing with the player's lightweight core.
 
 ## Features
 

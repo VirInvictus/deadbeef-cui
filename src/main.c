@@ -230,9 +230,8 @@ static const char *skip_prefix(const char *str) {
 
 static int sort_func(GtkTreeModel *model, GtkTreeIter *a, GtkTreeIter *b, gpointer user_data) {
     int sort_col = GPOINTER_TO_INT(user_data);
-    gint current_sort_col;
     GtkSortType order;
-    gtk_tree_sortable_get_sort_column_id(GTK_TREE_SORTABLE(model), &current_sort_col, &order);
+    gtk_tree_sortable_get_sort_column_id(GTK_TREE_SORTABLE(model), NULL, &order);
 
     gchar *name_a, *name_b;
     int count_a, count_b;

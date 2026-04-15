@@ -28,7 +28,7 @@ What's done, what's next. Sequenced for feature-parity with foobar2000's Columns
 ## Phase 2: Playback & Basic Integration
 *Connecting the browser to the player's core actions.*
 
-- [x] **Playlist Driving:** Dynamically populate the active playlist based on facet selection.
+- [x] **Playlist Driving:** Dynamically populate a dedicated "Library Viewer" playlist based on facet selection, protecting user playlists.
 - [x] **Playback Integration:** Automatically trigger playback on selection double-click.
 
 ## Phase 3: Sorting & Interaction

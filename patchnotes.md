@@ -8,6 +8,12 @@
 
 **Simplified Aggregate Labels.** Further refined the aggregate row labels to eliminate redundant metadata names. Specifically, the "Album Artist" column now displays as "Artists" in the "[All]" row (e.g., `[All (741 Artists)]`) for a cleaner, more intuitive interface.
 
+### Code Quality & Bug Fixes
+
+**Refactored Sorting Logic.** Cleaned up the custom GTK sorting function by removing duplicated fallback string comparison logic across the Count and Name branching paths.
+**Removed Redundant Variables.** Eliminated unused GTK sortable tree variables that were needlessly allocated during sorting, reducing overhead.
+**Updated Registration String.** Updated the hardcoded GTK widget registration string to reflect the correct version (`v0.8.6`) during initialization.
+
 ## v0.8.5-alpha
 
 ---
