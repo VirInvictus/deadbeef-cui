@@ -395,11 +395,18 @@ static void populate_list_multi(GtkListStore *store, int target_level, cui_widge
 
     char all_text[256];
     const char *title = cw->titles[col_idx];
+    const char *base_title = title;
+    
+    // Special case: simplify "Album Artist" to "Artist" for the aggregate label
+    if (strcasecmp(title, "Album Artist") == 0) {
+        base_title = "Artist";
+    }
+
     char *plural_title;
-    if (g_str_has_suffix(title, "s") || g_str_has_suffix(title, "S")) {
-        plural_title = g_strdup(title);
+    if (g_str_has_suffix(base_title, "s") || g_str_has_suffix(base_title, "S")) {
+        plural_title = g_strdup(base_title);
     } else {
-        plural_title = g_strdup_printf("%ss", title);
+        plural_title = g_strdup_printf("%ss", base_title);
     }
     
     snprintf(all_text, sizeof(all_text), "[All (%d %s)]", total_items, plural_title);

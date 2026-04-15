@@ -1,6 +1,14 @@
 # deadbeef-cui — Patch Notes
 
-## v0.8.5-alpha (Current)
+## v0.8.6-alpha (Current)
+
+---
+
+### UI Polish
+
+**Simplified Aggregate Labels.** Further refined the aggregate row labels to eliminate redundant metadata names. Specifically, the "Album Artist" column now displays as "Artists" in the "[All]" row (e.g., `[All (741 Artists)]`) for a cleaner, more intuitive interface.
+
+## v0.8.5-alpha
 
 ---
 
