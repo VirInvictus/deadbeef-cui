@@ -1,6 +1,26 @@
 # deadbeef-cui — Patch Notes
 
-## v0.8.3-alpha (Current)
+## v0.8.5-alpha (Current)
+
+---
+
+### UI Polish
+
+**Concise Aggregate Row Labels.** Simplified the "[All]" row labels to a more professional, foobar2000-style format: `[All (Count Titles)]` (e.g., `[All (55 Genres)]`). This removes redundant text while keeping the selection context clear.
+
+## v0.8.4-alpha
+
+---
+
+### Major Features
+
+**Dynamic List Counts in Aggregate Rows.** Each facet's "[All]" row now dynamically displays the total number of items in that category.
+
+### Bug Fixes
+
+**Robust Aggregate Row Selection.** Refactored the selection logic to use hidden boolean flags instead of string matching. This ensures that the "[All]" row is correctly identified even when its label changes or when user metadata contains similar strings.
+
+## v0.8.3-alpha
 
 ---
 

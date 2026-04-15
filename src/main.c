@@ -366,7 +366,7 @@ static void aggregate_recursive_multi(const ddb_medialib_item_t *node,
     }
 }
 
-static void populate_list_multi(GtkListStore *store, int target_level, cui_widget_t *cw, const char *all_text) {
+static void populate_list_multi(GtkListStore *store, int target_level, cui_widget_t *cw, int col_idx) {
     gtk_list_store_clear(store);
     if (!cw->cached_tree || !medialib_plugin) return;
 
@@ -381,22 +381,33 @@ static void populate_list_multi(GtkListStore *store, int target_level, cui_widge
         child = medialib_plugin->tree_item_get_next(child);
     }
 
-    int total_count = 0;
+    int total_tracks = 0;
+    int total_items = g_hash_table_size(seen);
     GList *keys = g_hash_table_get_keys(seen);
     for (GList *l = keys; l; l = l->next) {
         char *text = (char *)l->data;
         int *count_ptr = g_hash_table_lookup(seen, text);
         GtkTreeIter iter;
         gtk_list_store_insert_with_values(store, &iter, -1, 0, text, 1, *count_ptr, 2, FALSE, -1);
-        total_count += *count_ptr;
+        total_tracks += *count_ptr;
     }
     g_list_free(keys);
 
-    if (all_text) {
-        GtkTreeIter iter;
-        gtk_list_store_insert_with_values(store, &iter, 0, 0, all_text, 1, total_count, 2, TRUE, -1);
+    char all_text[256];
+    const char *title = cw->titles[col_idx];
+    char *plural_title;
+    if (g_str_has_suffix(title, "s") || g_str_has_suffix(title, "S")) {
+        plural_title = g_strdup(title);
+    } else {
+        plural_title = g_strdup_printf("%ss", title);
     }
+    
+    snprintf(all_text, sizeof(all_text), "[All (%d %s)]", total_items, plural_title);
+    
+    GtkTreeIter iter;
+    gtk_list_store_insert_with_values(store, &iter, 0, 0, all_text, 1, total_tracks, 2, TRUE, -1);
 
+    g_free(plural_title);
     g_hash_table_destroy(seen);
 }
 
@@ -404,7 +415,7 @@ static void populate_list_multi(GtkListStore *store, int target_level, cui_widge
 
 static void on_column_changed(GtkTreeSelection *selection, gpointer data);
 
-static void update_selection_hash(GtkTreeSelection *selection, GHashTable **hash_ptr, const char *all_text) {
+static void update_selection_hash(GtkTreeSelection *selection, GHashTable **hash_ptr) {
     if (*hash_ptr) {
         g_hash_table_destroy(*hash_ptr);
         *hash_ptr = NULL;
@@ -419,16 +430,16 @@ static void update_selection_hash(GtkTreeSelection *selection, GHashTable **hash
             GtkTreeIter iter;
             if (gtk_tree_model_get_iter(model, &iter, path)) {
                 gchar *text;
-                gtk_tree_model_get(model, &iter, 0, &text, -1);
+                gboolean is_all = FALSE;
+                gtk_tree_model_get(model, &iter, 0, &text, 2, &is_all, -1);
                 if (text) {
-                    if (strcmp(text, all_text) == 0) {
+                    if (is_all) {
                         g_hash_table_destroy(*hash_ptr);
                         *hash_ptr = NULL;
                         g_free(text);
                         break;
                     }
-                    g_hash_table_insert(*hash_ptr, g_strdup(text), NULL);
-                    g_free(text);
+                    g_hash_table_insert(*hash_ptr, text, NULL);
                 }
             }
         }
@@ -448,18 +459,12 @@ static gboolean deferred_column_changed_cb(gpointer data) {
     for (int col_idx = start_col; col_idx < cw->num_columns; col_idx++) {
         GtkTreeSelection *selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->trees[col_idx]));
 
-        char all_text[256];
-        snprintf(all_text, sizeof(all_text), "[ All %s ]", cw->titles[col_idx]);
-
-        update_selection_hash(selection, &cw->sel_texts[col_idx], all_text);
+        update_selection_hash(selection, &cw->sel_texts[col_idx]);
 
         if (col_idx + 1 < cw->num_columns) {
-            char next_all[256];
-            snprintf(next_all, sizeof(next_all), "[ All %s ]", cw->titles[col_idx + 1]);
-
             GtkTreeSelection *next_sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->trees[col_idx + 1]));
             g_signal_handlers_block_by_func(next_sel, (gpointer)on_column_changed, cw);
-            populate_list_multi(cw->stores[col_idx + 1], col_idx + 2, cw, next_all);
+            populate_list_multi(cw->stores[col_idx + 1], col_idx + 2, cw, col_idx + 1);
             g_signal_handlers_unblock_by_func(next_sel, (gpointer)on_column_changed, cw);
         }
     }
@@ -518,9 +523,7 @@ static void update_tree_data(cui_widget_t *cw) {
     
     cw->track_counts_cache = g_hash_table_new(g_direct_hash, g_direct_equal);
 
-    char all_text[256];
-    snprintf(all_text, sizeof(all_text), "[ All %s ]", cw->titles[0]);
-    populate_list_multi(cw->stores[0], 1, cw, all_text);
+    populate_list_multi(cw->stores[0], 1, cw, 0);
 
     GtkTreeSelection *first_sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->trees[0]));
     on_column_changed(first_sel, cw);
