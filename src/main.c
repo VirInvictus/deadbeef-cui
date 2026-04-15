@@ -692,7 +692,7 @@ static void on_search_changed(GtkSearchEntry *entry, gpointer user_data) {
         cw->search_text = NULL;
     }
     if (text && text[0]) {
-        cw->search_text = g_strdup(text);
+        cw->search_text = g_utf8_strdown(text, -1);
     }
     update_tree_data(cw);
 }
