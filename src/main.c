@@ -756,7 +756,7 @@ static ddb_gtkui_widget_t *cui_create_widget(void) {
     gtk_widget_show_all(top_widget);
 
     cw->search_entry = gtk_search_entry_new();
-    g_signal_connect(cw->search_entry, "search-changed", G_CALLBACK(on_search_changed), cw);
+    g_signal_connect(cw->search_entry, "changed", G_CALLBACK(on_search_changed), cw);
     gtk_widget_set_no_show_all(cw->search_entry, TRUE);
     gtk_widget_hide(cw->search_entry);
 
@@ -825,8 +825,8 @@ int cui_start(void) {
         fprintf(stderr, "deadbeef-cui: medialib plugin not found or unsupported!\n");
     }
 
-    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v0.8.7", 0, cui_create_widget, "cui", NULL);
-    fprintf(stderr, "deadbeef-cui: Facet Browser v0.8.7 registered successfully.\n");
+    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v0.8.8", 0, cui_create_widget, "cui", NULL);
+    fprintf(stderr, "deadbeef-cui: Facet Browser v0.8.8 registered successfully.\n");
 
     return 0;
 }

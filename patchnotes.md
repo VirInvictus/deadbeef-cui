@@ -1,6 +1,14 @@
 # deadbeef-cui — Patch Notes
 
-## v0.8.7-alpha (Current)
+## v0.8.8-alpha (Current)
+
+---
+
+### Bug Fixes
+
+**Search Filtering.** Resolved a critical bug where the search bar was not actively filtering the column lists when text was entered. The signal connection for the search entry was changed from `search-changed` to the more robust `changed` signal, guaranteeing real-time filtering updates across all supported GTK3 environments.
+
+## v0.8.7-alpha
 
 ---
 
