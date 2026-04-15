@@ -52,4 +52,4 @@ Enter **Design Mode** in DeaDBeeF to add the **Facet Browser (CUI)** widget to y
 
 ## Acknowledgments
 
-Inspired by the gold standard of library management: **foobar2000** and its legendary **Columns UI** component.
+Inspired by the gold standard of library management: **[foobar2000](https://www.foobar2000.org/)** and its legendary **[Columns UI](https://yuo.be/columns-ui)** component.
