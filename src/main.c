@@ -335,7 +335,12 @@ static void add_tracks_recursive_multi(const ddb_medialib_item_t *node, int curr
         if (track_matches_search(track, cw->search_text)) {
             DB_playItem_t *track_new = deadbeef_api->pl_item_alloc();
             deadbeef_api->pl_item_copy(track_new, track);
-            *after = deadbeef_api->plt_insert_item(plt, *after, track_new);
+            DB_playItem_t *inserted = deadbeef_api->plt_insert_item(plt, *after, track_new);
+            if (*after) {
+                deadbeef_api->pl_item_unref(*after);
+            }
+            *after = inserted;
+            deadbeef_api->pl_item_ref(*after);
             deadbeef_api->pl_item_unref(track_new);
         }
     }
@@ -725,10 +730,11 @@ static void cui_destroy(ddb_gtkui_widget_t *w) {
             medialib_plugin->free_item_tree(ml_source, cw->cached_tree);
             cw->cached_tree = NULL;
         }
-        if (cw->track_counts_cache) {
-            g_hash_table_destroy(cw->track_counts_cache);
-            cw->track_counts_cache = NULL;
-        }
+    }
+
+    if (cw->track_counts_cache) {
+        g_hash_table_destroy(cw->track_counts_cache);
+        cw->track_counts_cache = NULL;
     }
 
     for (int i = 0; i < cw->num_columns; i++) {
@@ -951,9 +957,6 @@ int cui_start(void) {
 int cui_stop(void) {
     shutting_down = 1;
 
-    if (gtkui_plugin) {
-        gtkui_plugin->w_unreg_widget("cui");
-    }
     if (owns_ml_source && medialib_plugin && ml_source) {
         medialib_plugin->free_source(ml_source);
         ml_source = NULL;
