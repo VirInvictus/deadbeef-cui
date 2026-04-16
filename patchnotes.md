@@ -1,5 +1,13 @@
 # deadbeef-cui — Patch Notes
 
+## v1.0.1 (Current)
+
+---
+
+### Bug Fixes
+**Fixed Shutdown Crash.** Removed an erroneous `w_unreg_widget` call during plugin termination that caused DeaDBeeF to crash when exiting.
+**Memory Leaks Resolved.** Fixed a memory leak involving `DB_playItem_t` references when appending tracks to the playlist, and another involving an orphaned track counts cache when closing the UI.
+
 ## v1.0.0 (Stable Release)
 
 ---

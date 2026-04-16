@@ -1,10 +1,12 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-1.0.0-blue" alt="Version: 1.0.0">
+  <img src="https://img.shields.io/badge/Version-1.0.1-blue" alt="Version: 1.0.1">
   <img src="https://img.shields.io/badge/Language-C/C++-blue" alt="Language: C/C++">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
 </p>
 
 ---
+
+**Compatibility Note:** This plugin has been developed, tested, and verified to be stable and fully functional specifically on **Fedora Linux 43 (Workstation Edition)** with Kernel **6.19.12-200.fc43.x86_64** running **DeaDBeeF 1.10.2**. The project is now considered effectively complete. I will review and provide fixes as needed or reported from the community, but active feature development is finalized.
 
 # deadbeef-cui
 

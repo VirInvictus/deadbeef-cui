@@ -948,8 +948,8 @@ int cui_start(void) {
         fprintf(stderr, "deadbeef-cui: medialib plugin not found or unsupported!\n");
     }
 
-    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v1.0.0", 0, cui_create_widget, "cui", NULL);
-    fprintf(stderr, "deadbeef-cui: Facet Browser v1.0.0 registered successfully.\n");
+    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v1.0.1", 0, cui_create_widget, "cui", NULL);
+    fprintf(stderr, "deadbeef-cui: Facet Browser v1.0.1 registered successfully.\n");
 
     return 0;
 }
