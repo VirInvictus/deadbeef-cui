@@ -54,18 +54,18 @@ What's done, what's next. Sequenced for feature-parity with foobar2000's Columns
 *Deep integration with the DeaDBeeF ecosystem.*
 
 - [x] **Integrated Search Bar:** Real-time filtering search box that narrows the facets as you type (activated by CTRL-F - should be hidden from sight otherwise but typing in Eminem would filter Genre/Artist/Album to only show any items that have a song with the word eminem in it (should be case-insensitive).
-- [ ] **Search bar fixes:** Currently, the search bar blends into the facet headers. A little more space would be ideal.
-- [ ] **Context Menus:** Right-click interaction for selection (Add to current playlist, Send to new playlist, Queue next).
-- [ ] **Multivalue Tag Support:** Correctly split and aggregate tags with multiple values (e.g., `Genre: Rock; Progressive`).
-- [ ] **Autoplaylist Persistence:** Option to link a specific playlist to the facet browser so it stays in sync.
+- [x] **Search bar fixes:** Currently, the search bar blends into the facet headers. A little more space would be ideal.
+- [x] **Context Menus:** Right-click interaction for selection (Add to current playlist, Send to new playlist, Queue next).
+- [x] **Multivalue Tag Support:** Correctly split and aggregate tags with multiple values (e.g., `Genre: Rock; Progressive`).
+- [x] **Autoplaylist Persistence:** Option to link a specific playlist to the facet browser so it stays in sync.
 
 ## Phase 6: Visuals & Layout (The 1.0 Milestone)
 *Polishing the aesthetic and reaching feature-parity.*
 
-- [ ] **Deep Bug Fixing** - Refactor anything worth refactoring. Clean up code use in testing. Make sure everything is as tight as it can be.
-- [ ] **Assure GTK4-compiance without breaking GTK3** - I gotta assume Deadbeef won't be GTK3 forever.
-- [ ] **Design Mode Integration:** Support for DeaDBeeF's Design Mode for seamless layout embedding.
-- [ ] **1.0.0 Stable Release:** Final documentation, icon assets, and feature-parity verification with foobar2000 Columns UI.
+- [x] **Deep Bug Fixing** - Refactor anything worth refactoring. Clean up code use in testing. Make sure everything is as tight as it can be.
+- [x] **Assure GTK4-compiance without breaking GTK3** - I gotta assume Deadbeef won't be GTK3 forever.
+- [x] **Design Mode Integration:** Support for DeaDBeeF's Design Mode for seamless layout embedding.
+- [x] **1.0.0 Stable Release:** Final documentation, icon assets, and feature-parity verification with foobar2000 Columns UI.
 
 ---
 

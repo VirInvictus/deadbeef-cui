@@ -1,5 +1,19 @@
 # deadbeef-cui — Patch Notes
 
+## v1.0.0 (Stable Release)
+
+---
+
+### Major Features
+
+**1.0.0 Stable.** The plugin has reached feature-parity with foobar2000's basic Columns UI / Facets functionality.
+**GTK4 Compatibility.** Added forward-compatibility macros to ensure a smoother transition to GTK4 when DeaDBeeF upgrades, while maintaining strict compatibility with current GTK3 environments.
+**Design Mode Integration.** Fully supported DeaDBeeF's GTK UI Design Mode integration by accurately overriding widget signals to allow seamless layout embedding.
+
+### Code Quality & Bug Fixes
+
+**Deep Bug Fixing.** Reviewed and tightened code for memory leaks, ensuring all GTKUI ownership and widget tearing-down flows correctly without leaving orphans or crashing.
+
 ## v0.9.0-alpha (Current)
 
 ---

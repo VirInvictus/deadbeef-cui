@@ -6,6 +6,29 @@
 #include <string.h>
 #include <sys/time.h>
 
+#if GTK_MAJOR_VERSION >= 4
+#define gtk_widget_show_all(w) gtk_widget_set_visible(w, TRUE)
+#define gtk_widget_hide(w) gtk_widget_set_visible(w, FALSE)
+#define gtk_widget_set_no_show_all(w, no_show) 
+#define gtk_box_pack_start(box, child, expand, fill, padding) gtk_box_append(GTK_BOX(box), child)
+#define gtk_scrolled_window_new(h, v) gtk_scrolled_window_new()
+#define gtk_container_add(container, widget) \
+    do { \
+        if (GTK_IS_SCROLLED_WINDOW(container)) { \
+            gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(container), widget); \
+        } else if (GTK_IS_BOX(container)) { \
+            gtk_box_append(GTK_BOX(container), widget); \
+        } else if (GTK_IS_PANED(container)) { \
+            gtk_paned_set_start_child(GTK_PANED(container), widget); \
+        } else { \
+        } \
+    } while(0)
+#define gtk_paned_pack1(paned, child, resize, shrink) gtk_paned_set_start_child(GTK_PANED(paned), child)
+#define gtk_paned_pack2(paned, child, resize, shrink) gtk_paned_set_end_child(GTK_PANED(paned), child)
+#define gtk_entry_get_text(e) gtk_editable_get_text(GTK_EDITABLE(e))
+#define GdkEventKey GdkEvent
+#endif
+
 #define MAX_COLUMNS 5
 #define CUI_SOURCE_PATH "cui"
 
@@ -819,7 +842,9 @@ static ddb_gtkui_widget_t *cui_create_widget(void) {
         gtk_tree_selection_set_mode(sel, GTK_SELECTION_MULTIPLE);
         g_signal_connect(sel, "changed", G_CALLBACK(on_column_changed), cw);
         g_signal_connect(cw->trees[i], "row-activated", G_CALLBACK(on_row_activated), cw);
+#if GTK_MAJOR_VERSION < 4
         g_signal_connect(cw->trees[i], "button-press-event", G_CALLBACK(on_tree_button_press), cw);
+#endif
         g_signal_connect(cw->trees[i], "key-press-event", G_CALLBACK(on_key_press), cw);
         gtk_tree_view_set_enable_search(GTK_TREE_VIEW(cw->trees[i]), FALSE);
     }
@@ -849,7 +874,15 @@ static ddb_gtkui_widget_t *cui_create_widget(void) {
     gtk_box_pack_start(GTK_BOX(vbox), top_widget, TRUE, TRUE, 0);
     gtk_widget_show_all(vbox);
 
+#if GTK_MAJOR_VERSION >= 4
     w->widget = vbox;
+#else
+    GtkWidget *event_box = gtk_event_box_new();
+    gtk_container_add(GTK_CONTAINER(event_box), vbox);
+    gtk_widget_show_all(event_box);
+
+    w->widget = event_box;
+#endif
     w->destroy = cui_destroy;
 
     g_signal_connect(w->widget, "key-press-event", G_CALLBACK(on_key_press), cw);
@@ -909,8 +942,8 @@ int cui_start(void) {
         fprintf(stderr, "deadbeef-cui: medialib plugin not found or unsupported!\n");
     }
 
-    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v0.9.0", 0, cui_create_widget, "cui", NULL);
-    fprintf(stderr, "deadbeef-cui: Facet Browser v0.9.0 registered successfully.\n");
+    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v1.0.0", 0, cui_create_widget, "cui", NULL);
+    fprintf(stderr, "deadbeef-cui: Facet Browser v1.0.0 registered successfully.\n");
 
     return 0;
 }
@@ -969,4 +1002,5 @@ static DB_misc_t plugin = {
 DB_plugin_t *ddb_misc_cui_GTK3_load(DB_functions_t *api) {
     deadbeef_api = api;
     return (DB_plugin_t *)&plugin;
+
 }
