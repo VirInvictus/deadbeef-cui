@@ -54,6 +54,7 @@ What's done, what's next. Sequenced for feature-parity with foobar2000's Columns
 *Deep integration with the DeaDBeeF ecosystem.*
 
 - [x] **Integrated Search Bar:** Real-time filtering search box that narrows the facets as you type (activated by CTRL-F - should be hidden from sight otherwise but typing in Eminem would filter Genre/Artist/Album to only show any items that have a song with the word eminem in it (should be case-insensitive).
+- [ ] **Search bar fixes:** Currently, the search bar blends into the facet headers. A little more space would be ideal.
 - [ ] **Context Menus:** Right-click interaction for selection (Add to current playlist, Send to new playlist, Queue next).
 - [ ] **Multivalue Tag Support:** Correctly split and aggregate tags with multiple values (e.g., `Genre: Rock; Progressive`).
 - [ ] **Autoplaylist Persistence:** Option to link a specific playlist to the facet browser so it stays in sync.
