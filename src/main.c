@@ -165,6 +165,14 @@ static void init_my_preset(void) {
         if (title_copy[0] && format_copy[0]) {
             scriptableItem_t *child = my_scriptable_alloc();
             my_scriptable_set_prop(child, "name", format_copy);
+
+            deadbeef_api->conf_lock();
+            int split_tags = deadbeef_api->conf_get_int("cui.split_tags", 1);
+            deadbeef_api->conf_unlock();
+            if (split_tags) {
+                my_scriptable_set_prop(child, "split", "; ");
+            }
+
             my_scriptable_add_child(p, child);
             
             strncpy(global_titles[global_num_columns], title_copy, 255);
@@ -317,35 +325,44 @@ static void add_tracks_recursive_multi(const ddb_medialib_item_t *node, int curr
 }
 
 static ddb_playlist_t *get_or_create_viewer_playlist(void) {
+    deadbeef_api->conf_lock();
+    const char *ap_name = deadbeef_api->conf_get_str_fast("cui.autoplaylist_name", "Library Viewer");
+    char target_name[256];
+    strncpy(target_name, ap_name, sizeof(target_name)-1);
+    target_name[sizeof(target_name)-1] = '\0';
+    deadbeef_api->conf_unlock();
+
     int count = deadbeef_api->plt_get_count();
     for (int i = 0; i < count; i++) {
         ddb_playlist_t *plt = deadbeef_api->plt_get_for_idx(i);
         if (plt) {
             char title[256];
             deadbeef_api->plt_get_title(plt, title, sizeof(title));
-            if (strcmp(title, "Library Viewer") == 0) {
+            if (strcmp(title, target_name) == 0) {
                 return plt;
             }
             deadbeef_api->plt_unref(plt);
         }
     }
-    int new_idx = deadbeef_api->plt_add(count, "Library Viewer");
+    int new_idx = deadbeef_api->plt_add(count, target_name);
     if (new_idx >= 0) {
         return deadbeef_api->plt_get_for_idx(new_idx);
     }
     return NULL;
 }
 
-static void update_playlist_from_cui(cui_widget_t *cw) {
-    CUI_DEBUG("update_playlist_from_cui called");
+static void populate_playlist_from_cui(cui_widget_t *cw, ddb_playlist_t *plt, int clear_first) {
     if (!cw->cached_tree || !deadbeef_api || !medialib_plugin) return;
-    ddb_playlist_t *plt = get_or_create_viewer_playlist();
-    if (!plt) return;
-    deadbeef_api->plt_set_curr(plt);
 
     deadbeef_api->pl_lock();
-    deadbeef_api->plt_clear(plt);
+    if (clear_first) {
+        deadbeef_api->plt_clear(plt);
+    }
+    
     DB_playItem_t *after = NULL;
+    if (!clear_first) {
+        after = deadbeef_api->plt_get_last(plt, PL_MAIN);
+    }
 
     const ddb_medialib_item_t *root_node = cw->cached_tree;
     int root_level = 0;
@@ -356,10 +373,24 @@ static void update_playlist_from_cui(cui_widget_t *cw) {
         child = medialib_plugin->tree_item_get_next(child);
     }
 
+    if (after) {
+        deadbeef_api->pl_item_unref(after);
+    }
+
     deadbeef_api->plt_modified(plt);
     deadbeef_api->pl_unlock();
-    deadbeef_api->plt_unref(plt);
     deadbeef_api->sendmessage(DB_EV_PLAYLISTCHANGED, 0, 0, 0);
+}
+
+static void update_playlist_from_cui(cui_widget_t *cw) {
+    CUI_DEBUG("update_playlist_from_cui called");
+    ddb_playlist_t *plt = get_or_create_viewer_playlist();
+    if (!plt) return;
+    deadbeef_api->plt_set_curr(plt);
+
+    populate_playlist_from_cui(cw, plt, 1);
+
+    deadbeef_api->plt_unref(plt);
 }
 
 // --- Aggregation / population ---
@@ -605,6 +636,51 @@ static void on_row_activated(GtkTreeView *tree_view, GtkTreePath *path, GtkTreeV
     }
 }
 
+static void on_menu_add_to_current(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    cui_widget_t *cw = (cui_widget_t *)user_data;
+    ddb_playlist_t *plt = deadbeef_api->plt_get_curr();
+    if (plt) {
+        populate_playlist_from_cui(cw, plt, 0);
+        deadbeef_api->plt_unref(plt);
+    }
+}
+
+static void on_menu_send_to_new(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    cui_widget_t *cw = (cui_widget_t *)user_data;
+    int count = deadbeef_api->plt_get_count();
+    int new_idx = deadbeef_api->plt_add(count, "New Playlist");
+    if (new_idx >= 0) {
+        ddb_playlist_t *plt = deadbeef_api->plt_get_for_idx(new_idx);
+        if (plt) {
+            populate_playlist_from_cui(cw, plt, 1);
+            deadbeef_api->plt_set_curr(plt);
+            deadbeef_api->plt_unref(plt);
+        }
+    }
+}
+
+static gboolean on_tree_button_press(GtkWidget *widget, GdkEventButton *event, gpointer user_data) {
+    (void)widget;
+    if (event->type == GDK_BUTTON_PRESS && event->button == 3) {
+        GtkWidget *menu = gtk_menu_new();
+        
+        GtkWidget *item_add = gtk_menu_item_new_with_label("Add selection to current playlist");
+        g_signal_connect(item_add, "activate", G_CALLBACK(on_menu_add_to_current), user_data);
+        gtk_menu_shell_append(GTK_MENU_SHELL(menu), item_add);
+        
+        GtkWidget *item_new = gtk_menu_item_new_with_label("Send selection to new playlist");
+        g_signal_connect(item_new, "activate", G_CALLBACK(on_menu_send_to_new), user_data);
+        gtk_menu_shell_append(GTK_MENU_SHELL(menu), item_new);
+        
+        gtk_widget_show_all(menu);
+        gtk_menu_popup_at_pointer(GTK_MENU(menu), (GdkEvent *)event);
+        return TRUE;
+    }
+    return FALSE;
+}
+
 // --- Widget lifecycle ---
 
 static void cui_destroy(ddb_gtkui_widget_t *w) {
@@ -743,6 +819,7 @@ static ddb_gtkui_widget_t *cui_create_widget(void) {
         gtk_tree_selection_set_mode(sel, GTK_SELECTION_MULTIPLE);
         g_signal_connect(sel, "changed", G_CALLBACK(on_column_changed), cw);
         g_signal_connect(cw->trees[i], "row-activated", G_CALLBACK(on_row_activated), cw);
+        g_signal_connect(cw->trees[i], "button-press-event", G_CALLBACK(on_tree_button_press), cw);
         g_signal_connect(cw->trees[i], "key-press-event", G_CALLBACK(on_key_press), cw);
         gtk_tree_view_set_enable_search(GTK_TREE_VIEW(cw->trees[i]), FALSE);
     }
@@ -763,7 +840,11 @@ static ddb_gtkui_widget_t *cui_create_widget(void) {
     gtk_widget_set_no_show_all(cw->search_entry, TRUE);
     gtk_widget_hide(cw->search_entry);
 
-    GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+    gtk_widget_set_margin_start(cw->search_entry, 4);
+    gtk_widget_set_margin_end(cw->search_entry, 4);
+    gtk_widget_set_margin_top(cw->search_entry, 4);
+    gtk_widget_set_margin_bottom(cw->search_entry, 4);
     gtk_box_pack_start(GTK_BOX(vbox), cw->search_entry, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(vbox), top_widget, TRUE, TRUE, 0);
     gtk_widget_show_all(vbox);
@@ -828,8 +909,8 @@ int cui_start(void) {
         fprintf(stderr, "deadbeef-cui: medialib plugin not found or unsupported!\n");
     }
 
-    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v0.8.9", 0, cui_create_widget, "cui", NULL);
-    fprintf(stderr, "deadbeef-cui: Facet Browser v0.8.9 registered successfully.\n");
+    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v0.9.0", 0, cui_create_widget, "cui", NULL);
+    fprintf(stderr, "deadbeef-cui: Facet Browser v0.9.0 registered successfully.\n");
 
     return 0;
 }
@@ -864,6 +945,8 @@ static const char settings_dlg[] =
     "property \"Column 5 Title\" entry cui.col5_title \"\";\n"
     "property \"Column 5 Format\" entry cui.col5_format \"\";\n"
     "property \"Ignore Prefix (The, A, An)\" checkbox cui.ignore_prefix 0;\n"
+    "property \"Split Multivalue Tags (; )\" checkbox cui.split_tags 1;\n"
+    "property \"Autoplaylist Name\" entry cui.autoplaylist_name \"Library Viewer\";\n"
     ;
 
 static DB_misc_t plugin = {

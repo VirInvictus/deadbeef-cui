@@ -1,6 +1,20 @@
 # deadbeef-cui — Patch Notes
 
-## v0.8.9-alpha (Current)
+## v0.9.0-alpha (Current)
+
+---
+
+### Major Features
+
+**Context Menus.** Added right-click context menu to tree selection allowing adding tracks to current playlist or sending to a new playlist.
+**Multivalue Tag Support.** Added configuration option to correctly split and aggregate tags with multiple values.
+**Autoplaylist Persistence.** Added configuration option to specify the target autoplaylist name (defaults to "Library Viewer").
+
+### UI Polish
+
+**Search Bar Fixes.** Added margins and spacing to the search bar so it doesn't blend into the facet headers.
+
+## v0.8.9-alpha
 
 ---
 
