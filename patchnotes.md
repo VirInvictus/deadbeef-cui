@@ -5,7 +5,7 @@
 ---
 
 ### Bug Fixes
-**Fixed Shutdown Crash.** Removed an erroneous `w_unreg_widget` call during plugin termination that caused DeaDBeeF to crash when exiting.
+**Fixed Shutdown Crash.** Removed an erroneous `w_unreg_widget` call during plugin termination that caused DeaDBeeF to crash when exiting.  
 **Memory Leaks Resolved.** Fixed a memory leak involving `DB_playItem_t` references when appending tracks to the playlist, and another involving an orphaned track counts cache when closing the UI.
 
 ## v1.0.0 (Stable Release)
@@ -14,8 +14,8 @@
 
 ### Major Features
 
-**1.0.0 Stable.** The plugin has reached feature-parity with foobar2000's basic Columns UI / Facets functionality.
-**GTK4 Compatibility.** Added forward-compatibility macros to ensure a smoother transition to GTK4 when DeaDBeeF upgrades, while maintaining strict compatibility with current GTK3 environments.
+**1.0.0 Stable.** The plugin has reached feature-parity with foobar2000's basic Columns UI / Facets functionality.  
+**GTK4 Compatibility.** Added forward-compatibility macros to ensure a smoother transition to GTK4 when DeaDBeeF upgrades, while maintaining strict compatibility with current GTK3 environments.  
 **Design Mode Integration.** Fully supported DeaDBeeF's GTK UI Design Mode integration by accurately overriding widget signals to allow seamless layout embedding.
 
 ### Code Quality & Bug Fixes
@@ -28,8 +28,8 @@
 
 ### Major Features
 
-**Context Menus.** Added right-click context menu to tree selection allowing adding tracks to current playlist or sending to a new playlist.
-**Multivalue Tag Support.** Added configuration option to correctly split and aggregate tags with multiple values.
+**Context Menus.** Added right-click context menu to tree selection allowing adding tracks to current playlist or sending to a new playlist.  
+**Multivalue Tag Support.** Added configuration option to correctly split and aggregate tags with multiple values.  
 **Autoplaylist Persistence.** Added configuration option to specify the target autoplaylist name (defaults to "Library Viewer").
 
 ### UI Polish
@@ -70,8 +70,8 @@
 
 ### Code Quality & Bug Fixes
 
-**Refactored Sorting Logic.** Cleaned up the custom GTK sorting function by removing duplicated fallback string comparison logic across the Count and Name branching paths.
-**Removed Redundant Variables.** Eliminated unused GTK sortable tree variables that were needlessly allocated during sorting, reducing overhead.
+**Refactored Sorting Logic.** Cleaned up the custom GTK sorting function by removing duplicated fallback string comparison logic across the Count and Name branching paths.  
+**Removed Redundant Variables.** Eliminated unused GTK sortable tree variables that were needlessly allocated during sorting, reducing overhead.  
 **Updated Registration String.** Updated the hardcoded GTK widget registration string to reflect the correct version (`v0.8.6`) during initialization.
 
 ## v0.8.5-alpha
