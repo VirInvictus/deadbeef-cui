@@ -66,6 +66,7 @@ What's done, what's next. Sequenced for feature-parity with foobar2000's Columns
 - [x] **Assure GTK4-compiance without breaking GTK3** - I gotta assume Deadbeef won't be GTK3 forever.
 - [x] **Design Mode Integration:** Support for DeaDBeeF's Design Mode for seamless layout embedding.
 - [x] **1.0.0 Stable Release:** Final documentation, icon assets, and feature-parity verification with foobar2000 Columns UI.
+- [ ] **Add plugin to deadbeef plugin rego**
 
 ---
 
