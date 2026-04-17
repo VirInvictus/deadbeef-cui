@@ -802,15 +802,36 @@ static void on_search_changed(GtkSearchEntry *entry, gpointer user_data) {
     update_tree_data(cw);
 }
 
+static int global_key_connected = 0;
+
+static gboolean on_mainwin_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data) {
+    (void)widget;
+    (void)user_data;
+    
+    if ((event->state & GDK_CONTROL_MASK) && (event->state & GDK_SHIFT_MASK) && (event->keyval == GDK_KEY_f || event->keyval == GDK_KEY_F)) {
+        if (all_cui_widgets) {
+            for (GList *l = all_cui_widgets; l; l = l->next) {
+                cui_widget_t *cw = (cui_widget_t *)l->data;
+                if (gtk_widget_get_visible(cw->search_entry)) {
+                    gtk_entry_set_text(GTK_ENTRY(cw->search_entry), "");
+                    gtk_widget_hide(cw->search_entry);
+                    if (cw->num_columns > 0 && cw->trees[0]) {
+                        gtk_widget_grab_focus(cw->trees[0]);
+                    }
+                } else {
+                    gtk_widget_show(cw->search_entry);
+                    gtk_widget_grab_focus(cw->search_entry);
+                }
+            }
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
 static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data) {
     (void)widget;
     cui_widget_t *cw = (cui_widget_t *)user_data;
-    
-    if ((event->state & GDK_CONTROL_MASK) && (event->keyval == GDK_KEY_f || event->keyval == GDK_KEY_F)) {
-        gtk_widget_show(cw->search_entry);
-        gtk_widget_grab_focus(cw->search_entry);
-        return TRUE;
-    }
     
     if (event->keyval == GDK_KEY_Escape) {
         if (gtk_widget_get_visible(cw->search_entry)) {
@@ -892,6 +913,14 @@ static ddb_gtkui_widget_t *cui_create_widget(void) {
     w->destroy = cui_destroy;
 
     g_signal_connect(w->widget, "key-press-event", G_CALLBACK(on_key_press), cw);
+
+    if (!global_key_connected) {
+        GtkWidget *mainwin = gtkui_plugin->get_mainwin ? gtkui_plugin->get_mainwin() : NULL;
+        if (mainwin) {
+            g_signal_connect(mainwin, "key-press-event", G_CALLBACK(on_mainwin_key_press), NULL);
+            global_key_connected = 1;
+        }
+    }
 
     if (gtkui_plugin && gtkui_plugin->w_override_signals) {
         gtkui_plugin->w_override_signals(w->widget, w);
