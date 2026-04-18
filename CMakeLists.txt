@@ -15,5 +15,5 @@ add_library(cui SHARED src/main.c)
 set_target_properties(cui PROPERTIES PREFIX "") # so it compiles to cui.so instead of libcui.so
 
 target_include_directories(cui PRIVATE ${GTK3_INCLUDE_DIRS})
-target_link_libraries(cui PRIVATE ${GTK3_LIBRARIES})
+target_link_libraries(cui PRIVATE ${GTK3_LIBRARIES} ${CMAKE_DL_LIBS})
 target_compile_options(cui PRIVATE ${GTK3_CFLAGS_OTHER})

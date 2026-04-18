@@ -1,6 +1,23 @@
 # deadbeef-cui — Patch Notes
 
-## v1.1.0 (Current)
+## v1.2.0 (Current)
+
+---
+
+### Major Features
+**Live Facet Reconfiguration.** Column titles and title-formatting patterns can now be updated at runtime without restarting DeaDBeeF. Edit any `cui.colN_title` or `cui.colN_format` value in the preferences dialog and all open Facet Browser instances rebuild their trees in place, preserving their position in the layout. Changing the *number* of active columns still requires a restart (the paned widget hierarchy is fixed per instance, and rewiring it on the fly isn't safe).
+
+### Bug Fixes
+**Right-Click Acts on the Clicked Row.** Previously, right-clicking on a non-selected row opened the context menu but "Add selection" would still operate on whatever was last highlighted — an easy way to send the wrong tracks to a playlist. Right-click now selects the row under the pointer (if it isn't already part of a multi-selection) before the menu appears, matching standard GTK behavior.
+**Eliminated Continuous Tree Rebuilds.** `DB_EV_TRACKINFOCHANGED` fires on every play, skip, pause, and playqueue mutation — not just metadata edits — which caused the plugin to rebuild the entire library tree roughly every half-second during playback. The handler has been removed; updates now flow exclusively from the medialib's own `CONTENT_DID_CHANGE` events, which only fire on genuine library changes.
+**Modification-Index Cache Actually Works.** `update_tree_data` was comparing `cw->last_ml_modification_idx` against `ml_modification_idx` but never assigning the latter to the former after a rebuild. The guard always failed, forcing a full reconstruction on every call. The assignment is now performed at the end of a successful rebuild.
+**Listener Thread Safety.** The medialib listener callback fires on a background thread. The v1.1.0 rework reintroduced widget-state access (`cw->lib_update_timeout_id`, `scanner_state`, `g_timeout_add`) directly inside that callback. All widget-touching work has been moved back behind a `g_idle_add` dispatch to the GTK main thread. `ml_modification_idx` uses atomic increment/load.
+
+### Code Quality
+**Removed Dead Struct Field.** `vscroll_values[MAX_COLUMNS]` in `cui_widget_t` was declared but never read — the `scroll_restore_t` allocation already carries the same data.
+**Simplified Shared-Source Lookup.** Dropped the hardcoded `/usr/lib64/deadbeef/ddb_gui_GTK3.so` fallback in the `dlopen` path. `RTLD_NOLOAD` with the bare soname already finds the GTKUI plugin via the dynamic linker's in-process list, without pinning the plugin to Fedora's layout.
+
+## v1.1.0
 
 ---
 

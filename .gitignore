@@ -26,6 +26,10 @@ CompileCommand.json
 *.log
 gdb_cmds*
 
+# DeaDBeeF runtime artifacts (created when running the player from this dir)
+wavecache.db
+wavecache.db-*
+
 # OS
 .DS_Store
 Thumbs.db

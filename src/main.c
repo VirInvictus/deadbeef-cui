@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
+#include <dlfcn.h>
 
 #if GTK_MAJOR_VERSION >= 4
 #define gtk_widget_show_all(w) gtk_widget_set_visible(w, TRUE)
@@ -45,6 +46,7 @@ static DB_mediasource_t *medialib_plugin;
 static ddb_mediasource_source_t *ml_source;
 static int shutting_down = 0;
 static int owns_ml_source = 0;
+static int ml_modification_idx = 1;
 
 static int ignore_prefix = 0;
 static char global_titles[MAX_COLUMNS][256] = {0};
@@ -130,15 +132,23 @@ typedef struct {
     ddb_medialib_item_t *cached_tree;
     GHashTable *track_counts_cache;
 
+    int last_ml_modification_idx;
     guint changed_timeout_id;
+    guint lib_update_timeout_id;
     int changed_col_idx;
 
     GtkWidget *search_entry;
     char *search_text;
+    char *last_search_text;
 } cui_widget_t;
 
 static ddb_scriptable_item_t *my_preset = NULL;
 static GList *all_cui_widgets = NULL;
+static guint facet_config_hash = 0;
+
+static void init_my_preset(void);
+static gboolean deferred_lib_update_cb(gpointer data);
+static guint compute_facet_config_hash(void);
 
 static void init_my_preset(void) {
     CUI_DEBUG("init_my_preset called");
@@ -198,7 +208,10 @@ static void init_my_preset(void) {
 
             my_scriptable_add_child(p, child);
             
-            strncpy(global_titles[global_num_columns], title_copy, 255);
+            if (title) {
+                strncpy(global_titles[global_num_columns], title, sizeof(global_titles[global_num_columns]) - 1);
+                global_titles[global_num_columns][sizeof(global_titles[global_num_columns]) - 1] = '\0';
+            }
             global_num_columns++;
         }
     }
@@ -215,8 +228,63 @@ static void init_my_preset(void) {
     scriptableItem_t *track_child = my_scriptable_alloc();
     my_scriptable_set_prop(track_child, "name", "%title%");
     my_scriptable_add_child(p, track_child);
-    
+
     my_preset = (ddb_scriptable_item_t *)p;
+    facet_config_hash = compute_facet_config_hash();
+}
+
+static guint compute_facet_config_hash(void) {
+    GString *s = g_string_new("");
+    deadbeef_api->conf_lock();
+    for (int i = 1; i <= MAX_COLUMNS; i++) {
+        char key[32];
+        snprintf(key, sizeof(key), "cui.col%d_title", i);
+        g_string_append(s, deadbeef_api->conf_get_str_fast(key, ""));
+        g_string_append_c(s, '\x1f');
+        snprintf(key, sizeof(key), "cui.col%d_format", i);
+        g_string_append(s, deadbeef_api->conf_get_str_fast(key, ""));
+        g_string_append_c(s, '\x1f');
+    }
+    g_string_append_printf(s, "split=%d", deadbeef_api->conf_get_int("cui.split_tags", 1));
+    deadbeef_api->conf_unlock();
+    guint h = g_str_hash(s->str);
+    g_string_free(s, TRUE);
+    return h;
+}
+
+static gboolean handle_configchange_idle(gpointer data) {
+    (void)data;
+    if (shutting_down) return G_SOURCE_REMOVE;
+
+    guint new_hash = compute_facet_config_hash();
+    if (new_hash == facet_config_hash) return G_SOURCE_REMOVE;
+    facet_config_hash = new_hash;
+
+    int old_num_columns = global_num_columns;
+    init_my_preset();
+
+    if (!all_cui_widgets) return G_SOURCE_REMOVE;
+
+    for (GList *l = all_cui_widgets; l; l = l->next) {
+        cui_widget_t *cw = (cui_widget_t *)l->data;
+        if (cw->num_columns != global_num_columns) {
+            fprintf(stderr, "deadbeef-cui: column count changed (%d -> %d); restart required to apply.\n",
+                    old_num_columns, global_num_columns);
+            continue;
+        }
+        for (int i = 0; i < cw->num_columns; i++) {
+            g_free(cw->titles[i]);
+            cw->titles[i] = g_strdup(global_titles[i]);
+            GtkTreeViewColumn *col = gtk_tree_view_get_column(GTK_TREE_VIEW(cw->trees[i]), 0);
+            if (col) gtk_tree_view_column_set_title(col, cw->titles[i]);
+        }
+        cw->last_ml_modification_idx = -1;
+        g_atomic_int_inc(&ml_modification_idx);
+        if (cw->lib_update_timeout_id == 0) {
+            cw->lib_update_timeout_id = g_timeout_add(200, deferred_lib_update_cb, cw);
+        }
+    }
+    return G_SOURCE_REMOVE;
 }
 
 static void sync_source_config(void) {
@@ -453,6 +521,13 @@ static void aggregate_recursive_multi(const ddb_medialib_item_t *node,
 }
 
 static void populate_list_multi(GtkListStore *store, int target_level, cui_widget_t *cw, int col_idx) {
+    double old_vscroll = 0;
+    GtkWidget *scroll = gtk_widget_get_parent(cw->trees[col_idx]);
+    if (GTK_IS_SCROLLED_WINDOW(scroll)) {
+        GtkAdjustment *adj = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(scroll));
+        old_vscroll = gtk_adjustment_get_value(adj);
+    }
+
     gtk_list_store_clear(store);
     if (!cw->cached_tree || !medialib_plugin) return;
 
@@ -502,6 +577,11 @@ static void populate_list_multi(GtkListStore *store, int target_level, cui_widge
 
     g_free(plural_title);
     g_hash_table_destroy(seen);
+
+    if (GTK_IS_SCROLLED_WINDOW(scroll)) {
+        GtkAdjustment *adj = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(scroll));
+        gtk_adjustment_set_value(adj, old_vscroll);
+    }
 }
 
 // --- Selection handlers ---
@@ -589,12 +669,56 @@ static void on_column_changed(GtkTreeSelection *selection, gpointer data) {
 
 // --- Tree data refresh ---
 
+typedef struct {
+    cui_widget_t *cw;
+    double values[MAX_COLUMNS];
+} scroll_restore_t;
+
+static gboolean restore_vscroll_idle(gpointer data) {
+    scroll_restore_t *sr = (scroll_restore_t *)data;
+    if (g_list_find(all_cui_widgets, sr->cw)) {
+        for (int i = 0; i < sr->cw->num_columns; i++) {
+            GtkWidget *scroll = gtk_widget_get_parent(sr->cw->trees[i]);
+            if (GTK_IS_SCROLLED_WINDOW(scroll)) {
+                GtkAdjustment *adj = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(scroll));
+                gtk_adjustment_set_value(adj, sr->values[i]);
+            }
+        }
+    }
+    free(sr);
+    return G_SOURCE_REMOVE;
+}
+
 static void update_tree_data(cui_widget_t *cw) {
-    CUI_DEBUG("update_tree_data called");
     if (shutting_down || !medialib_plugin || !ml_source) return;
 
-    if (owns_ml_source) {
-        medialib_plugin->refresh(ml_source);
+    int search_changed = 0;
+    if (cw->search_text && (!cw->last_search_text || strcmp(cw->search_text, cw->last_search_text) != 0)) {
+        search_changed = 1;
+    } else if (!cw->search_text && cw->last_search_text) {
+        search_changed = 1;
+    }
+
+    if (search_changed) {
+        g_free(cw->last_search_text);
+        cw->last_search_text = cw->search_text ? g_strdup(cw->search_text) : NULL;
+        cw->last_ml_modification_idx = -1;
+    }
+
+    int current_idx = g_atomic_int_get(&ml_modification_idx);
+    CUI_DEBUG("update_tree_data called (ml_idx=%d, cw_idx=%d)", current_idx, cw->last_ml_modification_idx);
+    if (cw->last_ml_modification_idx == current_idx && cw->cached_tree) {
+        return;
+    }
+    scroll_restore_t *sr = calloc(1, sizeof(scroll_restore_t));
+    sr->cw = cw;
+
+    for (int i = 0; i < cw->num_columns; i++) {
+        GtkWidget *scroll = gtk_widget_get_parent(cw->trees[i]);
+        if (GTK_IS_SCROLLED_WINDOW(scroll)) {
+            GtkAdjustment *adj = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(scroll));
+            sr->values[i] = gtk_adjustment_get_value(adj);
+        }
     }
 
     if (cw->cached_tree) {
@@ -619,6 +743,7 @@ static void update_tree_data(cui_widget_t *cw) {
         for (int i = 0; i < cw->num_columns; i++) {
             if (saved_sels[i]) g_hash_table_destroy(saved_sels[i]);
         }
+        free(sr);
         return;
     }
     
@@ -661,6 +786,8 @@ static void update_tree_data(cui_widget_t *cw) {
         }
     }
 
+    g_idle_add(restore_vscroll_idle, sr);
+
     for (int i = 0; i < cw->num_columns; i++) {
         if (saved_sels[i]) {
             g_hash_table_destroy(saved_sels[i]);
@@ -671,11 +798,16 @@ static void update_tree_data(cui_widget_t *cw) {
         GtkTreeSelection *first_sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->trees[0]));
         on_column_changed(first_sel, cw);
     }
+
+    cw->last_ml_modification_idx = current_idx;
 }
 
-static gboolean repopulate_ui_idle(gpointer data) {
-    if (shutting_down) return G_SOURCE_REMOVE;
+static gboolean deferred_lib_update_cb(gpointer data) {
     cui_widget_t *cw = (cui_widget_t *)data;
+    cw->lib_update_timeout_id = 0;
+    
+    if (shutting_down) return G_SOURCE_REMOVE;
+    
     if (g_list_find(all_cui_widgets, cw)) {
         if (medialib_plugin && ml_source) {
             update_tree_data(cw);
@@ -684,11 +816,32 @@ static gboolean repopulate_ui_idle(gpointer data) {
     return G_SOURCE_REMOVE;
 }
 
+static gboolean ml_event_idle_cb(gpointer data) {
+    cui_widget_t *cw = (cui_widget_t *)data;
+    if (shutting_down) return G_SOURCE_REMOVE;
+    if (!g_list_find(all_cui_widgets, cw)) return G_SOURCE_REMOVE;
+    if (!medialib_plugin || !ml_source) return G_SOURCE_REMOVE;
+
+    if (medialib_plugin->scanner_state(ml_source) != DDB_MEDIASOURCE_STATE_IDLE) {
+        return G_SOURCE_REMOVE;
+    }
+
+    if (cw->lib_update_timeout_id == 0) {
+        cw->lib_update_timeout_id = g_timeout_add(1000, deferred_lib_update_cb, cw);
+    }
+    return G_SOURCE_REMOVE;
+}
+
 static void ml_listener_cb(ddb_mediasource_event_type_t event, void *user_data) {
     if (shutting_down) return;
-    if (event == DDB_MEDIASOURCE_EVENT_STATE_DID_CHANGE || event == DDB_MEDIASOURCE_EVENT_CONTENT_DID_CHANGE) {
-        g_idle_add(repopulate_ui_idle, user_data);
+    if (event != DDB_MEDIASOURCE_EVENT_STATE_DID_CHANGE &&
+        event != DDB_MEDIASOURCE_EVENT_CONTENT_DID_CHANGE) {
+        return;
     }
+    if (event == DDB_MEDIASOURCE_EVENT_CONTENT_DID_CHANGE) {
+        g_atomic_int_inc(&ml_modification_idx);
+    }
+    g_idle_add(ml_event_idle_cb, user_data);
 }
 
 static void on_row_activated(GtkTreeView *tree_view, GtkTreePath *path, GtkTreeViewColumn *column, gpointer data) {
@@ -735,18 +888,30 @@ static void on_menu_send_to_new(GtkMenuItem *item, gpointer user_data) {
 }
 
 static gboolean on_tree_button_press(GtkWidget *widget, GdkEventButton *event, gpointer user_data) {
-    (void)widget;
     if (event->type == GDK_BUTTON_PRESS && event->button == 3) {
+        GtkTreeView *tv = GTK_TREE_VIEW(widget);
+        GtkTreeSelection *sel = gtk_tree_view_get_selection(tv);
+
+        GtkTreePath *path = NULL;
+        if (gtk_tree_view_get_path_at_pos(tv, (int)event->x, (int)event->y,
+                                           &path, NULL, NULL, NULL) && path) {
+            if (!gtk_tree_selection_path_is_selected(sel, path)) {
+                gtk_tree_selection_unselect_all(sel);
+                gtk_tree_selection_select_path(sel, path);
+            }
+            gtk_tree_path_free(path);
+        }
+
         GtkWidget *menu = gtk_menu_new();
-        
+
         GtkWidget *item_add = gtk_menu_item_new_with_label("Add selection to current playlist");
         g_signal_connect(item_add, "activate", G_CALLBACK(on_menu_add_to_current), user_data);
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), item_add);
-        
+
         GtkWidget *item_new = gtk_menu_item_new_with_label("Send selection to new playlist");
         g_signal_connect(item_new, "activate", G_CALLBACK(on_menu_send_to_new), user_data);
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), item_new);
-        
+
         gtk_widget_show_all(menu);
         gtk_menu_popup_at_pointer(GTK_MENU(menu), (GdkEvent *)event);
         return TRUE;
@@ -763,6 +928,10 @@ static void cui_destroy(ddb_gtkui_widget_t *w) {
         g_source_remove(cw->changed_timeout_id);
         cw->changed_timeout_id = 0;
     }
+    if (cw->lib_update_timeout_id) {
+        g_source_remove(cw->lib_update_timeout_id);
+        cw->lib_update_timeout_id = 0;
+    }
 
     all_cui_widgets = g_list_remove(all_cui_widgets, cw);
 
@@ -775,6 +944,12 @@ static void cui_destroy(ddb_gtkui_widget_t *w) {
             medialib_plugin->free_item_tree(ml_source, cw->cached_tree);
             cw->cached_tree = NULL;
         }
+    }
+    
+    // If we're the last widget and we own the source, it'll be freed in cui_stop.
+    // However, if we're just one of many, we keep it alive.
+    if (all_cui_widgets == NULL && owns_ml_source) {
+        // Source will be cleaned up in cui_stop or when last widget is gone if needed
     }
 
     if (cw->track_counts_cache) {
@@ -792,6 +967,8 @@ static void cui_destroy(ddb_gtkui_widget_t *w) {
     
     g_free(cw->search_text);
     cw->search_text = NULL;
+    g_free(cw->last_search_text);
+    cw->last_search_text = NULL;
 }
 
 static GtkWidget *create_column(const char *title, GtkListStore **out_store, GtkWidget **out_tree) {
@@ -906,7 +1083,7 @@ static ddb_gtkui_widget_t *cui_create_widget(void) {
 
     cw->num_columns = global_num_columns;
     
-    GtkWidget *col_widgets[MAX_COLUMNS];
+    GtkWidget *col_widgets[MAX_COLUMNS] = {NULL};
     for (int i = 0; i < cw->num_columns; i++) {
         cw->titles[i] = g_strdup(global_titles[i]);
         col_widgets[i] = create_column(cw->titles[i], &cw->stores[i], &cw->trees[i]);
@@ -972,12 +1149,28 @@ static ddb_gtkui_widget_t *cui_create_widget(void) {
         gtkui_plugin->w_override_signals(w->widget, w);
     }
 
-    if (!ml_source && medialib_plugin && medialib_plugin->create_source) {
-        sync_source_config();
-        ml_source = medialib_plugin->create_source(CUI_SOURCE_PATH);
-        if (ml_source) {
-            owns_ml_source = 1;
-            medialib_plugin->refresh(ml_source);
+    if (!ml_source && medialib_plugin) {
+        // Prefer sharing GTKUI's medialib source (no duplicate DB, no extra scan).
+        // RTLD_NOLOAD returns a handle only if the library is already loaded in this process,
+        // which it is whenever the GTKUI plugin is active — so we don't need a path.
+        void *gtkui_handle = dlopen("ddb_gui_GTK3.so", RTLD_LAZY | RTLD_NOLOAD);
+        if (gtkui_handle) {
+            ddb_mediasource_source_t * (*get_shared_source)(void) =
+                (ddb_mediasource_source_t * (*)(void))dlsym(gtkui_handle, "gtkui_medialib_get_source");
+            if (get_shared_source) {
+                ml_source = get_shared_source();
+                CUI_DEBUG("Using shared medialib source from GTKUI");
+            }
+            dlclose(gtkui_handle);
+        }
+
+        if (!ml_source && medialib_plugin->create_source) {
+            sync_source_config();
+            ml_source = medialib_plugin->create_source(CUI_SOURCE_PATH);
+            if (ml_source) {
+                owns_ml_source = 1;
+                medialib_plugin->refresh(ml_source);
+            }
         }
     }
 
@@ -1001,10 +1194,12 @@ static int cui_message(uint32_t id, uintptr_t ctx, uint32_t p1, uint32_t p2) {
         shutting_down = 1;
     }
     else if (id == DB_EV_CONFIGCHANGED) {
-        deadbeef_api->conf_lock();
-        ignore_prefix = deadbeef_api->conf_get_int("cui.ignore_prefix", 0);
-        deadbeef_api->conf_unlock();
-        // Requires restart for column layout/format string changes.
+        if (!shutting_down) {
+            deadbeef_api->conf_lock();
+            ignore_prefix = deadbeef_api->conf_get_int("cui.ignore_prefix", 0);
+            deadbeef_api->conf_unlock();
+            g_idle_add(handle_configchange_idle, NULL);
+        }
     }
     return 0;
 }
@@ -1023,8 +1218,8 @@ int cui_start(void) {
         fprintf(stderr, "deadbeef-cui: medialib plugin not found or unsupported!\n");
     }
 
-    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v1.0.1", 0, cui_create_widget, "cui", NULL);
-    fprintf(stderr, "deadbeef-cui: Facet Browser v1.0.1 registered successfully.\n");
+    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v1.2.0", 0, cui_create_widget, "cui", NULL);
+    fprintf(stderr, "deadbeef-cui: Facet Browser v1.2.0 registered successfully.\n");
 
     return 0;
 }
@@ -1065,7 +1260,7 @@ static DB_misc_t plugin = {
     .plugin.api_vmajor = 1,
     .plugin.api_vminor = 0,
     .plugin.version_major = 1,
-    .plugin.version_minor = 1,
+    .plugin.version_minor = 2,
     .plugin.id = "cui",
     .plugin.name = "Columns UI for DeaDBeeF",
     .plugin.descr = "A faceted library browser for DeaDBeeF.",
