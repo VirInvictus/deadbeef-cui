@@ -1,6 +1,24 @@
 # deadbeef-cui — Patch Notes
 
-## v1.0.1 (Current)
+## v1.1.0 (Current)
+
+---
+
+### Major Features
+**Selection Persistence.** The plugin now saves your facet selections across library refreshes, ensuring your view remains intact even if tags are modified in the background.
+
+### Optimizations
+**Debounced Library Sync.** Introduced a 250ms debouncing timer to background library updates, preventing the UI from freezing during massive batch metadata tag edits.
+**Efficient Playlist Lookup.** Switched to DeaDBeeF's native `plt_find_by_name` for immediate O(1) playlist targeting instead of O(N) manual iteration.
+**Zero-Allocation Searching.** Rewrote the search filtering engine to use `strcasestr`, completely eliminating a heap allocation storm and drastically reducing CPU usage while searching large datasets.
+
+### Bug Fixes
+**Thread-Safe Teardown.** Corrected a race condition during `cui_destroy`. The plugin now reliably keeps the database source alive until all spawned UI widgets have been safely destroyed.
+**Context Menu Cleanup.** Resolved a minor memory leak by correctly hooking the GtkMenu's `deactivate` signal to widget destruction.
+**Main Window Unhook.** The global keyboard shortcut (`CTRL-SHIFT-F`) handler is now explicitly unbound during `cui_stop`, preventing orphaned callbacks if the plugin is unloaded.
+**Real-time Sync Guard.** Enforced `medialib_plugin->refresh(ml_source)` inside `update_tree_data` to guarantee that the private item tree cache syncs with background core database modifications.
+
+## v1.0.1
 
 ---
 

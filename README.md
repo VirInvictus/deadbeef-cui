@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-1.0.1-blue" alt="Version: 1.0.1">
+  <img src="https://img.shields.io/badge/Version-1.1.0-blue" alt="Version: 1.1.0">
   <img src="https://img.shields.io/badge/Language-C/C++-blue" alt="Language: C/C++">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
 </p>

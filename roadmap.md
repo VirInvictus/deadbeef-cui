@@ -1,6 +1,6 @@
 # deadbeef-cui — Roadmap
 
-What's done, what's next. Sequenced for feature-parity with foobar2000's Columns UI. Updated as of v1.0.1.
+What's done, what's next. Sequenced for feature-parity with foobar2000's Columns UI. Updated as of v1.1.0.
 
 ---
 
@@ -72,16 +72,16 @@ What's done, what's next. Sequenced for feature-parity with foobar2000's Columns
 ## Phase 7: Optimization & Technical Debt
 *Hardening the architecture and improving performance for large libraries.*
 
-- [ ] **Selection Persistence:** Restore previously selected items after a list refresh.
-- [ ] **Efficient Playlist Lookup:** Replace manual playlist iteration with `plt_find_by_name`.
-- [ ] **Search Allocation Storm:** Optimize `track_matches_search` by removing redundant `g_utf8_strdown` heap allocations.
-- [ ] **Thread-Safe Tree Teardown:** Fix the race condition in `cui_destroy` by ensuring `ml_source` remains valid until all widgets are destroyed.
+- [x] **Selection Persistence:** Restore previously selected items after a list refresh.
+- [x] **Efficient Playlist Lookup:** Replace manual playlist iteration with `plt_find_by_name`.
+- [x] **Search Allocation Storm:** Optimize `track_matches_search` by removing redundant `g_utf8_strdown` heap allocations.
+- [x] **Thread-Safe Tree Teardown:** Fix the race condition in `cui_destroy` by ensuring `ml_source` remains valid until all widgets are destroyed.
 - [ ] **Instance-Specific Settings:** Move from global `cui.*` config keys to proper `ddb_gtkui_widget_extended_api_t` serialization to support multiple independent browser instances.
-- [ ] **Library Event Debouncing:** Implement a timer for `ml_listener_cb` to prevent redundant UI refreshes during batch metadata edits.
-- [ ] **Memory Management:** 
-    - [ ] Fix `GtkMenu` leak in right-click context menus.
-    - [ ] Properly disconnect main window signal handlers in `cui_stop`.
-- [ ] **Real-time Library Sync:** Ensure private media source remains synchronized with background library updates via `ml_listener_cb`.
+- [x] **Library Event Debouncing:** Implement a timer for `ml_listener_cb` to prevent redundant UI refreshes during batch metadata edits.
+- [x] **Memory Management:** 
+    - [x] Fix `GtkMenu` leak in right-click context menus.
+    - [x] Properly disconnect main window signal handlers in `cui_stop`.
+- [x] **Real-time Library Sync:** Ensure private media source remains synchronized with background library updates via `ml_listener_cb`.
 - [ ] **Standardized Shortcuts:** Unify shortcut keys (`CTRL-SHIFT-F`) and ensure they don't conflict with DeaDBeeF core.
 
 ## Phase 8: Advanced Performance Refinement

@@ -239,14 +239,8 @@ static int track_matches_search(DB_playItem_t *track, const char *search_text) {
 
     int match = 0;
     if (title || artist) {
-        gchar *title_down = title ? g_utf8_strdown(title, -1) : NULL;
-        gchar *artist_down = artist ? g_utf8_strdown(artist, -1) : NULL;
-        
-        if (title_down && strstr(title_down, search_text)) match = 1;
-        else if (artist_down && strstr(artist_down, search_text)) match = 1;
-
-        g_free(title_down);
-        g_free(artist_down);
+        if (title && strcasestr(title, search_text)) match = 1;
+        else if (artist && strcasestr(artist, search_text)) match = 1;
     }
     deadbeef_api->pl_unlock();
 
@@ -599,6 +593,10 @@ static void update_tree_data(cui_widget_t *cw) {
     CUI_DEBUG("update_tree_data called");
     if (shutting_down || !medialib_plugin || !ml_source) return;
 
+    if (owns_ml_source) {
+        medialib_plugin->refresh(ml_source);
+    }
+
     if (cw->cached_tree) {
         medialib_plugin->free_item_tree(ml_source, cw->cached_tree);
         cw->cached_tree = NULL;
@@ -608,24 +606,71 @@ static void update_tree_data(cui_widget_t *cw) {
         cw->track_counts_cache = NULL;
     }
     
+    GHashTable *saved_sels[MAX_COLUMNS] = {NULL};
     for (int i = 0; i < cw->num_columns; i++) {
-        if (cw->sel_texts[i]) {
-            g_hash_table_destroy(cw->sel_texts[i]);
-            cw->sel_texts[i] = NULL;
-        }
+        saved_sels[i] = cw->sel_texts[i];
+        cw->sel_texts[i] = NULL;
     }
 
     if (!my_preset) init_my_preset();
 
     cw->cached_tree = medialib_plugin->create_item_tree(ml_source, my_preset, NULL);
-    if (!cw->cached_tree) return;
+    if (!cw->cached_tree) {
+        for (int i = 0; i < cw->num_columns; i++) {
+            if (saved_sels[i]) g_hash_table_destroy(saved_sels[i]);
+        }
+        return;
+    }
     
     cw->track_counts_cache = g_hash_table_new(g_direct_hash, g_direct_equal);
 
     populate_list_multi(cw->stores[0], 1, cw, 0);
 
-    GtkTreeSelection *first_sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->trees[0]));
-    on_column_changed(first_sel, cw);
+    for (int i = 0; i < cw->num_columns; i++) {
+        if (saved_sels[i]) {
+            GtkTreeModel *model = GTK_TREE_MODEL(cw->stores[i]);
+            GtkTreeSelection *sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->trees[i]));
+            
+            GtkTreeIter iter;
+            gboolean valid = gtk_tree_model_get_iter_first(model, &iter);
+            gboolean found_any = FALSE;
+            
+            g_signal_handlers_block_by_func(sel, (gpointer)on_column_changed, cw);
+            
+            while (valid) {
+                gchar *text;
+                gtk_tree_model_get(model, &iter, 0, &text, -1);
+                if (text && g_hash_table_contains(saved_sels[i], text)) {
+                    gtk_tree_selection_select_iter(sel, &iter);
+                    found_any = TRUE;
+                }
+                g_free(text);
+                valid = gtk_tree_model_iter_next(model, &iter);
+            }
+            
+            g_signal_handlers_unblock_by_func(sel, (gpointer)on_column_changed, cw);
+            
+            if (found_any) {
+                update_selection_hash(sel, &cw->sel_texts[i]);
+                if (i + 1 < cw->num_columns) {
+                    populate_list_multi(cw->stores[i + 1], i + 2, cw, i + 1);
+                }
+            } else {
+                break;
+            }
+        }
+    }
+
+    for (int i = 0; i < cw->num_columns; i++) {
+        if (saved_sels[i]) {
+            g_hash_table_destroy(saved_sels[i]);
+        }
+    }
+
+    if (!cw->sel_texts[0]) {
+        GtkTreeSelection *first_sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->trees[0]));
+        on_column_changed(first_sel, cw);
+    }
 }
 
 static gboolean repopulate_ui_idle(gpointer data) {
@@ -803,6 +848,7 @@ static void on_search_changed(GtkSearchEntry *entry, gpointer user_data) {
 }
 
 static int global_key_connected = 0;
+static gulong mainwin_key_handler_id = 0;
 
 static gboolean on_mainwin_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data) {
     (void)widget;
@@ -917,7 +963,7 @@ static ddb_gtkui_widget_t *cui_create_widget(void) {
     if (!global_key_connected) {
         GtkWidget *mainwin = gtkui_plugin->get_mainwin ? gtkui_plugin->get_mainwin() : NULL;
         if (mainwin) {
-            g_signal_connect(mainwin, "key-press-event", G_CALLBACK(on_mainwin_key_press), NULL);
+            mainwin_key_handler_id = g_signal_connect(mainwin, "key-press-event", G_CALLBACK(on_mainwin_key_press), NULL);
             global_key_connected = 1;
         }
     }
@@ -1018,8 +1064,8 @@ static DB_misc_t plugin = {
     .plugin.type = DB_PLUGIN_MISC,
     .plugin.api_vmajor = 1,
     .plugin.api_vminor = 0,
-    .plugin.version_major = 0,
-    .plugin.version_minor = 9,
+    .plugin.version_major = 1,
+    .plugin.version_minor = 1,
     .plugin.id = "cui",
     .plugin.name = "Columns UI for DeaDBeeF",
     .plugin.descr = "A faceted library browser for DeaDBeeF.",
@@ -1034,5 +1080,5 @@ static DB_misc_t plugin = {
 DB_plugin_t *ddb_misc_cui_GTK3_load(DB_functions_t *api) {
     deadbeef_api = api;
     return (DB_plugin_t *)&plugin;
-
 }
+
