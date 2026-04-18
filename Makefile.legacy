@@ -1,0 +1,13 @@
+CC ?= gcc
+CFLAGS ?= -O2 -Wall -Wextra -fPIC
+GTK3_CFLAGS ?= $(shell pkg-config --cflags gtk+-3.0)
+GTK3_LIBS ?= $(shell pkg-config --libs gtk+-3.0)
+DDB_HEADERS ?= /usr/include
+
+all: ddb_misc_cui.so
+
+ddb_misc_cui.so: src/main.c
+	$(CC) $(CFLAGS) $(GTK3_CFLAGS) -I$(DDB_HEADERS) -shared -o ddb_misc_cui.so src/main.c $(GTK3_LIBS)
+
+clean:
+	rm -f ddb_misc_cui.so

@@ -66,7 +66,6 @@ What's done, what's next. Sequenced for feature-parity with foobar2000's Columns
 - [x] **Assure GTK4-compiance without breaking GTK3** - I gotta assume Deadbeef won't be GTK3 forever.
 - [x] **Design Mode Integration:** Support for DeaDBeeF's Design Mode for seamless layout embedding.
 - [x] **1.0.0 Stable Release:** Final documentation, icon assets, and feature-parity verification with foobar2000 Columns UI.
-- [ ] **Add plugin to deadbeef plugin rego**
 
 ---
 
@@ -95,6 +94,16 @@ What's done, what's next. Sequenced for feature-parity with foobar2000's Columns
 - [ ] **Title Formatting v2 Migration:** Switch from legacy formatting to the modern `tf_compile`/`tf_eval` API for better performance and flexibility.
 - [ ] **GTK4 Forward Compatibility:** Exhaustive verification of widget signals and drawing code against the GTK4 specification.
 
+## Phase 9: Add to DeaDBeeF Plugin List
+*Packaging and submitting for official inclusion in the DeaDBeeF ecosystem.*
+
+- [ ] **Repository Readiness:** Ensure the public repository (https://github.com/bdkl/deadbeef-cui) is clean, tagged, and contains all necessary documentation.
+- [ ] **Legacy Build Support:** Provide a standalone `Makefile` for compatibility with `deadbeef-plugin-builder` (which expects GNU Make/Autotools rather than CMake).
+- [ ] **Manifest Authoring:** Create a `manifest.json` file for the `deadbeef-plugin-builder` repository, defining source location and build parameters.
+- [ ] **Cross-Platform Verification:** Use the `deadbeef-plugin-builder` Docker environment to verify the plugin compiles correctly for multiple architectures (x86_64, i686).
+- [ ] **Static Linking Audit:** Ensure all non-core dependencies are linked statically to maximize compatibility across different Linux distributions.
+- [ ] **Submission PR:** Submit a Pull Request to `DeaDBeeF-Player/deadbeef-plugin-builder` to include the plugin in the official website's downloads page.
+- [ ] **v1.0.0 Tagging:** Create the first official stable release tag on GitHub with pre-compiled binaries for easy user installation.
 ---
 
 ## Deferred (v2.0+)
