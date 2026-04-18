@@ -82,7 +82,7 @@ What's done, what's next. Sequenced for feature-parity with foobar2000's Columns
     - [ ] Fix `GtkMenu` leak in right-click context menus.
     - [ ] Properly disconnect main window signal handlers in `cui_stop`.
 - [ ] **Real-time Library Sync:** Ensure private media source remains synchronized with background library updates via `ml_listener_cb`.
-- [ ] **Standardized Shortcuts:** Unify shortcut keys (`CTRL-F` vs `CTRL-SHIFT-F`) and ensure they don't conflict with DeaDBeeF core.
+- [ ] **Standardized Shortcuts:** Unify shortcut keys (`CTRL-SHIFT-F`) and ensure they don't conflict with DeaDBeeF core.
 
 ## Phase 8: Advanced Performance Refinement
 *Pushing the limits of the faceted browsing engine.*
@@ -103,7 +103,7 @@ What's done, what's next. Sequenced for feature-parity with foobar2000's Columns
 - [ ] **Cross-Platform Verification:** Use the `deadbeef-plugin-builder` Docker environment to verify the plugin compiles correctly for multiple architectures (x86_64, i686).
 - [ ] **Static Linking Audit:** Ensure all non-core dependencies are linked statically to maximize compatibility across different Linux distributions.
 - [ ] **Submission PR:** Submit a Pull Request to `DeaDBeeF-Player/deadbeef-plugin-builder` to include the plugin in the official website's downloads page.
-- [ ] **v1.0.0 Tagging:** Create the first official stable release tag on GitHub with pre-compiled binaries for easy user installation.
+- [ ] **v2.0.0 Tagging:** Create the second official stable release tag on GitHub with pre-compiled binaries for easy user installation.
 ---
 
 ## Deferred (v2.0+)
