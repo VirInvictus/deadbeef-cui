@@ -887,6 +887,15 @@ static void on_menu_send_to_new(GtkMenuItem *item, gpointer user_data) {
     }
 }
 
+static void on_menu_sync_library(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    (void)user_data;
+    if (!medialib_plugin || !ml_source) return;
+    // Async: medialib scanner fires CONTENT_DID_CHANGE when done, which routes
+    // through ml_listener_cb → deferred_lib_update_cb and rebuilds the trees.
+    medialib_plugin->refresh(ml_source);
+}
+
 static gboolean on_tree_button_press(GtkWidget *widget, GdkEventButton *event, gpointer user_data) {
     if (event->type == GDK_BUTTON_PRESS && event->button == 3) {
         GtkTreeView *tv = GTK_TREE_VIEW(widget);
@@ -911,6 +920,13 @@ static gboolean on_tree_button_press(GtkWidget *widget, GdkEventButton *event, g
         GtkWidget *item_new = gtk_menu_item_new_with_label("Send selection to new playlist");
         g_signal_connect(item_new, "activate", G_CALLBACK(on_menu_send_to_new), user_data);
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), item_new);
+
+        GtkWidget *sep = gtk_separator_menu_item_new();
+        gtk_menu_shell_append(GTK_MENU_SHELL(menu), sep);
+
+        GtkWidget *item_sync = gtk_menu_item_new_with_label("Sync library");
+        g_signal_connect(item_sync, "activate", G_CALLBACK(on_menu_sync_library), user_data);
+        gtk_menu_shell_append(GTK_MENU_SHELL(menu), item_sync);
 
         gtk_widget_show_all(menu);
         gtk_menu_popup_at_pointer(GTK_MENU(menu), (GdkEvent *)event);
