@@ -83,6 +83,8 @@ What's done, what's next. Sequenced for feature-parity with foobar2000's Columns
     - [x] Properly disconnect main window signal handlers in `cui_stop`.
 - [x] **Real-time Library Sync:** Ensure private media source remains synchronized with background library updates via `ml_listener_cb`.
 - [ ] **Standardized Shortcuts:** Unify shortcut keys (`CTRL-SHIFT-F`) and ensure they don't conflict with DeaDBeeF core.
+- [ ] **The [All] items don't play a song on double click** - Bug that should be fixed
+- [ ] **If focus is on the facet and a letter is pressed, the selection should jump to that letter. This should work for as many characters as the user types**
 
 ## Phase 8: Advanced Performance Refinement
 *Pushing the limits of the faceted browsing engine.*
