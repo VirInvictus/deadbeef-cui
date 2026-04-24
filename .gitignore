@@ -33,3 +33,6 @@ wavecache.db-*
 # OS
 .DS_Store
 Thumbs.db
+
+# Dependencies
+.deadbeef/

@@ -1,6 +1,14 @@
 # deadbeef-cui — Patch Notes
 
-## v1.2.0 (Current)
+## v1.2.1 (Current)
+
+---
+
+### Bug Fixes
+**Immediate Playback on Aggregate Selection.** Double-clicking an `[All]` item now immediately processes the new column selection before dispatching the playback command, ensuring that the correctly aggregated tracks begin playing instead of whatever was previously in the playlist.
+**Native Type-Ahead Search.** Re-enabled GTK's native type-ahead search within the facet tree views (`gtk_tree_view_set_enable_search`). Users can now focus on a column and type a letter to instantly jump to the first matching row without opening the global search bar.
+
+## v1.2.0
 
 ---
 
