@@ -154,6 +154,7 @@ static const char **cui_serialize_to_keyvalues(ddb_gtkui_widget_t *w);
 static void cui_deserialize_from_keyvalues(ddb_gtkui_widget_t *w, const char **keyvalues);
 static void cui_free_serialized_keyvalues(ddb_gtkui_widget_t *w, const char **keyvalues);
 static void cui_initmenu(ddb_gtkui_widget_t *w, GtkWidget *menu);
+static void show_config_dialog(GtkMenuItem *item, gpointer user_data);
 
 
 static void init_my_preset(cui_widget_t *cw);
@@ -166,15 +167,42 @@ static void init_my_preset(cui_widget_t *cw) {
         cw->my_preset = NULL;
     }
 
+    // Compact the titles and formats to remove any gaps left by migration or dialog
+    char *new_titles[MAX_COLUMNS] = {NULL};
+    char *new_formats[MAX_COLUMNS] = {NULL};
+    int valid_idx = 0;
+    for (int i = 0; i < MAX_COLUMNS; i++) {
+        if (cw->titles[i] && cw->formats[i] && cw->titles[i][0] && cw->formats[i][0]) {
+            new_titles[valid_idx] = cw->titles[i];
+            new_formats[valid_idx] = cw->formats[i];
+            valid_idx++;
+        } else {
+            if (cw->titles[i]) g_free(cw->titles[i]);
+            if (cw->formats[i]) g_free(cw->formats[i]);
+        }
+    }
+    for (int i = 0; i < MAX_COLUMNS; i++) {
+        cw->titles[i] = new_titles[i];
+        cw->formats[i] = new_formats[i];
+    }
+    cw->num_columns = valid_idx;
+
+    // Fallback if user cleared everything or migration failed
+    if (cw->num_columns == 0) {
+        cw->titles[0] = g_strdup("Genre");
+        cw->formats[0] = g_strdup("%genre%");
+        cw->titles[1] = g_strdup("Album Artist");
+        cw->formats[1] = g_strdup("$if2(%album artist%,%artist%)");
+        cw->titles[2] = g_strdup("Album");
+        cw->formats[2] = g_strdup("%album%");
+        cw->num_columns = 3;
+    }
+
     scriptableItem_t *p = my_scriptable_alloc();
     p->flags = SCRIPTABLE_FLAG_IS_LIST;
     my_scriptable_set_prop(p, "name", "Facets");
 
-    cw->num_columns = 0;
-
-    for (int i = 0; i < MAX_COLUMNS; i++) {
-        if (!cw->formats[i] || !cw->titles[i] || !cw->formats[i][0] || !cw->titles[i][0]) continue;
-
+    for (int i = 0; i < cw->num_columns; i++) {
         scriptableItem_t *child = my_scriptable_alloc();
         my_scriptable_set_prop(child, "name", cw->formats[i]);
 
@@ -183,17 +211,6 @@ static void init_my_preset(cui_widget_t *cw) {
         }
 
         my_scriptable_add_child(p, child);
-        cw->num_columns++;
-    }
-
-    // Fallback if user cleared everything
-    if (cw->num_columns == 0) {
-        scriptableItem_t *child = my_scriptable_alloc();
-        my_scriptable_set_prop(child, "name", "$if2(%album artist%,%artist%)");
-        my_scriptable_add_child(p, child);
-        if (cw->titles[0]) g_free(cw->titles[0]);
-        cw->titles[0] = g_strdup("Album Artist");
-        cw->num_columns = 1;
     }
 
     scriptableItem_t *track_child = my_scriptable_alloc();
@@ -844,6 +861,13 @@ static gboolean on_tree_button_press(GtkWidget *widget, GdkEventButton *event, g
         g_signal_connect(item_sync, "activate", G_CALLBACK(on_menu_sync_library), user_data);
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), item_sync);
 
+        GtkWidget *sep2 = gtk_separator_menu_item_new();
+        gtk_menu_shell_append(GTK_MENU_SHELL(menu), sep2);
+
+        GtkWidget *item_config = gtk_menu_item_new_with_label("Configure Facets...");
+        g_signal_connect(item_config, "activate", G_CALLBACK(show_config_dialog), user_data);
+        gtk_menu_shell_append(GTK_MENU_SHELL(menu), item_config);
+
         gtk_widget_show_all(menu);
         gtk_menu_popup_at_pointer(GTK_MENU(menu), (GdkEvent *)event);
         return TRUE;
@@ -957,6 +981,34 @@ static void on_search_changed(GtkSearchEntry *entry, gpointer user_data) {
 }
 
 
+static int global_key_connected = 0;
+static gulong mainwin_key_handler_id = 0;
+
+static gboolean on_mainwin_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data) {
+    (void)widget;
+    (void)user_data;
+
+    if ((event->state & GDK_CONTROL_MASK) && (event->state & GDK_SHIFT_MASK) && (event->keyval == GDK_KEY_f || event->keyval == GDK_KEY_F)) {
+        if (all_cui_widgets) {
+            for (GList *l = all_cui_widgets; l; l = l->next) {
+                cui_widget_t *cw = (cui_widget_t *)l->data;
+                if (gtk_widget_get_visible(cw->search_entry)) {
+                    gtk_entry_set_text(GTK_ENTRY(cw->search_entry), "");
+                    gtk_widget_hide(cw->search_entry);
+                    if (cw->num_columns > 0 && cw->trees[0]) {
+                        gtk_widget_grab_focus(cw->trees[0]);
+                    }
+                } else {
+                    gtk_widget_show(cw->search_entry);
+                    gtk_widget_grab_focus(cw->search_entry);
+                }
+            }
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
 static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data) {
     (void)widget;
     cui_widget_t *cw = (cui_widget_t *)user_data;
@@ -1036,6 +1088,14 @@ static void cui_init(ddb_gtkui_widget_t *w) {
     
     rebuild_columns(cw);
 
+    if (!global_key_connected) {
+        GtkWidget *mainwin = gtkui_plugin->get_mainwin ? gtkui_plugin->get_mainwin() : NULL;
+        if (mainwin) {
+            mainwin_key_handler_id = g_signal_connect(mainwin, "key-press-event", G_CALLBACK(on_mainwin_key_press), NULL);
+            global_key_connected = 1;
+        }
+    }
+
     if (gtkui_plugin && gtkui_plugin->w_override_signals) {
         gtkui_plugin->w_override_signals(w->widget, w);
     }
@@ -1079,6 +1139,35 @@ static ddb_gtkui_widget_t *cui_create_widget(void) {
     cw->changed_col_idx = -1;
     ddb_gtkui_widget_t *w = &cw->base;
     w->type = "cui";
+
+    deadbeef_api->conf_lock();
+    if (!deadbeef_api->conf_get_str_fast("cui.col1_format", NULL)) {
+        cw->titles[0] = g_strdup("Genre");
+        cw->formats[0] = g_strdup("%genre%");
+        cw->titles[1] = g_strdup("Album Artist");
+        cw->formats[1] = g_strdup("$if2(%album artist%,%artist%)");
+        cw->titles[2] = g_strdup("Album");
+        cw->formats[2] = g_strdup("%album%");
+        cw->ignore_prefix = 0;
+        cw->split_tags = 1;
+        cw->autoplaylist_name = g_strdup("Library Viewer");
+    } else {
+        for (int i = 0; i < MAX_COLUMNS; i++) {
+            char key_title[32], key_format[32];
+            snprintf(key_title, sizeof(key_title), "cui.col%d_title", i + 1);
+            snprintf(key_format, sizeof(key_format), "cui.col%d_format", i + 1);
+            const char *t = deadbeef_api->conf_get_str_fast(key_title, "");
+            const char *f = deadbeef_api->conf_get_str_fast(key_format, "");
+            if (f && f[0]) {
+                cw->titles[i] = g_strdup(t);
+                cw->formats[i] = g_strdup(f);
+            }
+        }
+        cw->ignore_prefix = deadbeef_api->conf_get_int("cui.ignore_prefix", 0);
+        cw->split_tags = deadbeef_api->conf_get_int("cui.split_tags", 1);
+        cw->autoplaylist_name = g_strdup(deadbeef_api->conf_get_str_fast("cui.autoplaylist_name", "Library Viewer"));
+    }
+    deadbeef_api->conf_unlock();
 
     cw->exapi._size = sizeof(ddb_gtkui_widget_extended_api_t);
     cw->exapi.serialize_to_keyvalues = cui_serialize_to_keyvalues;
@@ -1139,47 +1228,46 @@ static const char **cui_serialize_to_keyvalues(ddb_gtkui_widget_t *w) {
 static void cui_deserialize_from_keyvalues(ddb_gtkui_widget_t *w, const char **keyvalues) {
     cui_widget_t *cw = (cui_widget_t *)w;
     
-    cw->ignore_prefix = 0;
-    cw->split_tags = 1;
-    cw->autoplaylist_name = g_strdup("Library Viewer");
-    
-    int found_any = 0;
-    
     if (keyvalues) {
+        int found_any = 0;
         for (int i = 0; keyvalues[i]; i += 2) {
-            const char *k = keyvalues[i];
-            const char *v = keyvalues[i+1];
-            if (!v) continue;
-            
-            if (strncmp(k, "col", 3) == 0 && strlen(k) >= 10) {
-                int col = k[3] - '1';
-                if (col >= 0 && col < MAX_COLUMNS) {
-                    if (strstr(k, "_title")) {
-                        cw->titles[col] = g_strdup(v);
-                        found_any = 1;
-                    } else if (strstr(k, "_format")) {
-                        cw->formats[col] = g_strdup(v);
-                        found_any = 1;
-                    }
-                }
-            } else if (strcmp(k, "split_tags") == 0) {
-                cw->split_tags = atoi(v);
-            } else if (strcmp(k, "ignore_prefix") == 0) {
-                cw->ignore_prefix = atoi(v);
-            } else if (strcmp(k, "autoplaylist_name") == 0) {
-                if (cw->autoplaylist_name) g_free(cw->autoplaylist_name);
-                cw->autoplaylist_name = g_strdup(v);
+            if (strncmp(keyvalues[i], "col", 3) == 0 && strstr(keyvalues[i], "_format")) {
+                found_any = 1;
+                break;
             }
         }
-    }
-    
-    if (!found_any) {
-        cw->titles[0] = g_strdup("Genre");
-        cw->formats[0] = g_strdup("%genre%");
-        cw->titles[1] = g_strdup("Album Artist");
-        cw->formats[1] = g_strdup("$if2(%album artist%,%artist%)");
-        cw->titles[2] = g_strdup("Album");
-        cw->formats[2] = g_strdup("%album%");
+        
+        if (found_any) {
+            // Clear migrated defaults so we can load instance settings
+            for (int i = 0; i < MAX_COLUMNS; i++) {
+                g_free(cw->titles[i]); cw->titles[i] = NULL;
+                g_free(cw->formats[i]); cw->formats[i] = NULL;
+            }
+            
+            for (int i = 0; keyvalues[i]; i += 2) {
+                const char *k = keyvalues[i];
+                const char *v = keyvalues[i+1];
+                if (!v) continue;
+                
+                if (strncmp(k, "col", 3) == 0 && strlen(k) >= 10) {
+                    int col = k[3] - '1';
+                    if (col >= 0 && col < MAX_COLUMNS) {
+                        if (strstr(k, "_title")) {
+                            cw->titles[col] = g_strdup(v);
+                        } else if (strstr(k, "_format")) {
+                            cw->formats[col] = g_strdup(v);
+                        }
+                    }
+                } else if (strcmp(k, "split_tags") == 0) {
+                    cw->split_tags = atoi(v);
+                } else if (strcmp(k, "ignore_prefix") == 0) {
+                    cw->ignore_prefix = atoi(v);
+                } else if (strcmp(k, "autoplaylist_name") == 0) {
+                    if (cw->autoplaylist_name) g_free(cw->autoplaylist_name);
+                    cw->autoplaylist_name = g_strdup(v);
+                }
+            }
+        }
     }
 }
 
@@ -1196,21 +1284,36 @@ static void on_config_dialog_response(GtkDialog *dialog, gint response_id, gpoin
     cui_widget_t *cw = (cui_widget_t *)user_data;
     
     if (response_id == GTK_RESPONSE_ACCEPT) {
-        // Find inputs and update cw.
         GtkWidget *content_area = gtk_dialog_get_content_area(dialog);
         GList *children = gtk_container_get_children(GTK_CONTAINER(content_area));
         if (children && GTK_IS_GRID(children->data)) {
             GtkGrid *grid = GTK_GRID(children->data);
+            
+            char *new_titles[MAX_COLUMNS] = {NULL};
+            char *new_formats[MAX_COLUMNS] = {NULL};
+            int valid_idx = 0;
+            
             for (int i = 0; i < MAX_COLUMNS; i++) {
                 GtkWidget *title_entry = gtk_grid_get_child_at(grid, 1, i + 1);
                 GtkWidget *format_entry = gtk_grid_get_child_at(grid, 2, i + 1);
                 if (title_entry && format_entry) {
-                    if (cw->titles[i]) g_free(cw->titles[i]);
-                    if (cw->formats[i]) g_free(cw->formats[i]);
-                    cw->titles[i] = g_strdup(gtk_entry_get_text(GTK_ENTRY(title_entry)));
-                    cw->formats[i] = g_strdup(gtk_entry_get_text(GTK_ENTRY(format_entry)));
+                    const char *t = gtk_entry_get_text(GTK_ENTRY(title_entry));
+                    const char *f = gtk_entry_get_text(GTK_ENTRY(format_entry));
+                    if (t && f && t[0] && f[0]) {
+                        new_titles[valid_idx] = g_strdup(t);
+                        new_formats[valid_idx] = g_strdup(f);
+                        valid_idx++;
+                    }
                 }
             }
+            
+            for (int i = 0; i < MAX_COLUMNS; i++) {
+                if (cw->titles[i]) g_free(cw->titles[i]);
+                if (cw->formats[i]) g_free(cw->formats[i]);
+                cw->titles[i] = new_titles[i];
+                cw->formats[i] = new_formats[i];
+            }
+            
             GtkWidget *ignore_cb = gtk_grid_get_child_at(grid, 1, MAX_COLUMNS + 1);
             if (ignore_cb) cw->ignore_prefix = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(ignore_cb));
             
@@ -1225,7 +1328,6 @@ static void on_config_dialog_response(GtkDialog *dialog, gint response_id, gpoin
         }
         g_list_free(children);
 
-        // Rebuild internal data
         if (cw->my_preset) {
             my_scriptable_free((scriptableItem_t *)cw->my_preset);
             cw->my_preset = NULL;
@@ -1235,7 +1337,7 @@ static void on_config_dialog_response(GtkDialog *dialog, gint response_id, gpoin
         update_tree_data(cw);
         
         if (gtkui_plugin && gtkui_plugin->w_save_layout_to_conf_key) {
-            gtkui_plugin->w_save_layout_to_conf_key("layout", NULL); // Best effort, layout is global, might need user to save layout
+            gtkui_plugin->w_save_layout_to_conf_key("layout", NULL);
         }
     }
     
@@ -1338,6 +1440,15 @@ int cui_start(void) {
 int cui_stop(void) {
     shutting_down = 1;
 
+    if (global_key_connected) {
+        GtkWidget *mainwin = gtkui_plugin->get_mainwin ? gtkui_plugin->get_mainwin() : NULL;
+        if (mainwin && mainwin_key_handler_id) {
+            g_signal_handler_disconnect(mainwin, mainwin_key_handler_id);
+            mainwin_key_handler_id = 0;
+        }
+        global_key_connected = 0;
+    }
+
     if (owns_ml_source && medialib_plugin && ml_source) {
         medialib_plugin->free_source(ml_source);
         ml_source = NULL;
@@ -1401,5 +1512,3 @@ DB_plugin_t *ddb_misc_cui_GTK3_load(DB_functions_t *api) {
     deadbeef_api = api;
     return (DB_plugin_t *)&plugin;
 }
-
-

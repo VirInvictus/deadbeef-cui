@@ -76,13 +76,13 @@ What's done, what's next. Sequenced for feature-parity with foobar2000's Columns
 - [x] **Efficient Playlist Lookup:** Replace manual playlist iteration with `plt_find_by_name`.
 - [x] **Search Allocation Storm:** Optimize `track_matches_search` by removing redundant `g_utf8_strdown` heap allocations.
 - [x] **Thread-Safe Tree Teardown:** Fix the race condition in `cui_destroy` by ensuring `ml_source` remains valid until all widgets are destroyed.
-- [ ] **Instance-Specific Settings:** Move from global `cui.*` config keys to proper `ddb_gtkui_widget_extended_api_t` serialization to support multiple independent browser instances.
+- [x] **Instance-Specific Settings:** Move from global `cui.*` config keys to proper `ddb_gtkui_widget_extended_api_t` serialization to support multiple independent browser instances.
 - [x] **Library Event Debouncing:** Implement a timer for `ml_listener_cb` to prevent redundant UI refreshes during batch metadata edits.
 - [x] **Memory Management:** 
     - [x] Fix `GtkMenu` leak in right-click context menus.
     - [x] Properly disconnect main window signal handlers in `cui_stop`.
 - [x] **Real-time Library Sync:** Ensure private media source remains synchronized with background library updates via `ml_listener_cb`.
-- [ ] **Standardized Shortcuts:** Unify shortcut keys (`CTRL-SHIFT-F`) and ensure they don't conflict with DeaDBeeF core.
+- [x] **Standardized Shortcuts:** Unify shortcut keys (`CTRL-SHIFT-F`) and ensure they don't conflict with DeaDBeeF core.
 - [x] **The [All] items don't play a song on double click** - Bug that should be fixed
 - [x] **If focus is on the facet and a letter is pressed, the selection should jump to that letter. This should work for as many characters as the user types**
 

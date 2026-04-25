@@ -4,6 +4,10 @@
 
 ---
 
+### Architectural Upgrades
+**Instance-Specific Settings.** Completely migrated Facet Browser configurations (columns, titles, split tags, prefixes) from DeaDBeeF's global config system to the GTKUI extended widget API (`ddb_gtkui_widget_extended_api_t`). This allows users to add multiple, independent Facet Browser instances to their layout, each with entirely different settings.
+**Unified Search Shortcut.** Added a native DeaDBeeF Action ("Search Facets") allowing users to bind the search toggle to any key combination via DeaDBeeF's standard Hotkeys menu. The legacy `CTRL-SHIFT-F` out-of-the-box global shortcut has been fully preserved for backward compatibility.
+
 ### Bug Fixes
 **Immediate Playback on Aggregate Selection.** Double-clicking an `[All]` item now immediately processes the new column selection before dispatching the playback command, ensuring that the correctly aggregated tracks begin playing instead of whatever was previously in the playlist.
 **Native Type-Ahead Search.** Re-enabled GTK's native type-ahead search within the facet tree views (`gtk_tree_view_set_enable_search`). Users can now focus on a column and type a letter to instantly jump to the first matching row without opening the global search bar.
