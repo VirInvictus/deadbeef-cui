@@ -4,16 +4,14 @@
         "type": "git",
         "url": "https://github.com/bdkl/deadbeef-cui.git"
     },
-    "make": {
-        "type": "make",
+    "cmake": {
         "root": "/",
-        "makefile": "Makefile.legacy",
         "ENV": {
             "GTK3_CFLAGS": "$GTK310_CFLAGS",
             "GTK3_LIBS": "$GTK310_LIBS"
         },
         "out": [
-            "ddb_misc_cui.so"
+            "cui.so"
         ]
     }
 }

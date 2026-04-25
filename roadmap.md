@@ -94,19 +94,21 @@ What's done, what's next. Sequenced for feature-parity with foobar2000's Columns
 - [ ] **Incremental Playlist Updates:** Use `DDB_PLAYLIST_CHANGE_CONTENT` flags to prevent full playlist UI re-renders on every selection change.
 - [ ] **Memoization Refresh:** Re-enable and optimize the `track_counts_cache` when search filters are active.
 - [ ] **Title Formatting v2 Migration:** Switch from legacy formatting to the modern `tf_compile`/`tf_eval` API for better performance and flexibility.
-- [ ] **GTK4 Forward Compatibility:** Exhaustive verification of widget signals and drawing code against the GTK4 specification.
+- [x] **Modular Refactoring:** Break up the monolithic `main.c` into domain-specific modules for better maintainability (v1.2.3).
+- [x] **Standardized Shortcuts:** Unify shortcut keys (`CTRL-SHIFT-F`) and ensure they don't conflict with DeaDBeeF core.
+
+...
 
 ## Phase 9: Add to DeaDBeeF Plugin List
 *Packaging and submitting for official inclusion in the DeaDBeeF ecosystem.*
 
 - [ ] **Repository Readiness:** Ensure the public repository (https://github.com/bdkl/deadbeef-cui) is clean, tagged, and contains all necessary documentation.
-- [ ] **Legacy Build Support:** Provide a standalone `Makefile` for compatibility with `deadbeef-plugin-builder` (which expects GNU Make/Autotools rather than CMake).
+- [x] **Consolidated Build System:** Removed the legacy `Makefile` in favor of a single, robust CMake-driven build process.
 - [ ] **Manifest Authoring:** Create a `manifest.json` file for the `deadbeef-plugin-builder` repository, defining source location and build parameters.
 - [ ] **Cross-Platform Verification:** Use the `deadbeef-plugin-builder` Docker environment to verify the plugin compiles correctly for multiple architectures (x86_64, i686).
 - [ ] **Static Linking Audit:** Ensure all non-core dependencies are linked statically to maximize compatibility across different Linux distributions.
 - [ ] **Submission PR:** Submit a Pull Request to `DeaDBeeF-Player/deadbeef-plugin-builder` to include the plugin in the official website's downloads page.
 - [ ] **v2.0.0 Tagging:** Create the second official stable release tag on GitHub with pre-compiled binaries for easy user installation.
----
 
 ## Deferred (v2.0+)
 - [ ] Folder-based browsing mode.
