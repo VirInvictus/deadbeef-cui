@@ -1,6 +1,18 @@
 # deadbeef-cui — Patch Notes
 
-## v1.2.2 (Current)
+## v1.2.3 (Current)
+
+---
+
+### Architectural Upgrades
+**Modular Refactoring.** The codebase has been fully reorganized to break up the previously monolithic `main.c` file (~1,000 lines) into cleaner, domain-specific modules. This significantly enhances maintainability and eases future community contributions.
+- **`cui_widget.c`**: Now exclusively manages the GTK UI layout, lifecycle events, context menus, and the configuration dialog.
+- **`cui_data.c`**: Centralizes all media library interactions, including recursive database querying, metadata aggregation, track counting, and playlist synchronization.
+- **`cui_scriptable.c`**: Contains the internal scriptable type definitions and configuration migration parsing required by DeaDBeeF's medialib engine.
+- **`cui_globals.h`**: Provides a single source of truth for global states, pointers, and widget structure definitions.
+- **`main.c`**: Streamlined to serve strictly as the primary plugin entry point and DeaDBeeF API broker.
+
+## v1.2.2
 
 ---
 

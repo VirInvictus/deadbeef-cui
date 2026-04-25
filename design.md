@@ -13,21 +13,17 @@ We keep a clone of the official DeaDBeeF source code in the `.deadbeef/` directo
 
 ## 2. Codebase Architecture: What Code Does What Where
 
-Our plugin is a native C shared library (`cui.so`) built via CMake. The majority of the logic is currently contained in `src/main.c`.
+Our plugin is a native C shared library (`cui.so`) built via CMake. The codebase is broken down into modular components:
 
-### `src/main.c` Overview
-- **Plugin Entry Points:** `cui_start`, `cui_stop`, `cui_message`, and `ddb_misc_cui_GTK3_load`. These are the hooks DeaDBeeF uses to load our code. `cui_message` handles lifecycle events like `DB_EV_TERMINATE` and config updates (`DB_EV_CONFIGCHANGED`).
-- **UI Creation (`cui_create_widget`):** Registers our widget with the `gtkui` plugin. It builds the GTK UI dynamically based on the configured columns, packing them into `GtkPaned` horizontal splitters. It also initializes the `GtkSearchEntry` for text filtering.
-- **Data Population & Filtering:**
-  - `init_my_preset()`: Loads column format configurations from DeaDBeeF's config system (`cui.col1_format`, etc.) into a custom scriptable preset.
-  - `update_tree_data()` & `populate_list_multi()`: Uses the `medialib` API to build a hierarchical tree of library items, counts tracks recursively (`count_tracks_recursive`), and populates the `GtkListStore` models for each column.
-  - **Cascading Filters:** When a user selects a row in Column N, `on_column_changed` triggers, updating the valid selection hash (`update_selection_hash`) and automatically repopulating Column N+1.
-- **Playlist Integration:**
-  - `update_playlist_from_cui()` & `populate_playlist_from_cui()`: Grabs the selected metadata items from the UI, finds all underlying `DB_playItem_t` tracks, and pushes them to a dedicated "Library Viewer" playlist in DeaDBeeF.
-- **Custom Scriptable Types:** Provides an internal implementation of `scriptableItem_t` to mirror the logic of the `medialib.so` plugin, which is required to pass custom layout schemas to the media library engine.
+### Core Modules
+- **`src/main.c`**: Plugin entry points (`cui_start`, `cui_stop`, `cui_message`) and action handlers (like the global search hotkey). Connects DeaDBeeF to the UI layer.
+- **`src/cui_widget.c` / `src/cui_widget.h`**: The GTK UI layer. Handles widget registration (`cui_create_widget`), building the multi-pane GTK container (`rebuild_columns`), configuration dialog UI, and event callbacks (key presses, clicks, and menu triggers).
+- **`src/cui_data.c` / `src/cui_data.h`**: The media library engine. Interfaces with the `medialib` plugin to construct the data tree (`update_tree_data`), count tracks (`count_tracks_recursive`), aggregate selected nodes, and populate the generated "Library Viewer" playlist.
+- **`src/cui_scriptable.c` / `src/cui_scriptable.h`**: Implements custom scriptable types mirroring the `medialib` internals. Used to build dynamic, format-driven tree schemas to query the DeaDBeeF database based on user column layouts.
+- **`src/cui_globals.h`**: Contains shared data structures (`cui_widget_t`), constant definitions (`MAX_COLUMNS`), and external state pointers (`deadbeef_api`, `medialib_plugin`, etc.) that orchestrate the interaction between the above modules.
 
 ### Other Files
-- `CMakeLists.txt`: Build configuration pointing to `/usr/include/deadbeef` and GTK3 to compile `src/main.c` into a shared library.
+- `CMakeLists.txt`: Build configuration pointing to `/usr/include/deadbeef` and GTK3 to compile the `src/` modules into a shared library.
 - `manifest.json.example`: Metadata format referencing how the plugin can be described (if using automated builders).
 
 ## 3. Mandatory Update Workflow
@@ -51,7 +47,7 @@ Whenever you make structural changes, add features, or fix bugs, you MUST follow
 
 ### D. Updating `README.md` and `spec.md`
 - **When:** ONLY if a significant architectural change or major new feature is added (e.g., adding a new settings dialog, changing dependencies, supporting a new platform like GTK4).
-- **How:** Ensure that the description of the plugin's capabilities accurately reflects the current state of `src/main.c`. Keep instructions for building and installation up to date.
+- **How:** Ensure that the description of the plugin's capabilities accurately reflects the current state of the codebase. Keep instructions for building and installation up to date.
 
 ### E. Updating this file (`design.md`)
 - **When:** If the project structure changes (e.g., splitting `src/main.c` into multiple files like `ui.c`, `medialib_sync.c`), or if a new strategy for querying `.deadbeef` is adopted.

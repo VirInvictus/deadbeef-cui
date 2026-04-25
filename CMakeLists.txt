@@ -11,7 +11,12 @@ pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
 # Since we know where deadbeef.h is (/usr/include/deadbeef), we can just use it directly
 include_directories(/usr/include)
 
-add_library(cui SHARED src/main.c)
+add_library(cui SHARED 
+    src/main.c
+    src/cui_widget.c
+    src/cui_data.c
+    src/cui_scriptable.c
+)
 set_target_properties(cui PROPERTIES PREFIX "") # so it compiles to cui.so instead of libcui.so
 
 target_include_directories(cui PRIVATE ${GTK3_INCLUDE_DIRS})
