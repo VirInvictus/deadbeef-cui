@@ -58,4 +58,5 @@ Inspired by the gold standard of library management: **[foobar2000](https://www.
 
 ## Support
 
+Support me by donating bitcoin (even a coffee would help):  
 bc1qkge6zr45tzqfwfmvma2ylumt6mg7wlwmhr05yv
