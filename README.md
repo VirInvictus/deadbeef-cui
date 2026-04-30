@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Version-1.2.3-blue" alt="Version: 1.2.3">
-  <img src="https://img.shields.io/badge/Language-C/C++-blue" alt="Language: C/C++">
+  <img src="https://img.shields.io/badge/Language-C-blue" alt="Language: C">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
 </p>
 
@@ -30,7 +30,7 @@ The plugin drives DeaDBeeF's existing playlist view seamlessly. To prevent accid
 | **Custom Formatting** | Full support for DeaDBeeF title formatting syntax. |
 | **Integrated Search** | Filter facets dynamically via a `CTRL-SHIFT-F` search bar. |
 | **Multi-Selection** | Aggregate filters across multiple genres/artists via Ctrl/Shift-click. |
-| **Native Integration** | Built as a native C++ GTK plugin using the `DB_mediasource_t` API. |
+| **Native Integration** | Built as a native C GTK3 plugin using the `DB_mediasource_t` API. |
 
 ## Development & Build
 
