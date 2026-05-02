@@ -1,6 +1,19 @@
 # deadbeef-cui — Patch Notes
 
-## v1.2.3 (Current)
+## v1.2.4 (Current)
+
+---
+
+### Performance
+**Eliminated 1s startup debounce on first paint.** The medialib `CONTENT_DID_CHANGE` listener (`ml_event_idle_cb`) always fed events through a 1000 ms `g_timeout_add` to coalesce batch tag-edit storms. On the very first content event after widget creation that protection is pure overhead — the user is staring at empty columns waiting for nothing. Added an `initial_sync_done` flag on `cui_widget_t`: the first event runs through `g_idle_add` (essentially immediate); subsequent events keep the 1 s debounce. Set in `update_tree_data` once `create_item_tree` returns a tree with real children.
+**Deferred initial tree build to the idle queue.** `cui_init` previously called `update_tree_data` synchronously, blocking GTKUI's layout loader on a 100 ms+ tree build before the rest of the layout could paint. The first build now goes through `g_idle_add(deferred_lib_update_cb, cw)`, reusing the existing `lib_update_timeout_id` slot so `cui_destroy` already cleans it up and the existing coalescing logic short-circuits if a listener event arrives first.
+**Removed unconditional library copy-into-playlist on first init.** `update_tree_data` ended with an `on_column_changed` call that did two things: cascade-populated downstream facet columns, and copied every track in the library into the "Library Viewer" playlist (under `pl_lock`) — all on the first paint, before the user clicked anything. With ~6k tracks that was ~200–500 ms of avoidable work, plus an unexpected side-effect (the autoplaylist always contained the whole library on launch). Split the two halves: every column still gets populated to its full-aggregate state ([All] row + every value) when no saved selection cascade reached it, but the playlist stays empty until the user actually selects a row. Selection-driven population still flows through the GTK changed signal as before.
+
+### Theme Conformance
+**Match the playlist's `gtkui.font.listview_text` for row cells.** When `gtkui.override_listview_colors=1` is set, the standard playlist widget renders rows in whatever the user configured (e.g. `Söhne 12`). Our `GtkCellRendererText` instances were ignoring that override and falling back to the GTK theme font, which produced a visible mismatch when both widgets were docked side by side. `create_column` now reads the conf key inside a `conf_lock`/`conf_unlock` pair and, if a value is set, applies it to both the text and count cell renderers via the `font` property. When the override flag is off, the renderers stay unset so the GTK theme applies normally.
+**Match the playlist's `gtkui.font.listview_column_text` for headers.** Column header labels are separate widgets from cell renderers — `gtk_tree_view_column_new_with_attributes` auto-generates a `GtkLabel`, and the `font` property on a renderer doesn't touch it. Headers now use `gtk_tree_view_column_set_widget` with a custom `GtkLabel` whose Pango attribute list carries the conf-driven font description (e.g. `Söhne Semi-Bold 14`). Same override-flag gating as row cells.
+
+## v1.2.3
 
 ---
 

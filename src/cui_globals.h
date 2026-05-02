@@ -74,6 +74,7 @@ typedef struct {
     guint changed_timeout_id;
     guint lib_update_timeout_id;
     int changed_col_idx;
+    int initial_sync_done;
 
     GtkWidget *search_entry;
     char *search_text;

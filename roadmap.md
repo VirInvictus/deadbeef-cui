@@ -89,18 +89,30 @@ What's done, what's next. Sequenced for feature-parity with foobar2000's Columns
 ## Phase 8: Advanced Performance Refinement
 *Pushing the limits of the faceted browsing engine.*
 
-- [ ] **Asynchronous Counting:** Offload `count_tracks_recursive` to a background thread to prevent UI freezing during facet updates.
-- [ ] **Pre-calculated Sort Keys:** Store prefix-stripped strings in the `GtkListStore` to accelerate alphabetical sorting.
 - [ ] **Incremental Playlist Updates:** Use `DDB_PLAYLIST_CHANGE_CONTENT` flags to prevent full playlist UI re-renders on every selection change.
 - [ ] **Memoization Refresh:** Re-enable and optimize the `track_counts_cache` when search filters are active.
-- [ ] **Title Formatting v2 Migration:** Switch from legacy formatting to the modern `tf_compile`/`tf_eval` API for better performance and flexibility.
 - [x] **Modular Refactoring:** Break up the monolithic `main.c` into domain-specific modules for better maintainability (v1.2.3).
 - [x] **Standardized Shortcuts:** Unify shortcut keys (`CTRL-SHIFT-F`) and ensure they don't conflict with DeaDBeeF core.
 
-...
+## Phase 9: Startup Latency & Theme Conformance
+*Closing the gap between widget creation and a populated, theme-correct view.*
 
-## Phase 9: Add to DeaDBeeF Plugin List
-*Packaging and submitting for official inclusion in the DeaDBeeF ecosystem.*
+Measured baseline (6,367-track library, fresh launch with cui in layout but no GTKUI medialib widget): `ml playlist load time` 0.36 s, `scan time` 0.64 s, `tree build time` 0.10 s, plus a hardcoded 1000 ms debounce in `ml_event_idle_cb` between the first `CONTENT_DID_CHANGE` and our rebuild. Total observable empty-→-populated gap ≈ 1.5–2.0 s. Tree build itself is fast; the wins are in the wait state.
+
+### Startup latency
+- [x] **Skip the first-fire debounce.** `ml_event_idle_cb` always queues a 1000 ms `g_timeout_add` before `update_tree_data` runs. The debounce exists to coalesce batch tag-edit events; on the first content-did-change after widget creation it is pure overhead. Track an `initial_sync_done` flag on `cui_widget_t` and dispatch the first rebuild immediately, then resume the 1000 ms debounce for subsequent events. (v1.2.4)
+- [x] **Defer the synchronous `update_tree_data` in `cui_init` to `g_idle_add`.** GTKUI's layout loader calls our `init` directly, so any work we do there blocks the rest of the layout from rendering. Pushing the initial rebuild to the next idle tick lets the empty columns paint instantly and runs the heavy work after the window is visible. (v1.2.4)
+- [x] **Don't pre-populate the Library Viewer playlist on first init.** `update_tree_data` ends with an unconditional `on_column_changed` call that arms `deferred_column_changed_cb` → `update_playlist_from_cui`, which copies every track in the library into the viewer playlist while holding `pl_lock`. With no saved selection, this is a full-library copy the user hasn't asked for. (v1.2.4)
+
+### Theme conformance
+- [x] **Inherit `gtkui.font.listview_*` for row cells.** Currently our `GtkCellRendererText` instances use the default GTK theme font. When `gtkui.override_listview_colors=1` is set, the playlist widget reads `gtkui.font.listview_text` (e.g. `Söhne 12`) and our cells fall out of visual sync. Read `gtkui.font.listview_text` and apply it to the row renderer's `font` property; if override is off, leave the property unset so the GTK theme applies. (v1.2.4)
+- [x] **Inherit `gtkui.font.listview_column_text` for headers.** Column header labels are separate widgets. Use `gtk_tree_view_column_set_widget` with a `GtkLabel` whose Pango font description comes from `gtkui.font.listview_column_text` (e.g. `Söhne Semi-Bold 14`). Same override-flag gating as row cells. (v1.2.4)
+- [ ] **Re-read fonts on `DB_EV_CONFIGCHANGED`.** When the user changes the playlist font in DeaDBeeF preferences, our cells should refresh in place. Hook the message and re-apply font properties to existing renderers/header labels.
+
+---
+
+## Phase 10: Add to DeaDBeeF Plugin List
+*Packaging and submitting for official inclusion in the DeaDBeeF ecosystem. (Was Phase 9.)*
 
 - [ ] **Repository Readiness:** Ensure the public repository (https://github.com/bdkl/deadbeef-cui) is clean, tagged, and contains all necessary documentation.
 - [x] **Consolidated Build System:** Removed the legacy `Makefile` in favor of a single, robust CMake-driven build process.
@@ -109,8 +121,3 @@ What's done, what's next. Sequenced for feature-parity with foobar2000's Columns
 - [ ] **Static Linking Audit:** Ensure all non-core dependencies are linked statically to maximize compatibility across different Linux distributions.
 - [ ] **Submission PR:** Submit a Pull Request to `DeaDBeeF-Player/deadbeef-plugin-builder` to include the plugin in the official website's downloads page.
 - [ ] **v2.0.0 Tagging:** Create the second official stable release tag on GitHub with pre-compiled binaries for easy user installation.
-
-## Deferred (v2.0+)
-- [ ] Folder-based browsing mode.
-- [ ] Custom CSS styling for facet rows.
-- [ ] Advanced statistics (total playtime, bitrate breakdown).

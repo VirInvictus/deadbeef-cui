@@ -364,22 +364,36 @@ void update_tree_data(cui_widget_t *cw) {
         free(sr);
         return;
     }
-    
+
+    // Mark the widget as having received real data so subsequent CONTENT_DID_CHANGE
+    // events go through the 1s debounce. The first sync — when the source is still
+    // loading and the tree comes back empty — keeps the flag clear so the listener
+    // can re-fire immediately once data is available.
+    if (medialib_plugin->tree_item_get_children(cw->cached_tree)) {
+        cw->initial_sync_done = 1;
+    }
+
     cw->track_counts_cache = g_hash_table_new(g_direct_hash, g_direct_equal);
 
     populate_list_multi(cw->stores[0], 1, cw, 0);
+
+    // Highest column index whose store was populated by the cascade so far.
+    // Col 0 was just populated unconditionally; saved-selection matches push
+    // this further when they cause downstream columns to be populated with
+    // selection-filtered content.
+    int populated_through = 0;
 
     for (int i = 0; i < cw->num_columns; i++) {
         if (saved_sels[i]) {
             GtkTreeModel *model = GTK_TREE_MODEL(cw->stores[i]);
             GtkTreeSelection *sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->trees[i]));
-            
+
             GtkTreeIter iter;
             gboolean valid = gtk_tree_model_get_iter_first(model, &iter);
             gboolean found_any = FALSE;
-            
+
             g_signal_handlers_block_by_func(sel, (gpointer)on_column_changed, cw);
-            
+
             while (valid) {
                 gchar *text;
                 gtk_tree_model_get(model, &iter, 0, &text, -1);
@@ -390,13 +404,14 @@ void update_tree_data(cui_widget_t *cw) {
                 g_free(text);
                 valid = gtk_tree_model_iter_next(model, &iter);
             }
-            
+
             g_signal_handlers_unblock_by_func(sel, (gpointer)on_column_changed, cw);
-            
+
             if (found_any) {
                 update_selection_hash(sel, &cw->sel_texts[i]);
                 if (i + 1 < cw->num_columns) {
                     populate_list_multi(cw->stores[i + 1], i + 2, cw, i + 1);
+                    populated_through = i + 1;
                 }
             } else {
                 break;
@@ -412,9 +427,17 @@ void update_tree_data(cui_widget_t *cw) {
         }
     }
 
-    if (!cw->sel_texts[0]) {
-        GtkTreeSelection *first_sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->trees[0]));
-        on_column_changed(first_sel, cw);
+    // Populate any column the saved-selection cascade didn't reach so unselected
+    // facets show their full aggregate (the [All] row plus every value). The
+    // populated_through marker is what distinguishes "really empty" from
+    // "previously filled with stale [All (0 X)] from an empty-tree first build" —
+    // checking gtk_tree_model_get_iter_first alone would falsely skip the latter.
+    // We deliberately do not fire update_playlist_from_cui here; the pre-v1.2.4
+    // behavior copied the entire library into the viewer playlist on first init,
+    // which was slow and surprising. Selection-driven playlist population still
+    // happens through on_column_changed when the user clicks a row.
+    for (int i = populated_through + 1; i < cw->num_columns; i++) {
+        populate_list_multi(cw->stores[i], i + 1, cw, i);
     }
 
     cw->last_ml_modification_idx = current_idx;

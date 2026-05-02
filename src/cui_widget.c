@@ -258,6 +258,37 @@ static gboolean on_tree_button_press(GtkWidget *widget, GdkEventButton *event, g
     return FALSE;
 }
 
+// Read the user's listview font overrides from gtkui config so our cells visually
+// match the playlist widget. When gtkui.override_listview_colors is off, we leave
+// both pointers NULL and the default GTK theme font applies.
+static void cui_get_listview_fonts(char **out_row_font, char **out_header_font) {
+    *out_row_font = NULL;
+    *out_header_font = NULL;
+    if (!deadbeef_api->conf_get_int("gtkui.override_listview_colors", 0)) return;
+
+    deadbeef_api->conf_lock();
+    const char *row = deadbeef_api->conf_get_str_fast("gtkui.font.listview_text", NULL);
+    if (row && row[0]) *out_row_font = g_strdup(row);
+    const char *hdr = deadbeef_api->conf_get_str_fast("gtkui.font.listview_column_text", NULL);
+    if (hdr && hdr[0]) *out_header_font = g_strdup(hdr);
+    deadbeef_api->conf_unlock();
+}
+
+static void cui_apply_header_font(GtkTreeViewColumn *column, const char *title, const char *header_font) {
+    if (!header_font) return;
+    GtkWidget *label = gtk_label_new(title);
+    PangoFontDescription *desc = pango_font_description_from_string(header_font);
+    if (desc) {
+        PangoAttrList *attrs = pango_attr_list_new();
+        pango_attr_list_insert(attrs, pango_attr_font_desc_new(desc));
+        gtk_label_set_attributes(GTK_LABEL(label), attrs);
+        pango_attr_list_unref(attrs);
+        pango_font_description_free(desc);
+    }
+    gtk_widget_show(label);
+    gtk_tree_view_column_set_widget(column, label);
+}
+
 static GtkWidget *create_column(const char *title, GtkListStore **out_store, GtkWidget **out_tree, cui_widget_t *cw) {
     GtkListStore *store = gtk_list_store_new(3, G_TYPE_STRING, G_TYPE_INT, G_TYPE_BOOLEAN);
     GtkWidget *tree = gtk_tree_view_new_with_model(GTK_TREE_MODEL(store));
@@ -269,22 +300,33 @@ static GtkWidget *create_column(const char *title, GtkListStore **out_store, Gtk
 
     gtk_tree_view_set_headers_visible(GTK_TREE_VIEW(tree), TRUE);
 
+    char *row_font = NULL;
+    char *header_font = NULL;
+    cui_get_listview_fonts(&row_font, &header_font);
+
     GtkCellRenderer *renderer = gtk_cell_renderer_text_new();
     g_object_set(renderer, "ellipsize", PANGO_ELLIPSIZE_END, NULL);
+    if (row_font) g_object_set(renderer, "font", row_font, NULL);
     GtkTreeViewColumn *column = gtk_tree_view_column_new_with_attributes(title, renderer, "text", 0, NULL);
     gtk_tree_view_column_set_sizing(column, GTK_TREE_VIEW_COLUMN_FIXED);
     gtk_tree_view_column_set_min_width(column, 50);
     gtk_tree_view_column_set_resizable(column, TRUE);
     gtk_tree_view_column_set_sort_column_id(column, 0);
     gtk_tree_view_column_set_expand(column, TRUE);
+    cui_apply_header_font(column, title, header_font);
     gtk_tree_view_append_column(GTK_TREE_VIEW(tree), column);
 
     GtkCellRenderer *count_renderer = gtk_cell_renderer_text_new();
     g_object_set(count_renderer, "xalign", 1.0, "xpad", 16, NULL);
+    if (row_font) g_object_set(count_renderer, "font", row_font, NULL);
     GtkTreeViewColumn *count_column = gtk_tree_view_column_new_with_attributes("Count", count_renderer, "text", 1, NULL);
     gtk_tree_view_column_set_sizing(count_column, GTK_TREE_VIEW_COLUMN_AUTOSIZE);
     gtk_tree_view_column_set_sort_column_id(count_column, 1);
+    cui_apply_header_font(count_column, "Count", header_font);
     gtk_tree_view_append_column(GTK_TREE_VIEW(tree), count_column);
+
+    g_free(row_font);
+    g_free(header_font);
 
     GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
@@ -395,7 +437,14 @@ static void cui_init(ddb_gtkui_widget_t *w) {
     if (!g_list_find(all_cui_widgets, cw)) {
         all_cui_widgets = g_list_append(all_cui_widgets, cw);
     }
-    update_tree_data(cw);
+
+    // Defer the first build to the next idle tick so layout finishes painting
+    // before we run the heavy tree+populate pipeline. Reuses lib_update_timeout_id
+    // so cui_destroy's cleanup covers it; if a CONTENT_DID_CHANGE arrives first,
+    // its handler will see the id is non-zero and coalesce with this scheduled run.
+    if (cw->lib_update_timeout_id == 0) {
+        cw->lib_update_timeout_id = g_idle_add(deferred_lib_update_cb, cw);
+    }
 }
 
 static void cui_destroy(ddb_gtkui_widget_t *w) {
@@ -745,7 +794,13 @@ gboolean ml_event_idle_cb(gpointer data) {
     }
 
     if (cw->lib_update_timeout_id == 0) {
-        cw->lib_update_timeout_id = g_timeout_add(1000, deferred_lib_update_cb, cw);
+        // First content event after widget creation runs immediately; subsequent
+        // events use the 1s debounce that protects against batch tag-edit storms.
+        if (cw->initial_sync_done) {
+            cw->lib_update_timeout_id = g_timeout_add(1000, deferred_lib_update_cb, cw);
+        } else {
+            cw->lib_update_timeout_id = g_idle_add(deferred_lib_update_cb, cw);
+        }
     }
     return G_SOURCE_REMOVE;
 }
