@@ -290,9 +290,9 @@ The modification-index check at the top is what prevents infinite loops with the
 
 When `search_text` changes, `update_tree_data` resets `last_ml_modification_idx = -1` (cui_data.c:323). This forces a full rebuild because the rebuild path is *also* where the search predicate (`track_matches_search`) gets applied — counts and visibility depend on the current search string.
 
-### 6.8 The track-count cache must be discarded under search
+### 6.8 The track-count cache is valid under search, but only because §6.7 always resets it
 
-`count_tracks_recursive` only reads/writes `cw->track_counts_cache` when there is no search (cui_data.c:23). Caching counts under a search would memoize the wrong values. Don't "optimize" this without re-keying the cache by search string.
+As of v1.2.5, `count_tracks_recursive` uses `cw->track_counts_cache` regardless of `cw->search_text`. The values are correct because §6.7 forces `last_ml_modification_idx = -1` whenever `search_text` changes, which makes the next `update_tree_data` destroy and recreate the cache. The two rules are coupled: if you ever reorder the rebuild path so search changes can hit `count_tracks_recursive` against an old cache, this breaks silently (returns last-search counts under the new filter). Either keep the §6.7 reset or re-key the cache by search string.
 
 ### 6.9 The `[All]` aggregate row is synthesised, not from the tree
 

@@ -289,7 +289,8 @@ static void cui_apply_header_font(GtkTreeViewColumn *column, const char *title, 
     gtk_tree_view_column_set_widget(column, label);
 }
 
-static GtkWidget *create_column(const char *title, GtkListStore **out_store, GtkWidget **out_tree, cui_widget_t *cw) {
+static GtkWidget *create_column(const char *title, GtkListStore **out_store, GtkWidget **out_tree, cui_widget_t *cw,
+                                 const char *row_font, const char *header_font) {
     GtkListStore *store = gtk_list_store_new(3, G_TYPE_STRING, G_TYPE_INT, G_TYPE_BOOLEAN);
     GtkWidget *tree = gtk_tree_view_new_with_model(GTK_TREE_MODEL(store));
     g_object_unref(store);
@@ -299,10 +300,6 @@ static GtkWidget *create_column(const char *title, GtkListStore **out_store, Gtk
     gtk_tree_sortable_set_sort_column_id(GTK_TREE_SORTABLE(store), 0, GTK_SORT_ASCENDING);
 
     gtk_tree_view_set_headers_visible(GTK_TREE_VIEW(tree), TRUE);
-
-    char *row_font = NULL;
-    char *header_font = NULL;
-    cui_get_listview_fonts(&row_font, &header_font);
 
     GtkCellRenderer *renderer = gtk_cell_renderer_text_new();
     g_object_set(renderer, "ellipsize", PANGO_ELLIPSIZE_END, NULL);
@@ -325,9 +322,6 @@ static GtkWidget *create_column(const char *title, GtkListStore **out_store, Gtk
     cui_apply_header_font(count_column, "Count", header_font);
     gtk_tree_view_append_column(GTK_TREE_VIEW(tree), count_column);
 
-    g_free(row_font);
-    g_free(header_font);
-
     GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
     gtk_container_add(GTK_CONTAINER(scroll), tree);
@@ -340,7 +334,17 @@ static GtkWidget *create_column(const char *title, GtkListStore **out_store, Gtk
 
 void rebuild_columns(cui_widget_t *cw) {
     if (cw->num_columns <= 0) return;
-    
+
+    // Read font config once at the top so every column built in this pass uses
+    // the same values, and cache them on cw so the CONFIGCHANGED handler can
+    // tell whether a future event represents an actual font change.
+    g_free(cw->last_row_font);
+    g_free(cw->last_header_font);
+    cw->last_row_font = NULL;
+    cw->last_header_font = NULL;
+    cui_get_listview_fonts(&cw->last_row_font, &cw->last_header_font);
+    cw->last_listview_override = deadbeef_api->conf_get_int("gtkui.override_listview_colors", 0);
+
     GList *children, *iter;
     children = gtk_container_get_children(GTK_CONTAINER(cw->base.widget));
     for (iter = children; iter != NULL; iter = g_list_next(iter)) {
@@ -350,7 +354,8 @@ void rebuild_columns(cui_widget_t *cw) {
 
     GtkWidget *col_widgets[MAX_COLUMNS] = {NULL};
     for (int i = 0; i < cw->num_columns; i++) {
-        col_widgets[i] = create_column(cw->titles[i], &cw->stores[i], &cw->trees[i], cw);
+        col_widgets[i] = create_column(cw->titles[i], &cw->stores[i], &cw->trees[i], cw,
+                                        cw->last_row_font, cw->last_header_font);
 
         GtkTreeSelection *sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->trees[i]));
         gtk_tree_selection_set_mode(sel, GTK_SELECTION_MULTIPLE);
@@ -495,6 +500,10 @@ static void cui_destroy(ddb_gtkui_widget_t *w) {
     cw->search_text = NULL;
     g_free(cw->last_search_text);
     cw->last_search_text = NULL;
+    g_free(cw->last_row_font);
+    cw->last_row_font = NULL;
+    g_free(cw->last_header_font);
+    cw->last_header_font = NULL;
 }
 
 static const char **cui_serialize_to_keyvalues(ddb_gtkui_widget_t *w) {
@@ -772,14 +781,44 @@ ddb_gtkui_widget_t *cui_create_widget(void) {
 gboolean deferred_lib_update_cb(gpointer data) {
     cui_widget_t *cw = (cui_widget_t *)data;
     cw->lib_update_timeout_id = 0;
-    
+
     if (shutting_down) return G_SOURCE_REMOVE;
-    
+
     if (g_list_find(all_cui_widgets, cw)) {
         if (medialib_plugin && ml_source) {
             update_tree_data(cw);
         }
     }
+    return G_SOURCE_REMOVE;
+}
+
+// Idle callback fired by main.c's cui_message on DB_EV_CONFIGCHANGED. Walks
+// every live cui widget, compares cached font state against the current
+// gtkui.font.listview_* keys, and rebuilds only the widgets that actually
+// changed. CONFIGCHANGED fires for unrelated keys too (volume, output, etc.),
+// hence the per-widget comparison rather than blind rebuilds.
+gboolean cui_handle_config_change(gpointer user_data) {
+    (void)user_data;
+    g_atomic_int_set(&config_change_pending, 0);
+    if (shutting_down) return G_SOURCE_REMOVE;
+
+    int new_override = deadbeef_api->conf_get_int("gtkui.override_listview_colors", 0);
+    char *new_row = NULL;
+    char *new_hdr = NULL;
+    cui_get_listview_fonts(&new_row, &new_hdr);
+
+    for (GList *l = all_cui_widgets; l; l = l->next) {
+        cui_widget_t *cw = (cui_widget_t *)l->data;
+        if (cw->last_listview_override != new_override ||
+            g_strcmp0(cw->last_row_font, new_row) != 0 ||
+            g_strcmp0(cw->last_header_font, new_hdr) != 0) {
+            rebuild_columns(cw);
+            update_tree_data(cw);
+        }
+    }
+
+    g_free(new_row);
+    g_free(new_hdr);
     return G_SOURCE_REMOVE;
 }
 

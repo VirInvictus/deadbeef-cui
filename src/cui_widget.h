@@ -15,6 +15,7 @@ void sync_source_config(void);
 
 gboolean deferred_lib_update_cb(gpointer data);
 gboolean ml_event_idle_cb(gpointer data);
+gboolean cui_handle_config_change(gpointer user_data);
 void ml_listener_cb(ddb_mediasource_event_type_t event, void *user_data);
 
 #endif // CUI_WIDGET_H

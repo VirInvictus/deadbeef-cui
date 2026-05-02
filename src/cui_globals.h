@@ -79,8 +79,16 @@ typedef struct {
     GtkWidget *search_entry;
     char *search_text;
     char *last_search_text;
+
+    // Cached font state from the last rebuild_columns. Compared against current
+    // gtkui.font.listview_* keys when DB_EV_CONFIGCHANGED fires; mismatch means
+    // the user changed playlist fonts and our renderers need to refresh.
+    char *last_row_font;
+    char *last_header_font;
+    int last_listview_override;
 } cui_widget_t;
 
 extern GList *all_cui_widgets;
+extern int config_change_pending;
 
 #endif // CUI_GLOBALS_H

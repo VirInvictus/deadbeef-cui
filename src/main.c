@@ -12,12 +12,21 @@ int owns_ml_source = 0;
 int ml_modification_idx = 1;
 GList *all_cui_widgets = NULL;
 
+int config_change_pending = 0;
+
 static int cui_message(uint32_t id, uintptr_t ctx, uint32_t p1, uint32_t p2) {
     (void)ctx;
     (void)p1;
     (void)p2;
     if (id == DB_EV_TERMINATE) {
         shutting_down = 1;
+    } else if (id == DB_EV_CONFIGCHANGED) {
+        // Coalesce bursts of CONFIGCHANGED via an atomic flag — the handler
+        // clears it before doing work, so a change that lands during the check
+        // still gets a fresh follow-up dispatch.
+        if (!shutting_down && g_atomic_int_compare_and_exchange(&config_change_pending, 0, 1)) {
+            g_idle_add(cui_handle_config_change, NULL);
+        }
     }
     return 0;
 }
@@ -36,8 +45,8 @@ int cui_start(void) {
         fprintf(stderr, "deadbeef-cui: medialib plugin not found or unsupported!\n");
     }
 
-    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v1.2.4", DDB_WF_SUPPORTS_EXTENDED_API, cui_create_widget, "cui", NULL);
-    fprintf(stderr, "deadbeef-cui: Facet Browser v1.2.4 registered successfully.\n");
+    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v1.2.5", DDB_WF_SUPPORTS_EXTENDED_API, cui_create_widget, "cui", NULL);
+    fprintf(stderr, "deadbeef-cui: Facet Browser v1.2.5 registered successfully.\n");
 
     return 0;
 }
@@ -98,7 +107,7 @@ static DB_misc_t plugin = {
     .plugin.version_minor = 2,
     .plugin.id = "cui",
     .plugin.name = "Columns UI for DeaDBeeF",
-    .plugin.descr = "A faceted library browser for DeaDBeeF. Version 1.2.4",
+    .plugin.descr = "A faceted library browser for DeaDBeeF. Version 1.2.5",
     .plugin.copyright = "MIT License",
     .plugin.website = "https://github.com/bdkl/deadbeef-cui",
     .plugin.start = cui_start,

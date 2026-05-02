@@ -89,8 +89,11 @@ What's done, what's next. Sequenced for feature-parity with foobar2000's Columns
 ## Phase 8: Advanced Performance Refinement
 *Pushing the limits of the faceted browsing engine.*
 
-- [ ] **Incremental Playlist Updates:** Use `DDB_PLAYLIST_CHANGE_CONTENT` flags to prevent full playlist UI re-renders on every selection change.
-- [ ] **Memoization Refresh:** Re-enable and optimize the `track_counts_cache` when search filters are active.
+- [x] **Memoization Refresh:** Re-enable the `track_counts_cache` when search filters are active. Validity is guaranteed by the existing `last_ml_modification_idx = -1` reset on search change, which forces a full cache rebuild. (v1.2.5)
+
+### Dropped from Phase 8
+
+- ~~**Incremental Playlist Updates** via `DDB_PLAYLIST_CHANGE_CONTENT`~~ — investigated and dropped in v1.2.5. The flag value is `0`, which is what we already pass to `sendmessage(DB_EV_PLAYLISTCHANGED, 0, 0, 0)`. The playlist widget treats that event as a full rebuild signal regardless, so a diff-based incremental update would require reimplementing the rebuild path with per-track add/remove tracking against the current playlist contents — a complex change for ~50–100 ms savings on selection switches that nobody has flagged as sluggish. The v1.2.4 fix that stopped auto-populating the playlist on first init already addressed the only observed pain point.
 - [x] **Modular Refactoring:** Break up the monolithic `main.c` into domain-specific modules for better maintainability (v1.2.3).
 - [x] **Standardized Shortcuts:** Unify shortcut keys (`CTRL-SHIFT-F`) and ensure they don't conflict with DeaDBeeF core.
 
@@ -107,17 +110,19 @@ Measured baseline (6,367-track library, fresh launch with cui in layout but no G
 ### Theme conformance
 - [x] **Inherit `gtkui.font.listview_*` for row cells.** Currently our `GtkCellRendererText` instances use the default GTK theme font. When `gtkui.override_listview_colors=1` is set, the playlist widget reads `gtkui.font.listview_text` (e.g. `Söhne 12`) and our cells fall out of visual sync. Read `gtkui.font.listview_text` and apply it to the row renderer's `font` property; if override is off, leave the property unset so the GTK theme applies. (v1.2.4)
 - [x] **Inherit `gtkui.font.listview_column_text` for headers.** Column header labels are separate widgets. Use `gtk_tree_view_column_set_widget` with a `GtkLabel` whose Pango font description comes from `gtkui.font.listview_column_text` (e.g. `Söhne Semi-Bold 14`). Same override-flag gating as row cells. (v1.2.4)
-- [ ] **Re-read fonts on `DB_EV_CONFIGCHANGED`.** When the user changes the playlist font in DeaDBeeF preferences, our cells should refresh in place. Hook the message and re-apply font properties to existing renderers/header labels.
+- [x] **Re-read fonts on `DB_EV_CONFIGCHANGED`.** When the user changes the playlist font in DeaDBeeF preferences, our cells refresh automatically. The message handler dispatches an idle that walks `all_cui_widgets`, compares cached font state against current `gtkui.font.listview_*` keys, and rebuilds only the widgets that actually changed (skips unrelated CONFIGCHANGED events like volume changes). (v1.2.5)
 
 ---
 
 ## Phase 10: Add to DeaDBeeF Plugin List
 *Packaging and submitting for official inclusion in the DeaDBeeF ecosystem. (Was Phase 9.)*
 
-- [ ] **Repository Readiness:** Ensure the public repository (https://github.com/bdkl/deadbeef-cui) is clean, tagged, and contains all necessary documentation.
 - [x] **Consolidated Build System:** Removed the legacy `Makefile` in favor of a single, robust CMake-driven build process.
-- [ ] **Manifest Authoring:** Create a `manifest.json` file for the `deadbeef-plugin-builder` repository, defining source location and build parameters.
-- [ ] **Cross-Platform Verification:** Use the `deadbeef-plugin-builder` Docker environment to verify the plugin compiles correctly for multiple architectures (x86_64, i686).
-- [ ] **Static Linking Audit:** Ensure all non-core dependencies are linked statically to maximize compatibility across different Linux distributions.
-- [ ] **Submission PR:** Submit a Pull Request to `DeaDBeeF-Player/deadbeef-plugin-builder` to include the plugin in the official website's downloads page.
-- [ ] **v2.0.0 Tagging:** Create the second official stable release tag on GitHub with pre-compiled binaries for easy user installation.
+- [x] **Manifest Authoring:** `manifest.json` lives in the repo root. It tracks the example template (git source, cmake build at root, GTK3 env vars from the builder, output `cui.so`). Re-verify against the current `deadbeef-plugin-builder` schema when opening the submission PR.
+- [x] **Static Linking Audit:** Audited via `ldd` on the built `cui.so`. The plugin links only against the system GTK3 / glib / cairo / pango stack and `libdl` — all libraries DeaDBeeF itself depends on. Static-linking these would conflict with DeaDBeeF's own GTK and is incorrect for the plugin model. No non-core deps to address.
+- [x] **Repository Readiness:** Repo is clean — README, spec, roadmap, patchnotes, CLAUDE.md, LICENSE, manifest.json, CMakeLists.txt, src/, compiled/ all present. No stale build artifacts checked in beyond the intentional `compiled/ddb_misc_cui_GTK3.so` for non-builders.
+
+### Requires Brandon (external systems / decisions)
+- [ ] **Cross-Platform Verification:** Run the `deadbeef-plugin-builder` Docker environment locally to verify the plugin builds for x86_64 and i686. Manifest is in place; this is a `docker run` away when ready.
+- [ ] **Submission PR:** Open a PR against `DeaDBeeF-Player/deadbeef-plugin-builder` adding the manifest. Requires GitHub credentials and your own description.
+- [ ] **v2.0.0 Tagging:** A v2.0 release implies a major-feature milestone; v1.2.5 is the current state. Defer until a feature warrants it (or rebrand "stable + plugin-list ready" as v2.0 if you prefer that framing).

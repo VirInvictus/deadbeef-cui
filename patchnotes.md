@@ -1,6 +1,19 @@
 # deadbeef-cui — Patch Notes
 
-## v1.2.4 (Current)
+## v1.2.5 (Current)
+
+---
+
+### Theme Conformance
+**Live font refresh on `DB_EV_CONFIGCHANGED`.** When the user changes `gtkui.font.listview_text`, `gtkui.font.listview_column_text`, or toggles `gtkui.override_listview_colors` in DeaDBeeF preferences, every Facet Browser widget now picks up the new fonts without restart. The message handler dispatches an idle that compares cached font state on each `cui_widget_t` against the current conf values; only widgets that actually changed get rebuilt. Unrelated CONFIGCHANGED events (volume, output plugin, etc.) bail out early after a cheap string compare. Atomic flag coalesces bursts.
+
+### Performance
+**Re-enabled track count cache during search.** `count_tracks_recursive` previously bypassed `cw->track_counts_cache` whenever `cw->search_text` was set, forcing a full subtree walk for every facet aggregate during a search. The cache values were already invalidated correctly on search change (via `last_ml_modification_idx = -1` in `update_tree_data`), so the bypass was just leaving performance on the table. Removed the conditional; cache now active under search too. Updated `CLAUDE.md` §6.8 to document the coupling between the cache and the search-driven invalidation reset.
+
+### Dropped from Roadmap
+**Incremental playlist updates.** Investigated and dropped — `DDB_PLAYLIST_CHANGE_CONTENT` is enum value `0`, which is what `sendmessage(DB_EV_PLAYLISTCHANGED, 0, 0, 0)` already passes. The playlist widget treats CONTENT events as a full rebuild signal regardless, so the only real win would be a diff-based update path that tracks per-track add/remove against the existing playlist contents. Significant code, ~50–100 ms savings on a 6 k-track library, no observed pain. Not worth the maintenance surface.
+
+## v1.2.4
 
 ---
 
