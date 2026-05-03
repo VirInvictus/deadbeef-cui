@@ -16,6 +16,25 @@ void cui_widget_stop(void) {
     }
 }
 
+// Visual default: when a column ends a population/cascade with nothing
+// selected, auto-select the [All] row so the column never looks "empty"
+// next to its neighbors. Semantically equivalent to no selection — both
+// result in update_selection_hash producing a NULL hash, which means
+// "no filter on this column" downstream — so we keep on_column_changed
+// blocked here and don't touch sel_texts. Skipped if the column already
+// has any non-[All] row selected or if the store is empty.
+void auto_select_all_if_empty(cui_widget_t *cw, int col_idx) {
+    if (col_idx < 0 || col_idx >= cw->num_columns) return;
+    if (!cw->trees[col_idx] || !cw->stores[col_idx]) return;
+    GtkTreeSelection *sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->trees[col_idx]));
+    if (gtk_tree_selection_count_selected_rows(sel) > 0) return;
+    GtkTreeIter all_iter;
+    if (!gtk_tree_model_get_iter_first(GTK_TREE_MODEL(cw->stores[col_idx]), &all_iter)) return;
+    g_signal_handlers_block_by_func(sel, (gpointer)on_column_changed, cw);
+    gtk_tree_selection_select_iter(sel, &all_iter);
+    g_signal_handlers_unblock_by_func(sel, (gpointer)on_column_changed, cw);
+}
+
 void update_selection_hash(GtkTreeSelection *selection, GHashTable **hash_ptr) {
     if (*hash_ptr) {
         g_hash_table_destroy(*hash_ptr);
@@ -68,6 +87,14 @@ static gboolean deferred_column_changed_cb(gpointer data) {
             populate_list_multi(cw->stores[col_idx + 1], col_idx + 2, cw, col_idx + 1);
             g_signal_handlers_unblock_by_func(next_sel, (gpointer)on_column_changed, cw);
         }
+    }
+
+    // After the cascade settles, ensure every affected column shows at least
+    // [All] selected. Covers two cases: (a) the user emptied the source
+    // column's selection — auto-select [All] there; (b) downstream populates
+    // cleared their selection as a side effect — auto-select [All] there too.
+    for (int col_idx = start_col; col_idx < cw->num_columns; col_idx++) {
+        auto_select_all_if_empty(cw, col_idx);
     }
 
     update_playlist_from_cui(cw);
@@ -212,6 +239,64 @@ static void on_menu_sync_library(GtkMenuItem *item, gpointer user_data) {
     medialib_plugin->refresh(ml_source);
 }
 
+// Read the right-clicked tree's current selection and produce a comma-joined
+// string of the non-[All] row labels, suitable for use as a playlist title.
+// Length-clamped to 200 chars (deadbeef plt titles fit in 256-byte buffers,
+// leave room for ellipsis). Returns NULL when only [All] is selected, when
+// nothing is selected, or when the joined string would be empty.
+static char *get_selected_facet_names(GtkTreeView *tv) {
+    GtkTreeModel *model;
+    GtkTreeSelection *sel = gtk_tree_view_get_selection(tv);
+    GList *paths = gtk_tree_selection_get_selected_rows(sel, &model);
+    if (!paths) return NULL;
+
+    GString *out = g_string_new(NULL);
+    for (GList *l = paths; l; l = l->next) {
+        GtkTreePath *path = (GtkTreePath *)l->data;
+        GtkTreeIter iter;
+        if (!gtk_tree_model_get_iter(model, &iter, path)) continue;
+
+        gchar *text = NULL;
+        gboolean is_all = FALSE;
+        gtk_tree_model_get(model, &iter, 0, &text, 2, &is_all, -1);
+        if (text && !is_all && text[0]) {
+            if (out->len > 0) g_string_append(out, ", ");
+            g_string_append(out, text);
+        }
+        if (text) g_free(text);
+    }
+    g_list_free_full(paths, (GDestroyNotify)gtk_tree_path_free);
+
+    if (out->len == 0) {
+        g_string_free(out, TRUE);
+        return NULL;
+    }
+    if (out->len > 200) {
+        g_string_truncate(out, 200);
+        g_string_append(out, "…");
+    }
+    return g_string_free(out, FALSE);
+}
+
+// Menu callback for "Send to new playlist <name>". The name is attached to
+// the menu item via g_object_set_data_full so it cleans up when the menu is
+// destroyed. Same population path as on_menu_send_to_new — only the title
+// differs.
+static void on_menu_send_to_named(GtkMenuItem *item, gpointer user_data) {
+    cui_widget_t *cw = (cui_widget_t *)user_data;
+    const char *name = (const char *)g_object_get_data(G_OBJECT(item), "cui_playlist_name");
+    if (!name || !name[0]) return;
+
+    int count = deadbeef_api->plt_get_count();
+    int new_idx = deadbeef_api->plt_add(count, name);
+    if (new_idx < 0) return;
+    ddb_playlist_t *plt = deadbeef_api->plt_get_for_idx(new_idx);
+    if (!plt) return;
+    populate_playlist_from_cui(cw, plt, 1);
+    deadbeef_api->plt_set_curr(plt);
+    deadbeef_api->plt_unref(plt);
+}
+
 // dlsym'd builders from ddb_gui_GTK3.so. These are GTKUI internals (defined in
 // plmenu.c, declared in plmenu.h) — not part of the public ABI, so we look them
 // up at runtime and gracefully fall back when they're absent. Using both
@@ -246,6 +331,101 @@ static void cui_load_menu_fns(void) {
         CUI_DEBUG("standard track menu loaded via dlsym");
     }
 }
+
+// Drag-and-drop target name. Matches the GTKUI internal constant defined in
+// .deadbeef/plugins/gtkui/playlist/ddblistview.h:38. The playlist view
+// (ddblistview.c:1732) and the playlist tab strip (ddbtabstrip.c:306) both
+// advertise this target with GTK_TARGET_SAME_APP, and the playlist view
+// receiver pl_item_unrefs each pointer in the payload after use — so each
+// entry we hand off must be alloc+copy'd with refcount=1.
+#define CUI_DRAG_TARGET "DDB_PLAYITEM_POINTERLIST"
+
+// Two-pass collector for the drag payload. Mirrors the same selection +
+// search filter as add_tracks_recursive_multi but writes alloc+copy duplicates
+// into a flat array instead of inserting into a playlist. Caller frees the
+// array (not the tracks — those become the receiver's responsibility).
+static int collect_drag_count_recursive(const ddb_medialib_item_t *node, int level, cui_widget_t *cw) {
+    if (level >= 1 && level <= cw->num_columns) {
+        if (cw->sel_texts[level - 1]) {
+            const char *text = medialib_plugin->tree_item_get_text(node);
+            if (!text || !g_hash_table_contains(cw->sel_texts[level - 1], text)) return 0;
+        }
+    }
+    int n = 0;
+    DB_playItem_t *track = medialib_plugin->tree_item_get_track(node);
+    if (track && track_matches_search(track, cw->search_text)) n = 1;
+    const ddb_medialib_item_t *child = medialib_plugin->tree_item_get_children(node);
+    while (child) {
+        n += collect_drag_count_recursive(child, level + 1, cw);
+        child = medialib_plugin->tree_item_get_next(child);
+    }
+    return n;
+}
+
+static void collect_drag_fill_recursive(const ddb_medialib_item_t *node, int level, cui_widget_t *cw,
+                                         DB_playItem_t **arr, int *idx, int cap) {
+    if (level >= 1 && level <= cw->num_columns) {
+        if (cw->sel_texts[level - 1]) {
+            const char *text = medialib_plugin->tree_item_get_text(node);
+            if (!text || !g_hash_table_contains(cw->sel_texts[level - 1], text)) return;
+        }
+    }
+    DB_playItem_t *track = medialib_plugin->tree_item_get_track(node);
+    if (track && track_matches_search(track, cw->search_text) && *idx < cap) {
+        DB_playItem_t *copy = deadbeef_api->pl_item_alloc();
+        deadbeef_api->pl_item_copy(copy, track);
+        arr[(*idx)++] = copy;
+    }
+    const ddb_medialib_item_t *child = medialib_plugin->tree_item_get_children(node);
+    while (child) {
+        collect_drag_fill_recursive(child, level + 1, cw, arr, idx, cap);
+        child = medialib_plugin->tree_item_get_next(child);
+    }
+}
+
+static DB_playItem_t **collect_tracks_for_drag(cui_widget_t *cw, int *count_out) {
+    *count_out = 0;
+    if (!cw->cached_tree || !medialib_plugin) return NULL;
+
+    int total = 0;
+    const ddb_medialib_item_t *child = medialib_plugin->tree_item_get_children(cw->cached_tree);
+    while (child) {
+        total += collect_drag_count_recursive(child, 1, cw);
+        child = medialib_plugin->tree_item_get_next(child);
+    }
+    if (total == 0) return NULL;
+
+    DB_playItem_t **arr = calloc(total, sizeof(DB_playItem_t *));
+    int idx = 0;
+    child = medialib_plugin->tree_item_get_children(cw->cached_tree);
+    while (child) {
+        collect_drag_fill_recursive(child, 1, cw, arr, &idx, total);
+        child = medialib_plugin->tree_item_get_next(child);
+    }
+    *count_out = idx;
+    return arr;
+}
+
+#if GTK_MAJOR_VERSION < 4
+static void on_drag_data_get(GtkWidget *widget, GdkDragContext *context,
+                              GtkSelectionData *selection_data, guint info,
+                              guint time, gpointer user_data) {
+    (void)widget; (void)context; (void)info; (void)time;
+    cui_widget_t *cw = (cui_widget_t *)user_data;
+
+    int count = 0;
+    DB_playItem_t **tracks = collect_tracks_for_drag(cw, &count);
+    if (!tracks || count == 0) return;
+
+    GdkAtom type = gtk_selection_data_get_target(selection_data);
+    gtk_selection_data_set(selection_data, type, sizeof(void *) * 8,
+                            (const guchar *)tracks, count * sizeof(DB_playItem_t *));
+
+    // Only the array is ours to free; each track's refcount=1 is consumed by
+    // the receiver via pl_item_unref after it copies into its own playlist.
+    free(tracks);
+}
+#endif
 
 // Build a temp playlist holding alloc+copy duplicates of every track that
 // matches the current facet selection and search. Returns NULL if no tracks
@@ -314,11 +494,25 @@ static gboolean on_tree_button_press(GtkWidget *widget, GdkEventButton *event, g
     }
 
     // Insert facet-specific playlist-targeting items at the top. Reverse order
-    // because gtk_menu_shell_insert(..., 0) is a prepend.
+    // because gtk_menu_shell_insert(..., 0) is a prepend — last insert wins
+    // the top slot.
     if (std_added) {
         GtkWidget *sep = gtk_separator_menu_item_new();
         gtk_menu_shell_insert(GTK_MENU_SHELL(menu), sep, 0);
     }
+
+    // Optional: "Send to new playlist <selected names>". Only present when at
+    // least one non-[All] row is selected on the right-clicked tree.
+    char *facet_names = get_selected_facet_names(tv);
+    if (facet_names) {
+        char *label = g_strdup_printf("Send to new playlist \"%s\"", facet_names);
+        GtkWidget *item_named = gtk_menu_item_new_with_label(label);
+        g_object_set_data_full(G_OBJECT(item_named), "cui_playlist_name", facet_names, g_free);
+        g_signal_connect(item_named, "activate", G_CALLBACK(on_menu_send_to_named), cw);
+        gtk_menu_shell_insert(GTK_MENU_SHELL(menu), item_named, 0);
+        g_free(label);
+    }
+
     GtkWidget *item_new = gtk_menu_item_new_with_label("Send selection to new playlist");
     g_signal_connect(item_new, "activate", G_CALLBACK(on_menu_send_to_new), cw);
     gtk_menu_shell_insert(GTK_MENU_SHELL(menu), item_new, 0);
@@ -461,6 +655,13 @@ void rebuild_columns(cui_widget_t *cw) {
         g_signal_connect(cw->trees[i], "key-press-event", G_CALLBACK(on_key_press), cw);
         gtk_tree_view_set_enable_search(GTK_TREE_VIEW(cw->trees[i]), TRUE);
         gtk_tree_view_set_search_column(GTK_TREE_VIEW(cw->trees[i]), 0);
+#if GTK_MAJOR_VERSION < 4
+        // Drag-source for facet rows. Drop targets in the playlist view and
+        // tab strip already accept this same target (see CUI_DRAG_TARGET).
+        GtkTargetEntry drag_entry = { .target = (gchar *)CUI_DRAG_TARGET, .flags = GTK_TARGET_SAME_APP, .info = 0 };
+        gtk_drag_source_set(cw->trees[i], GDK_BUTTON1_MASK, &drag_entry, 1, GDK_ACTION_COPY);
+        g_signal_connect(cw->trees[i], "drag-data-get", G_CALLBACK(on_drag_data_get), cw);
+#endif
     }
 
     GtkWidget *top_widget = col_widgets[cw->num_columns - 1];

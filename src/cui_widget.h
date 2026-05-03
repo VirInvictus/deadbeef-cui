@@ -5,6 +5,7 @@
 
 void update_selection_hash(GtkTreeSelection *selection, GHashTable **hash_ptr);
 void on_column_changed(GtkTreeSelection *selection, gpointer data);
+void auto_select_all_if_empty(cui_widget_t *cw, int col_idx);
 
 ddb_gtkui_widget_t *cui_create_widget(void);
 void show_config_dialog(GtkMenuItem *item, gpointer user_data);

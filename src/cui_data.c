@@ -444,5 +444,13 @@ void update_tree_data(cui_widget_t *cw) {
         populate_list_multi(cw->stores[i], i + 1, cw, i);
     }
 
+    // Visual default: any column that ended up with no selection (because no
+    // saved selection cascaded into it, or the saved selection didn't match
+    // any current row) gets [All] selected so the columns look consistent.
+    // Skipped for columns whose saved-selection restore actually matched.
+    for (int i = 0; i < cw->num_columns; i++) {
+        auto_select_all_if_empty(cw, i);
+    }
+
     cw->last_ml_modification_idx = current_idx;
 }

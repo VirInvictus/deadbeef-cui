@@ -1,5 +1,21 @@
 # deadbeef-cui — Patch Notes
 
+## v1.3.0-beta.2 (Beta — branch only)
+
+---
+
+### Features
+
+**Drag tracks out of facet rows.** Each facet column is now a drag source for its currently filtered tracks. Drop onto a playlist tab or into a playlist body to add. Uses the same `TARGET_PLAYITEM_POINTERS` (`"DDB_PLAYITEM_POINTERLIST"`) format the GTKUI medialib widget uses — `GTK_TARGET_SAME_APP` scope, `GDK_ACTION_COPY`, each track in the payload is a fresh `pl_item_alloc` + `pl_item_copy` duplicate that the receiver `pl_item_unref`s after consuming (contract verified in `.deadbeef/plugins/gtkui/playlist/ddblistview.c:1732-1744`). Cumulative facet selection + search filter apply, so the dragged set always matches what the Library Viewer playlist contains. GTK3-only for now; GTK4 needs `GtkDragSource` controllers.
+
+**"Send to new playlist `<row name>`" right-click menu item.** New item between the existing "Send selection to new playlist" and the standard track menu. Label embeds the right-clicked tree's selected non-`[All]` row texts (comma-joined when multiple), so right-clicking "Hip-Hop" in Genre offers `Send to new playlist "Hip-Hop"`. Length-clamped at 200 chars with an ellipsis. Skipped silently when only `[All]` is selected — the unnamed item still fires there. Why the menu instead of drag-into-pltbrowser: `pltbrowser_gtk3.so` doesn't register a drop target, so a drop there is a no-op regardless of sender.
+
+### Bug fixes
+
+**Auto-highlight `[All]` when no row is selected in a facet column.** A column that ended a cascade or library refresh with empty selection used to look visually inconsistent next to neighbors that had a selection. Now after every settling point — `update_tree_data` finishing all column populates, and `deferred_column_changed_cb` finishing its cascade — any column with empty selection gets the synthetic `[All (...)]` row at iter 0 auto-selected, with `on_column_changed` blocked. Semantically identical to no selection (both produce `NULL` in `cw->sel_texts[col_idx]` = "no filter on this column"), so track filtering, the tree pipeline, and saved-selection restore are unaffected. Visual change only.
+
+---
+
 ## v1.3.0-beta.1 (Beta — branch only)
 
 ---
