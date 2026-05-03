@@ -1,6 +1,24 @@
 # deadbeef-cui — Patch Notes
 
-## v1.2.5 (Current)
+## v1.3.0-beta.1 (Beta — branch only)
+
+---
+
+### Features
+
+**Standard DeaDBeeF track context menu on facet right-click.** Right-clicking a row in any facet column now exposes the same menu the standard playlist widget uses — Play Next, Play Later, Add to playback queue, Properties, Convert, Reload metadata, Cut/Copy/Paste, and any track action contributed by other plugins. Implemented by dlsym'ing `trk_context_menu_update_with_playlist` and `trk_context_menu_build` from `ddb_gui_GTK3.so` (declared in `.deadbeef/plugins/gtkui/plmenu.h`, exported but not part of the public ABI), populating a temp playlist with alloc+copy duplicates of the matching tracks, and letting GTKUI's own builder fill the menu. Failure of either dlsym is non-fatal — the menu falls back to the pre-1.3 hand-rolled items only.
+
+The two facet-specific items (`Add selection to current playlist`, `Send selection to new playlist`) are preserved at the top of the menu in their original order; widget-scoped items (`Sync library`, `Configure Facets...`) stay at the bottom. Selecting nothing or filtering everything out cleanly skips the standard middle block (no menu pollution, no crash).
+
+### Implementation
+
+**Why alloc+copy and not pl_item_ref.** `plt_insert_item` asserts `it->next[PL_MAIN] == NULL`, which medialib-owned tracks fail because they live in medialib's internal pool. The pre-fix patch tried to share refs and tripped that assertion at first right-click. The corrected path reuses the existing `add_tracks_recursive_multi` from `cui_data.c` (which already does alloc+copy+insert for the Library Viewer playlist) — same call, different destination playlist. This is also exactly how the GTKUI medialib widget handles its own context menu (`.deadbeef/plugins/gtkui/medialib/medialibwidget.c:444-458`).
+
+**Lifetime model.** Our caller plt_unrefs the temp playlist immediately after `gtk_menu_popup_at_pointer`. plmenu's `_set_playlist` already plt_ref'd it, so the playlist survives until the next menu invocation (when `_set_playlist(NULL)` or another playlist replaces it). The track copies are owned by the temp playlist and freed with it.
+
+---
+
+## v1.2.5
 
 ---
 

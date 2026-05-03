@@ -15,6 +15,8 @@ CompileCommand.json
 *.a
 *.la
 *.lo
+# …but track shipped binaries under compiled/ (stable + beta).
+!compiled/**/*.so
 
 # Editor/IDE
 .vscode/

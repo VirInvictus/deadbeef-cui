@@ -212,50 +212,144 @@ static void on_menu_sync_library(GtkMenuItem *item, gpointer user_data) {
     medialib_plugin->refresh(ml_source);
 }
 
-static gboolean on_tree_button_press(GtkWidget *widget, GdkEventButton *event, gpointer user_data) {
-    if (event->type == GDK_BUTTON_PRESS && event->button == 3) {
-        GtkTreeView *tv = GTK_TREE_VIEW(widget);
-        GtkTreeSelection *sel = gtk_tree_view_get_selection(tv);
+// dlsym'd builders from ddb_gui_GTK3.so. These are GTKUI internals (defined in
+// plmenu.c, declared in plmenu.h) — not part of the public ABI, so we look them
+// up at runtime and gracefully fall back when they're absent. Using both
+// together gives us the standard track context menu (Properties, Convert,
+// Add to playqueue, etc.) without mirroring any GTKUI struct.
+typedef void (*trk_menu_update_fn_t)(ddb_playlist_t *, ddb_action_context_t);
+typedef void (*trk_menu_build_fn_t)(GtkWidget *);
 
-        GtkTreePath *path = NULL;
-        if (gtk_tree_view_get_path_at_pos(tv, (int)event->x, (int)event->y,
-                                           &path, NULL, NULL, NULL) && path) {
-            if (!gtk_tree_selection_path_is_selected(sel, path)) {
-                gtk_tree_selection_unselect_all(sel);
-                gtk_tree_selection_select_path(sel, path);
-            }
-            gtk_tree_path_free(path);
-        }
+static trk_menu_update_fn_t g_trk_menu_update = NULL;
+static trk_menu_build_fn_t g_trk_menu_build = NULL;
+static int g_menu_dlsym_attempted = 0;
 
-        GtkWidget *menu = gtk_menu_new();
+static void cui_load_menu_fns(void) {
+    if (g_menu_dlsym_attempted) return;
+    g_menu_dlsym_attempted = 1;
 
-        GtkWidget *item_add = gtk_menu_item_new_with_label("Add selection to current playlist");
-        g_signal_connect(item_add, "activate", G_CALLBACK(on_menu_add_to_current), user_data);
-        gtk_menu_shell_append(GTK_MENU_SHELL(menu), item_add);
-
-        GtkWidget *item_new = gtk_menu_item_new_with_label("Send selection to new playlist");
-        g_signal_connect(item_new, "activate", G_CALLBACK(on_menu_send_to_new), user_data);
-        gtk_menu_shell_append(GTK_MENU_SHELL(menu), item_new);
-
-        GtkWidget *sep = gtk_separator_menu_item_new();
-        gtk_menu_shell_append(GTK_MENU_SHELL(menu), sep);
-
-        GtkWidget *item_sync = gtk_menu_item_new_with_label("Sync library");
-        g_signal_connect(item_sync, "activate", G_CALLBACK(on_menu_sync_library), user_data);
-        gtk_menu_shell_append(GTK_MENU_SHELL(menu), item_sync);
-
-        GtkWidget *sep2 = gtk_separator_menu_item_new();
-        gtk_menu_shell_append(GTK_MENU_SHELL(menu), sep2);
-
-        GtkWidget *item_config = gtk_menu_item_new_with_label("Configure Facets...");
-        g_signal_connect(item_config, "activate", G_CALLBACK(show_config_dialog), user_data);
-        gtk_menu_shell_append(GTK_MENU_SHELL(menu), item_config);
-
-        gtk_widget_show_all(menu);
-        gtk_menu_popup_at_pointer(GTK_MENU(menu), (GdkEvent *)event);
-        return TRUE;
+    void *gtkui_handle = dlopen("ddb_gui_GTK3.so", RTLD_LAZY | RTLD_NOLOAD);
+    if (!gtkui_handle) {
+        CUI_DEBUG("ddb_gui_GTK3.so not loaded; standard track menu unavailable");
+        return;
     }
-    return FALSE;
+    g_trk_menu_update = (trk_menu_update_fn_t)dlsym(gtkui_handle, "trk_context_menu_update_with_playlist");
+    g_trk_menu_build = (trk_menu_build_fn_t)dlsym(gtkui_handle, "trk_context_menu_build");
+    dlclose(gtkui_handle);
+
+    if (!g_trk_menu_update || !g_trk_menu_build) {
+        // Partial failure: clear both so the call site has a single check.
+        g_trk_menu_update = NULL;
+        g_trk_menu_build = NULL;
+        CUI_DEBUG("standard track menu symbols missing; using fallback");
+    } else {
+        CUI_DEBUG("standard track menu loaded via dlsym");
+    }
+}
+
+// Build a temp playlist holding alloc+copy duplicates of every track that
+// matches the current facet selection and search. Returns NULL if no tracks
+// matched (caller falls back to the bare menu). Caller plt_unrefs when done;
+// plmenu also plt_refs internally via _set_playlist so the playlist survives
+// past our return for action callbacks.
+//
+// We must alloc+copy (not ref the medialib tracks directly) because
+// plt_insert_item asserts `it->next[PL_MAIN] == NULL`, which medialib-owned
+// tracks fail. The medialib widget uses the same alloc+copy pattern in its
+// _collect_tracks_from_iter (.deadbeef/plugins/gtkui/medialib/medialibwidget.c:444).
+static ddb_playlist_t *build_menu_playlist(cui_widget_t *cw) {
+    if (!cw->cached_tree || !medialib_plugin) return NULL;
+
+    ddb_playlist_t *plt = deadbeef_api->plt_alloc("CUI Action Playlist");
+    if (!plt) return NULL;
+
+    DB_playItem_t *after = NULL;
+    const ddb_medialib_item_t *child = medialib_plugin->tree_item_get_children(cw->cached_tree);
+    while (child) {
+        add_tracks_recursive_multi(child, 1, cw, plt, &after);
+        child = medialib_plugin->tree_item_get_next(child);
+    }
+    if (after) deadbeef_api->pl_item_unref(after);
+
+    if (deadbeef_api->plt_get_item_count(plt, PL_MAIN) == 0) {
+        deadbeef_api->plt_unref(plt);
+        return NULL;
+    }
+    return plt;
+}
+
+static gboolean on_tree_button_press(GtkWidget *widget, GdkEventButton *event, gpointer user_data) {
+    if (event->type != GDK_BUTTON_PRESS || event->button != 3) return FALSE;
+
+    cui_widget_t *cw = (cui_widget_t *)user_data;
+    GtkTreeView *tv = GTK_TREE_VIEW(widget);
+    GtkTreeSelection *sel = gtk_tree_view_get_selection(tv);
+
+    GtkTreePath *path = NULL;
+    if (gtk_tree_view_get_path_at_pos(tv, (int)event->x, (int)event->y,
+                                       &path, NULL, NULL, NULL) && path) {
+        if (!gtk_tree_selection_path_is_selected(sel, path)) {
+            gtk_tree_selection_unselect_all(sel);
+            gtk_tree_selection_select_path(sel, path);
+        }
+        gtk_tree_path_free(path);
+    }
+
+    cui_load_menu_fns();
+    GtkWidget *menu = gtk_menu_new();
+
+    // Try to populate the menu with GTKUI's standard track items first. We
+    // build into `menu` directly because trk_context_menu_build clears any
+    // existing children — anything we want to keep gets inserted afterwards.
+    int std_added = 0;
+    ddb_playlist_t *plt = NULL;
+    if (g_trk_menu_update && g_trk_menu_build) {
+        plt = build_menu_playlist(cw);
+        if (plt) {
+            deadbeef_api->plt_select_all(plt);
+            g_trk_menu_update(plt, DDB_ACTION_CTX_PLAYLIST);
+            g_trk_menu_build(menu);
+            std_added = 1;
+        }
+    }
+
+    // Insert facet-specific playlist-targeting items at the top. Reverse order
+    // because gtk_menu_shell_insert(..., 0) is a prepend.
+    if (std_added) {
+        GtkWidget *sep = gtk_separator_menu_item_new();
+        gtk_menu_shell_insert(GTK_MENU_SHELL(menu), sep, 0);
+    }
+    GtkWidget *item_new = gtk_menu_item_new_with_label("Send selection to new playlist");
+    g_signal_connect(item_new, "activate", G_CALLBACK(on_menu_send_to_new), cw);
+    gtk_menu_shell_insert(GTK_MENU_SHELL(menu), item_new, 0);
+
+    GtkWidget *item_add = gtk_menu_item_new_with_label("Add selection to current playlist");
+    g_signal_connect(item_add, "activate", G_CALLBACK(on_menu_add_to_current), cw);
+    gtk_menu_shell_insert(GTK_MENU_SHELL(menu), item_add, 0);
+
+    // Append widget-scoped items at the bottom (after the standard menu, if any).
+    GtkWidget *sep_bot = gtk_separator_menu_item_new();
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), sep_bot);
+
+    GtkWidget *item_sync = gtk_menu_item_new_with_label("Sync library");
+    g_signal_connect(item_sync, "activate", G_CALLBACK(on_menu_sync_library), cw);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), item_sync);
+
+    GtkWidget *sep_cfg = gtk_separator_menu_item_new();
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), sep_cfg);
+
+    GtkWidget *item_config = gtk_menu_item_new_with_label("Configure Facets...");
+    g_signal_connect(item_config, "activate", G_CALLBACK(show_config_dialog), cw);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), item_config);
+
+    gtk_widget_show_all(menu);
+    gtk_menu_popup_at_pointer(GTK_MENU(menu), (GdkEvent *)event);
+
+    // Drop our ref on the temp playlist. plmenu's _set_playlist already plt_ref'd
+    // it, and the playlist itself owns the inserted track copies, so menu actions
+    // run safely after we return.
+    if (plt) deadbeef_api->plt_unref(plt);
+    return TRUE;
 }
 
 // Read the user's listview font overrides from gtkui config so our cells visually
