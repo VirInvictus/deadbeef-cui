@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-1.2.5-blue" alt="Version: 1.2.5">
+  <img src="https://img.shields.io/badge/Version-1.3.0-blue" alt="Version: 1.3.0">
   <img src="https://img.shields.io/badge/Language-C-blue" alt="Language: C">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
 </p>
@@ -97,7 +97,7 @@ Enter **Design Mode** in DeaDBeeF to add the **Facet Browser (CUI)** widget to y
 
 ### Verifying your build
 
-Launch DeaDBeeF from a terminal with `deadbeef --gui GTK3 -d 2>&1 | grep cui` — you should see `deadbeef-cui: Facet Browser v1.2.5 registered successfully.` on startup. If the line is missing, the plugin failed to load (check the rest of the log for unresolved symbols or missing libraries).
+Launch DeaDBeeF from a terminal with `deadbeef --gui GTK3 -d 2>&1 | grep cui` — you should see `deadbeef-cui: Facet Browser v1.3.0 registered successfully.` on startup. If the line is missing, the plugin failed to load (check the rest of the log for unresolved symbols or missing libraries).
 
 ## Acknowledgments
 

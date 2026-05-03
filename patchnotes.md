@@ -1,22 +1,6 @@
 # deadbeef-cui — Patch Notes
 
-## v1.3.0-beta.2 (Beta — branch only)
-
----
-
-### Features
-
-**Drag tracks out of facet rows.** Each facet column is now a drag source for its currently filtered tracks. Drop onto a playlist tab or into a playlist body to add. Uses the same `TARGET_PLAYITEM_POINTERS` (`"DDB_PLAYITEM_POINTERLIST"`) format the GTKUI medialib widget uses — `GTK_TARGET_SAME_APP` scope, `GDK_ACTION_COPY`, each track in the payload is a fresh `pl_item_alloc` + `pl_item_copy` duplicate that the receiver `pl_item_unref`s after consuming (contract verified in `.deadbeef/plugins/gtkui/playlist/ddblistview.c:1732-1744`). Cumulative facet selection + search filter apply, so the dragged set always matches what the Library Viewer playlist contains. GTK3-only for now; GTK4 needs `GtkDragSource` controllers.
-
-**"Send to new playlist `<row name>`" right-click menu item.** New item between the existing "Send selection to new playlist" and the standard track menu. Label embeds the right-clicked tree's selected non-`[All]` row texts (comma-joined when multiple), so right-clicking "Hip-Hop" in Genre offers `Send to new playlist "Hip-Hop"`. Length-clamped at 200 chars with an ellipsis. Skipped silently when only `[All]` is selected — the unnamed item still fires there. Why the menu instead of drag-into-pltbrowser: `pltbrowser_gtk3.so` doesn't register a drop target, so a drop there is a no-op regardless of sender.
-
-### Bug fixes
-
-**Auto-highlight `[All]` when no row is selected in a facet column.** A column that ended a cascade or library refresh with empty selection used to look visually inconsistent next to neighbors that had a selection. Now after every settling point — `update_tree_data` finishing all column populates, and `deferred_column_changed_cb` finishing its cascade — any column with empty selection gets the synthetic `[All (...)]` row at iter 0 auto-selected, with `on_column_changed` blocked. Semantically identical to no selection (both produce `NULL` in `cw->sel_texts[col_idx]` = "no filter on this column"), so track filtering, the tree pipeline, and saved-selection restore are unaffected. Visual change only.
-
----
-
-## v1.3.0-beta.1 (Beta — branch only)
+## v1.3.0 (Current)
 
 ---
 
@@ -26,11 +10,19 @@
 
 The two facet-specific items (`Add selection to current playlist`, `Send selection to new playlist`) are preserved at the top of the menu in their original order; widget-scoped items (`Sync library`, `Configure Facets...`) stay at the bottom. Selecting nothing or filtering everything out cleanly skips the standard middle block (no menu pollution, no crash).
 
-### Implementation
+**Drag tracks out of facet rows.** Each facet column is now a drag source for its currently filtered tracks. Drop onto a playlist tab or into a playlist body to add. Uses the same `TARGET_PLAYITEM_POINTERS` (`"DDB_PLAYITEM_POINTERLIST"`) format the GTKUI medialib widget uses — `GTK_TARGET_SAME_APP` scope, `GDK_ACTION_COPY`, each track in the payload is a fresh `pl_item_alloc` + `pl_item_copy` duplicate that the receiver `pl_item_unref`s after consuming (contract verified in `.deadbeef/plugins/gtkui/playlist/ddblistview.c:1732-1744`). Cumulative facet selection + search filter apply, so the dragged set always matches what the Library Viewer playlist contains. GTK3-only for now; GTK4 needs `GtkDragSource` controllers.
 
-**Why alloc+copy and not pl_item_ref.** `plt_insert_item` asserts `it->next[PL_MAIN] == NULL`, which medialib-owned tracks fail because they live in medialib's internal pool. The pre-fix patch tried to share refs and tripped that assertion at first right-click. The corrected path reuses the existing `add_tracks_recursive_multi` from `cui_data.c` (which already does alloc+copy+insert for the Library Viewer playlist) — same call, different destination playlist. This is also exactly how the GTKUI medialib widget handles its own context menu (`.deadbeef/plugins/gtkui/medialib/medialibwidget.c:444-458`).
+**"Send to new playlist `<row name>`" right-click menu item.** New item between the existing "Send selection to new playlist" and the standard track menu. Label embeds the right-clicked tree's selected non-`[All]` row texts (comma-joined when multiple), so right-clicking "Hip-Hop" in Genre offers `Send to new playlist "Hip-Hop"`. Length-clamped at 200 chars with an ellipsis. Skipped silently when only `[All]` is selected — the unnamed item still fires there. (Why the menu instead of drag-into-pltbrowser: `pltbrowser_gtk3.so` doesn't register a drop target, so a drop there is a no-op regardless of sender.)
 
-**Lifetime model.** Our caller plt_unrefs the temp playlist immediately after `gtk_menu_popup_at_pointer`. plmenu's `_set_playlist` already plt_ref'd it, so the playlist survives until the next menu invocation (when `_set_playlist(NULL)` or another playlist replaces it). The track copies are owned by the temp playlist and freed with it.
+### Bug fixes
+
+**Auto-highlight `[All]` when no row is selected in a facet column.** A column that ended a cascade or library refresh with empty selection used to look visually inconsistent next to neighbors that had a selection. Now after every settling point — `update_tree_data` finishing all column populates, and `deferred_column_changed_cb` finishing its cascade — any column with empty selection gets the synthetic `[All (...)]` row at iter 0 auto-selected, with `on_column_changed` blocked. Semantically identical to no selection (both produce `NULL` in `cw->sel_texts[col_idx]` = "no filter on this column"), so track filtering, the tree pipeline, and saved-selection restore are unaffected. Visual change only.
+
+### Implementation notes
+
+**Why alloc+copy and not pl_item_ref for menu/drag payloads.** `plt_insert_item` asserts `it->next[PL_MAIN] == NULL`, which medialib-owned tracks fail because they live in medialib's internal pool. Both the right-click standard menu path and the drag-out path therefore reuse the existing `add_tracks_recursive_multi` from `cui_data.c` (alloc+copy+insert) — same call, different destination playlist. This is also exactly how the GTKUI medialib widget handles its own context menu (`.deadbeef/plugins/gtkui/medialib/medialibwidget.c:444-458`).
+
+**Menu lifetime model.** The temp playlist is `plt_unref`'d immediately after `gtk_menu_popup_at_pointer`. plmenu's `_set_playlist` already `plt_ref`'d it, so the playlist survives until the next menu invocation (when `_set_playlist(NULL)` or another playlist replaces it). The track copies are owned by the temp playlist and freed with it.
 
 ---
 

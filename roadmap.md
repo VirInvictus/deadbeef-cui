@@ -1,6 +1,6 @@
 # deadbeef-cui — Roadmap
 
-What's done, what's next. Sequenced for feature-parity with foobar2000's Columns UI. Updated as of v1.2.0.
+What's done, what's next. Sequenced for feature-parity with foobar2000's Columns UI. Updated as of v1.3.0.
 
 ---
 
@@ -125,4 +125,14 @@ Measured baseline (6,367-track library, fresh launch with cui in layout but no G
 ### Requires Brandon (external systems / decisions)
 - [ ] **Cross-Platform Verification:** Run the `deadbeef-plugin-builder` Docker environment locally to verify the plugin builds for x86_64 and i686. Manifest is in place; this is a `docker run` away when ready.
 - [ ] **Submission PR:** Open a PR against `DeaDBeeF-Player/deadbeef-plugin-builder` adding the manifest. Requires GitHub credentials and your own description.
-- [ ] **v2.0.0 Tagging:** A v2.0 release implies a major-feature milestone; v1.2.5 is the current state. Defer until a feature warrants it (or rebrand "stable + plugin-list ready" as v2.0 if you prefer that framing).
+- [ ] **v2.0.0 Tagging:** A v2.0 release implies a major-feature milestone; v1.3.0 is the current state. Defer until a feature warrants it (or rebrand "stable + plugin-list ready" as v2.0 if you prefer that framing).
+
+---
+
+## Phase 11: Columns UI parity expansion (v1.3.0)
+*Bringing more of foobar2000's Filter panel UX into deadbeef-cui without breaking the existing chrome.*
+
+- [x] **Standard DeaDBeeF track context menu on facet right-click.** Reuse GTKUI's own menu builder (`trk_context_menu_update_with_playlist` + `trk_context_menu_build`, dlsym'd from `ddb_gui_GTK3.so`) so right-clicking a facet row exposes Properties, Convert, Add to playqueue, Reload metadata, etc. Falls back silently to the v1.2.x hand-rolled items if either symbol is unavailable.
+- [x] **Drag-out source from facet rows.** Each facet column is a drag source for its currently filtered tracks. Drop targets in playlist tabs and playlist views already accept the standard `TARGET_PLAYITEM_POINTERS` payload.
+- [x] **"Send to new playlist `<row name>`" right-click menu item.** Auto-names the new playlist after the right-clicked tree's selected row(s). Pltbrowser doesn't accept drops, so this menu route is the deliberate alternative to drag-into-pltbrowser.
+- [x] **Auto-highlight `[All]` when no row is selected.** Visual default; columns now read consistently next to neighbors that do have a selection. Semantically identical to no selection.
