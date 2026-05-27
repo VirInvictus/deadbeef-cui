@@ -222,7 +222,17 @@ The destination filename matters. DeaDBeeF derives the `_load` entry-point symbo
 
 ### 5.4 Compiled binary
 
-`compiled/` contains a pre-built `.so` for the current release. It's in git for users who don't want to build. Update it (and the version triple) only when cutting a release.
+`compiled/ddb_misc_cui_GTK3.so` is a pre-built `.so` kept in git for users who don't want to build. **It must always match the current committed source.** Whenever a change alters the built output (anything under `src/` or `CMakeLists.txt`), rebuild and stage the refreshed binary in the *same commit* as the source change. A committed `compiled/` that lags the source is a bug, not a deferred chore; do not leave it for "the next release."
+
+Refresh it like this (run from the repo root after `build/` is configured):
+
+```bash
+cmake --build build --target cui && command cp -f build/cui.so compiled/ddb_misc_cui_GTK3.so
+```
+
+`command cp` bypasses the interactive `cp -i` alias; a plain `cp` here can silently skip the overwrite when stdin is not a TTY, leaving `compiled/` stale. The display version strings (§9 step 2) are a separate, release-only bump; keeping `compiled/` current is unconditional and happens on every build-affecting commit, released or not.
+
+A repo-local pre-commit hook enforces this: `.githooks/pre-commit` rebuilds the `cui` target and blocks any commit where a `src/` or `CMakeLists.txt` change left `compiled/` stale or unstaged. Enable it once per clone with `git config core.hooksPath .githooks`. It builds from the working tree, so it assumes you staged the matching source; bypass an intentional exception with `git commit --no-verify`.
 
 ### 5.5 Tests
 
@@ -386,7 +396,8 @@ root (SCRIPTABLE_FLAG_IS_LIST, name="Facets")
 4. **`README.md` / `spec.md`** — only on architectural changes (new dependency, new GTK version, new top-level feature surface). Don't churn for cosmetic fixes.
 5. **This file (`CLAUDE.md`)** — when an invariant changes, when the source map shifts, or when a new API touch-point is introduced. Sections 2, 4, and 6 are the most likely to need updates.
 6. **`design.md`** — only if Section 2 ("What Code Does What Where") needs to change. Otherwise, prefer updating this file.
-7. **Commit** — one logical change per commit. Never push without being asked. Follow `git log` style for messages.
+7. **`compiled/` rebuild:** if the change touched the built output (anything in `src/` or `CMakeLists.txt`), rebuild and stage `compiled/ddb_misc_cui_GTK3.so` in the **same commit** as the source change. The committed binary must never lag the source. See §5.4.
+8. **Commit** — one logical change per commit. Never push without being asked. Follow `git log` style for messages.
 
 ---
 
@@ -464,7 +475,7 @@ The user's standing instruction: **stable and clean over clever**. Match style, 
 | Add a new keyboard shortcut | `main.c:68-95` (action), `cui_widget.c:172-190` (per-widget keypress), `.deadbeef/plugins/gtkui/hotkeys.c` |
 | Optimize counting/aggregation | §6.6, §6.8, `cui_data.c:22-52` and `:198-295` |
 | Bump the GTKUI API level we require | gtkui_api.h, ensure `DDB_GTKUI_API_LEVEL` guards on every newer-than-baseline call |
-| Cut a release | §9, plus `compiled/` rebuild |
+| Cut a release | §9 (esp. step 2 version bump); `compiled/` is already current per §5.4 |
 
 ---
 

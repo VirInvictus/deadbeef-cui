@@ -1,0 +1,42 @@
+#!/bin/sh
+# Enforce CLAUDE.md 5.4: compiled/ddb_misc_cui_GTK3.so must track the source.
+#
+# If a commit changes the built output (anything in src/ or CMakeLists.txt), the
+# shipped binary has to be rebuilt to match and staged in the same commit. This
+# hook rebuilds the cui target from the working tree and blocks the commit if the
+# committed binary is stale or missing from the staging area.
+#
+# Enable per clone:  git config core.hooksPath .githooks
+# Bypass once:       git commit --no-verify
+set -eu
+
+bin="compiled/ddb_misc_cui_GTK3.so"
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+
+# Nothing that affects the binary in this commit? Nothing to check.
+printf '%s\n' "$staged" | grep -qE '^(src/|CMakeLists\.txt$)' || exit 0
+
+# Build from the working tree (configure build/ on first use).
+if [ ! -e build/Makefile ] && [ ! -e build/build.ninja ]; then
+    cmake -S . -B build >/dev/null
+fi
+cmake --build build --target cui >/dev/null
+
+# The committed binary must equal a fresh build of the current source.
+if ! cmp -s build/cui.so "$bin"; then
+    echo "pre-commit: $bin is stale relative to the current source." >&2
+    echo "  rebuild and stage it, then recommit:" >&2
+    echo "    cmake --build build --target cui && command cp -f build/cui.so $bin && git add $bin" >&2
+    exit 1
+fi
+
+# ...and when it differs from HEAD, the refreshed binary must be part of this commit.
+if ! printf '%s\n' "$staged" | grep -qx "$bin"; then
+    if ! git show "HEAD:$bin" 2>/dev/null | cmp -s - build/cui.so; then
+        echo "pre-commit: source changed but $bin is not staged." >&2
+        echo "    git add $bin" >&2
+        exit 1
+    fi
+fi
+
+exit 0
