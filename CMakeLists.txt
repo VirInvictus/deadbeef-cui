@@ -22,3 +22,22 @@ set_target_properties(cui PROPERTIES PREFIX "") # so it compiles to cui.so inste
 target_include_directories(cui PRIVATE ${GTK3_INCLUDE_DIRS})
 target_link_libraries(cui PRIVATE ${GTK3_LIBRARIES} ${CMAKE_DL_LIBS})
 target_compile_options(cui PRIVATE ${GTK3_CFLAGS_OTHER})
+
+# Test suite (GLib GTest). Off by default so a plain build stays plugin-only.
+#   cmake -S . -B build -DBUILD_TESTS=ON && cmake --build build
+#   ctest --test-dir build --output-on-failure
+option(BUILD_TESTS "Build the cui test suite" OFF)
+if(BUILD_TESTS)
+    enable_testing()
+    add_executable(cui_tests
+        tests/test_cui.c
+        tests/mock_deadbeef.c
+        src/cui_data.c
+        src/cui_widget.c
+        src/cui_scriptable.c
+    )
+    target_include_directories(cui_tests PRIVATE src tests ${GTK3_INCLUDE_DIRS})
+    target_link_libraries(cui_tests PRIVATE ${GTK3_LIBRARIES} ${CMAKE_DL_LIBS})
+    target_compile_options(cui_tests PRIVATE ${GTK3_CFLAGS_OTHER})
+    add_test(NAME cui_tests COMMAND cui_tests)
+endif()

@@ -30,8 +30,8 @@ Five files. Treat each module's responsibility as fixed unless you're explicitly
 |---|---|---|
 | `src/main.c` | ~110 | Plugin entry points (`cui_start`, `cui_stop`, `cui_message`), the `DB_misc_t` plugin definition, the `Search Facets` action, global symbol exports. **Do not** put UI or medialib logic here. |
 | `src/cui_globals.h` | ~85 | The `cui_widget_t` struct, GTK4 compat macros, `MAX_COLUMNS=5`, `CUI_SOURCE_PATH="cui"`, `CUI_DEBUG()` env-gated logging, all `extern` globals. Header included by every TU. |
-| `src/cui_widget.c` / `.h` | ~760 | GTK layer: `cui_create_widget`, `rebuild_columns`, key handlers, context menu (`on_tree_button_press`), config dialog, the medialib listener callbacks (`ml_listener_cb` → `g_idle_add` → `ml_event_idle_cb` → debounced `deferred_lib_update_cb`), serialize/deserialize for `ddb_gtkui_widget_extended_api_t`. |
-| `src/cui_data.c` / `.h` | ~420 | Tree → list pipeline: `update_tree_data`, `aggregate_recursive_multi`, `populate_list_multi`, `count_tracks_recursive` (memoized via `track_counts_cache`), `add_tracks_recursive_multi`, `track_matches_search` (uses `strcasestr` — do not regress this back to `g_utf8_strdown`). The `[All (...)]` row is synthesised here. |
+| `src/cui_widget.c` / `.h` | ~1160 | GTK layer: `cui_create_widget`, `rebuild_columns`, key handlers, context menu (`on_tree_button_press`), drag-out source, config dialog, the medialib listener callbacks (`ml_listener_cb` → `g_idle_add` → `ml_event_idle_cb` → debounced `deferred_lib_update_cb`), serialize/deserialize for `ddb_gtkui_widget_extended_api_t`. |
+| `src/cui_data.c` / `.h` | ~460 | Tree → list pipeline: `update_tree_data`, `aggregate_recursive_multi`, `populate_list_multi`, `count_tracks_recursive` (memoized via `track_counts_cache`), `add_tracks_recursive_multi`, `track_matches_search` (uses `strcasestr`; do not regress this back to `g_utf8_strdown`), `get_or_create_viewer_playlist`. The `[All (...)]` row is synthesised here. |
 | `src/cui_scriptable.c` / `.h` | ~110 | A **manually-mirrored** copy of the private `scriptableItem_t` layout from `.deadbeef/shared/scriptable/scriptable.c`. We allocate/populate it ourselves and hand it to `medialib_plugin->create_item_tree`. See §6.2 for why this exists. |
 
 **Splitting rules:**
@@ -224,6 +224,18 @@ The destination filename matters. DeaDBeeF derives the `_load` entry-point symbo
 
 `compiled/` contains a pre-built `.so` for the current release. It's in git for users who don't want to build. Update it (and the version triple) only when cutting a release.
 
+### 5.5 Tests
+
+The engine has a GLib **GTest** suite under `tests/` (no new dependency; GTest ships with the glib we already link). It links the real `cui_data.c` / `cui_widget.c` / `cui_scriptable.c` against hand-rolled fakes for `deadbeef_api` and the medialib `DB_mediasource_t` (`tests/mock_deadbeef.c`), so the tree → list → aggregate → count pipeline runs deterministically with no DeaDBeeF process.
+
+```bash
+cmake -S . -B build -DBUILD_TESTS=ON
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
+Covered: `skip_prefix`, scriptable preset construction (default / compaction / `split`), `track_matches_search`, `count_tracks_recursive` incl. the count+1/cached-1 zero-memoization, `aggregate_recursive_multi` (the "Various Artists" cross-tree collision), `get_or_create_viewer_playlist` name selection (§7.2), and the `[All]`-pinned-to-top sort invariant (§6.13). Tests needing a real GTK tree widget (`GtkListStore` sorting) call `gtk_init_check` and `g_test_skip` when headless, so the suite is green in CI and full on a desktop. Run it under ASan/UBSan before a release (`-DCMAKE_C_FLAGS="-fsanitize=address,undefined -g"`); the scriptable alloc/free paths are validated that way. What the suite can't reach without a live widget: the full `cui_destroy` teardown and anything behind a `GtkTreeView`; verify those with valgrind on a running DeaDBeeF.
+
 ---
 
 ## 6. Critical invariants
@@ -310,6 +322,10 @@ cui_data.c:264-267: `"Album Artist"` collapses to `"Artist"` for the `[All]` lab
 
 `add_tracks_recursive_multi` does `pl_item_alloc` + `pl_item_copy`, not `pl_item_ref`. Sharing the same `DB_playItem_t *` across the medialib's internal list and the user-facing playlist breaks playqueue semantics and "now playing" tracking. The copy is cheap; keep it.
 
+### 6.13 `sort_func` pins `[All]` to the top in every sort order; the order-check is load-bearing
+
+`sort_func` (cui_data.c) reads the active sort order and, when one row is the synthetic `[All]` row, returns `(order == GTK_SORT_ASCENDING) ? -1 : 1`. This looks redundant but it is **counteracting** GtkListStore's own negation of the comparator result under `GTK_SORT_DESCENDING`. Net effect: `[All]` sits at iter 0 regardless of sort column (name *or* count) or direction. `auto_select_all_if_empty` depends on this: it grabs `gtk_tree_model_get_iter_first` to select `[All]`, which is correct **only because** of this pinning. Don't "simplify" the order branch out: without it, `[All]` sinks to the bottom on descending sorts and the auto-select highlights the wrong row. Locked in by `tests/test_cui.c` → `/cui/sort/all_row`. (An audit in this repo briefly "fixed" a non-bug here by scanning for the `is_all` column instead of trusting iter 0; the test caught that the scan was unnecessary and the change was reverted.)
+
 ---
 
 ## 7. Configuration model
@@ -331,6 +347,8 @@ When you add a new option:
 4. Widget in `show_config_dialog` and read-back in `on_config_dialog_response`.
 5. If it affects the scriptable preset, plumb through `init_my_preset`.
 6. Invalidate the cached tree on change (set `last_ml_modification_idx = -1` and call `update_tree_data`).
+
+**Per-instance keys must be read from `cw`, never the legacy global.** The flat `cui.*` keys exist only as one-time migration defaults (§7.1). At runtime, read the value off the `cui_widget_t`. This bit us with `autoplaylist_name`: `get_or_create_viewer_playlist` used to read the global `cui.autoplaylist_name` key (which the per-instance path never writes), so the config-dialog setting was dead and every instance collided on one "Library Viewer" playlist. It now takes `cw` and reads `cw->autoplaylist_name`. Don't reintroduce a global-key read for any per-instance setting.
 
 ### 7.3 Source-config sync
 

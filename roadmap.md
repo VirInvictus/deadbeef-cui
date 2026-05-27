@@ -136,3 +136,13 @@ Measured baseline (6,367-track library, fresh launch with cui in layout but no G
 - [x] **Drag-out source from facet rows.** Each facet column is a drag source for its currently filtered tracks. Drop targets in playlist tabs and playlist views already accept the standard `TARGET_PLAYITEM_POINTERS` payload.
 - [x] **"Send to new playlist `<row name>`" right-click menu item.** Auto-names the new playlist after the right-clicked tree's selected row(s). Pltbrowser doesn't accept drops, so this menu route is the deliberate alternative to drag-into-pltbrowser.
 - [x] **Auto-highlight `[All]` when no row is selected.** Visual default; columns now read consistently next to neighbors that do have a selection. Semantically identical to no selection.
+
+---
+
+## Phase 12: Test harness & maintenance (post-1.3.0)
+*Locking in correctness so future changes (and audits) can't regress the engine silently.*
+
+- [x] **Engine test suite.** GLib GTest suite under `tests/` (no new dependency) driving the real engine TUs against fakes for `deadbeef_api` and the medialib source. Covers `skip_prefix`, scriptable preset build (default / compaction / split), search matching, recursive counting + zero-memoization, cross-tree "Various Artists" aggregation, autoplaylist name selection, and the `[All]`-pinned sort invariant. Behind `-DBUILD_TESTS=ON`; clean under ASan/UBSan; GTK-widget cases self-skip headless.
+- [x] **Fix: per-instance autoplaylist name was ignored.** `get_or_create_viewer_playlist` read the dead global `cui.autoplaylist_name` key instead of the widget's per-instance value, so the dialog setting did nothing and instances collided on one playlist. Now reads `cw->autoplaylist_name`.
+- [x] **Fix: widget-destroy leaks.** `cui_destroy` now frees `formats[]`, the scriptable preset, and `autoplaylist_name` (previously leaked on every teardown / layout reload).
+- [x] **Investigated, no change:** `[All]` row sort position. `sort_func`'s order-aware pinning keeps `[All]` at iter 0 in all sort orders; the original code was correct. Documented in CLAUDE.md §6.13 and covered by the sort test.

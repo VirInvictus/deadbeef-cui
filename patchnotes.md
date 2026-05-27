@@ -1,5 +1,23 @@
 # deadbeef-cui — Patch Notes
 
+## Unreleased
+
+---
+
+### Bug fixes
+
+**Per-instance "Autoplaylist Name" now actually drives the viewer playlist.** Since v1.2.2 the autoplaylist name has been a per-instance setting (set in the Configure Facets dialog, serialized into the widget's keyvalues as `autoplaylist_name`). But `get_or_create_viewer_playlist` read the *global* `cui.autoplaylist_name` conf key, which the per-instance path never writes. The result: changing the name in the dialog had no effect, and multiple Facet Browser instances all fought over a single playlist named "Library Viewer". `get_or_create_viewer_playlist` now takes the widget and reads `cw->autoplaylist_name` (falling back to "Library Viewer" when empty), so each instance targets its own named playlist. Default behavior is unchanged. The legacy global-key read in `cui_create_widget` still seeds the instance default on first creation, so pre-1.2.2 settings migrate as before. Files: `cui_data.c`, `cui_data.h`.
+
+**Plugged memory leaks on widget destroy.** GTKUI's `w_destroy` frees the `cui_widget_t` struct but nothing it points to, so `cui_destroy` has to release every heap member it owns. It freed `titles[]`, the search strings, and the cached fonts, but silently leaked `formats[]`, the scriptable preset tree (`my_preset`), and `autoplaylist_name` on every widget teardown / layout reload. All three are now freed. File: `cui_widget.c`.
+
+### Investigated, not a bug
+
+**`[All]` row position under non-default sort.** An audit flagged `auto_select_all_if_empty`'s assumption that the `[All]` row is at iter 0 as wrong under descending / count sort. It is not: `sort_func` reads the active sort order and special-cases the `is_all` row to counteract GtkListStore's descending-order negation of the comparator, so `[All]` is pinned to the top in every sort column and direction. The original code was correct; the proposed change was reverted. The behavior is now locked in by a regression test and documented in CLAUDE.md §6.13.
+
+### Testing
+
+**Engine test suite (`tests/`).** Added a GLib GTest suite (no new dependency) that links the real engine translation units against fakes for `deadbeef_api` and the medialib source, so the tree → list → aggregate → count pipeline runs with no DeaDBeeF process. Ten cases cover `skip_prefix`, scriptable preset construction (default / compaction / split), search matching, recursive track counting and the zero-count memoization, the "Various Artists" cross-tree aggregation, the per-instance autoplaylist name selection, and the `[All]`-pinned-to-top sort invariant. GTK-widget-dependent cases self-skip when headless. Builds behind `-DBUILD_TESTS=ON`; clean under ASan/UBSan. See CLAUDE.md §5.5.
+
 ## v1.3.0 (Current)
 
 ---
