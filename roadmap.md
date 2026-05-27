@@ -1,6 +1,6 @@
 # deadbeef-cui — Roadmap
 
-What's done, what's next. Sequenced for feature-parity with foobar2000's Columns UI. Updated as of v1.3.0.
+What's done, what's next. Sequenced for feature-parity with foobar2000's Columns UI. Updated as of v1.3.1.
 
 ---
 
@@ -125,7 +125,7 @@ Measured baseline (6,367-track library, fresh launch with cui in layout but no G
 ### Requires Brandon (external systems / decisions)
 - [ ] **Cross-Platform Verification:** Run the `deadbeef-plugin-builder` Docker environment locally to verify the plugin builds for x86_64 and i686. Manifest is in place; this is a `docker run` away when ready.
 - [ ] **Submission PR:** Open a PR against `DeaDBeeF-Player/deadbeef-plugin-builder` adding the manifest. Requires GitHub credentials and your own description.
-- [ ] **v2.0.0 Tagging:** A v2.0 release implies a major-feature milestone; v1.3.0 is the current state. Defer until a feature warrants it (or rebrand "stable + plugin-list ready" as v2.0 if you prefer that framing).
+- [ ] **v2.0.0 Tagging:** A v2.0 release implies a major-feature milestone; v1.3.1 is the current state. Defer until a feature warrants it (or rebrand "stable + plugin-list ready" as v2.0 if you prefer that framing).
 
 ---
 

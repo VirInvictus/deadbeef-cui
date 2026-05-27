@@ -1,6 +1,6 @@
 # deadbeef-cui — Patch Notes
 
-## Unreleased
+## v1.3.1 (Current)
 
 ---
 
@@ -18,7 +18,7 @@
 
 **Engine test suite (`tests/`).** Added a GLib GTest suite (no new dependency) that links the real engine translation units against fakes for `deadbeef_api` and the medialib source, so the tree → list → aggregate → count pipeline runs with no DeaDBeeF process. Ten cases cover `skip_prefix`, scriptable preset construction (default / compaction / split), search matching, recursive track counting and the zero-count memoization, the "Various Artists" cross-tree aggregation, the per-instance autoplaylist name selection, and the `[All]`-pinned-to-top sort invariant. GTK-widget-dependent cases self-skip when headless. Builds behind `-DBUILD_TESTS=ON`; clean under ASan/UBSan. See CLAUDE.md §5.5.
 
-## v1.3.0 (Current)
+## v1.3.0
 
 ---
 
