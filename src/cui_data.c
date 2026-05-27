@@ -123,13 +123,16 @@ void add_tracks_recursive_multi(const ddb_medialib_item_t *node, int current_lev
     }
 }
 
-ddb_playlist_t *get_or_create_viewer_playlist(void) {
-    deadbeef_api->conf_lock();
-    const char *ap_name = deadbeef_api->conf_get_str_fast("cui.autoplaylist_name", "Library Viewer");
+ddb_playlist_t *get_or_create_viewer_playlist(cui_widget_t *cw) {
+    // Per-instance name (set via the config dialog, serialized into the widget's
+    // keyvalues). The old global cui.autoplaylist_name key was never written by
+    // the per-instance path, so reading it here ignored the dialog setting and
+    // made every instance collide on one "Library Viewer" playlist.
+    const char *ap_name = (cw->autoplaylist_name && cw->autoplaylist_name[0])
+                              ? cw->autoplaylist_name : "Library Viewer";
     char target_name[256];
     strncpy(target_name, ap_name, sizeof(target_name)-1);
     target_name[sizeof(target_name)-1] = '\0';
-    deadbeef_api->conf_unlock();
 
     int count = deadbeef_api->plt_get_count();
     for (int i = 0; i < count; i++) {
@@ -183,7 +186,7 @@ void populate_playlist_from_cui(cui_widget_t *cw, ddb_playlist_t *plt, int clear
 
 void update_playlist_from_cui(cui_widget_t *cw) {
     CUI_DEBUG("update_playlist_from_cui called");
-    ddb_playlist_t *plt = get_or_create_viewer_playlist();
+    ddb_playlist_t *plt = get_or_create_viewer_playlist(cw);
     if (!plt) return;
     deadbeef_api->plt_set_curr(plt);
 
