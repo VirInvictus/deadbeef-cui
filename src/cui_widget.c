@@ -789,8 +789,18 @@ static void cui_destroy(ddb_gtkui_widget_t *w) {
             cw->sel_texts[i] = NULL;
         }
         g_free(cw->titles[i]);
+        g_free(cw->formats[i]);
     }
-    
+
+    // w_destroy (gtkui widgets.c) frees the cui_widget_t struct itself but not
+    // anything it points to, so every heap member we own must be released here.
+    g_free(cw->autoplaylist_name);
+    cw->autoplaylist_name = NULL;
+    if (cw->my_preset) {
+        my_scriptable_free((scriptableItem_t *)cw->my_preset);
+        cw->my_preset = NULL;
+    }
+
     g_free(cw->search_text);
     cw->search_text = NULL;
     g_free(cw->last_search_text);
