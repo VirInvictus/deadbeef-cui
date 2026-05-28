@@ -1,6 +1,16 @@
 # deadbeef-cui — Patch Notes
 
-## v1.3.1 (Current)
+## v1.3.2 (Current)
+
+---
+
+### Bug fixes
+
+**Double-clicking `[All ...]` rows now reliably starts playback.** Double-clicking an `[All Genres]` / `[All Artists]` / `[All Albums]` row frequently did nothing (the row showed selected but no music played), while a specific non-`[All]` row worked every time. Root cause: the facet trees are drag sources (`gtk_drag_source_set`, added in v1.3.0 for drag-out) in `GTK_SELECTION_MULTIPLE` mode. GTK3 defers click handling on an already-selected row so a multi-row drag can begin, and `[All]` rows are always pre-selected (auto-selected after every cascade), so GTK consumed the `GDK_2BUTTON_PRESS` into drag tracking and never emitted `row-activated`. Specific rows were usually not pre-selected on the first click, so their first press selected immediately and the double-click activated normally. Confirmed with `DEADBEEF_CUI_DEBUG=1`: many double-clicks, only one `row-activated`. Fix: intercept the left double-click in the tree's `button-press-event` handler (which runs before GtkTreeView's default handler), and when the press lands on a row, trigger activation directly and consume the event. `row-activated` stays connected for keyboard Enter and the GTK4 path; both routes funnel into a shared `activate_row`. File: `cui_widget.c`.
+
+**Viewer playlist rebuilds only when stale, and clears on shutdown.** Having `[All ...]` activations populate the viewer playlist (above) meant every activation re-copied the whole matching set, which on a large library is tens of thousands of tracks, and DeaDBeeF persists every playlist on quit; shutdown got noticeably slower as a result. Two changes address it. (1) A `playlist_dirty` flag on the widget: `activate_row` rebuilds the playlist only when the selection, search, or library actually changed since the last build (or a debounce is pending), and otherwise just makes the viewer current before playing, so repeated `[All]` activations no longer rebuild redundantly. The flag is set on selection change, on tree rebuild (`update_tree_data`), and at widget creation; cleared by `update_playlist_from_cui`. (2) `cui_destroy` empties the viewer playlist on app shutdown (gated on `shutting_down`). The engine runs `pl_save_all` after the GUI thread tears down widgets but before `cui_stop`, so clearing in `cui_destroy` lands before the save and nothing large is persisted. This changes one user-visible behavior: the viewer playlist no longer carries its contents across sessions. It is a filter-mirror cache, repopulated on first interaction, consistent with the v1.2.4 deferral that leaves it empty at launch. Real saved playlists (right-click "Send to new playlist") are unaffected. A find-only `find_viewer_playlist` helper backs both the shutdown clear and `get_or_create_viewer_playlist`. Files: `cui_widget.c`, `cui_data.c`, `cui_data.h`, `cui_globals.h`.
+
+## v1.3.1
 
 ---
 

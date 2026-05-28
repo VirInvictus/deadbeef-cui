@@ -123,7 +123,11 @@ void add_tracks_recursive_multi(const ddb_medialib_item_t *node, int current_lev
     }
 }
 
-ddb_playlist_t *get_or_create_viewer_playlist(cui_widget_t *cw) {
+// Find this instance's viewer playlist by name. Returns a refcounted handle
+// (caller unrefs) or NULL when it doesn't exist yet. Unlike
+// get_or_create_viewer_playlist this never creates one — used by the shutdown
+// clear so we don't resurrect a deleted playlist just to empty it.
+ddb_playlist_t *find_viewer_playlist(cui_widget_t *cw) {
     // Per-instance name (set via the config dialog, serialized into the widget's
     // keyvalues). The old global cui.autoplaylist_name key was never written by
     // the per-instance path, so reading it here ignored the dialog setting and
@@ -146,7 +150,22 @@ ddb_playlist_t *get_or_create_viewer_playlist(cui_widget_t *cw) {
             deadbeef_api->plt_unref(plt);
         }
     }
-    int new_idx = deadbeef_api->plt_add(count, target_name);
+    return NULL;
+}
+
+ddb_playlist_t *get_or_create_viewer_playlist(cui_widget_t *cw) {
+    ddb_playlist_t *existing = find_viewer_playlist(cw);
+    if (existing) {
+        return existing;
+    }
+
+    const char *ap_name = (cw->autoplaylist_name && cw->autoplaylist_name[0])
+                              ? cw->autoplaylist_name : "Library Viewer";
+    char target_name[256];
+    strncpy(target_name, ap_name, sizeof(target_name)-1);
+    target_name[sizeof(target_name)-1] = '\0';
+
+    int new_idx = deadbeef_api->plt_add(deadbeef_api->plt_get_count(), target_name);
     if (new_idx >= 0) {
         return deadbeef_api->plt_get_for_idx(new_idx);
     }
@@ -191,6 +210,7 @@ void update_playlist_from_cui(cui_widget_t *cw) {
     deadbeef_api->plt_set_curr(plt);
 
     populate_playlist_from_cui(cw, plt, 1);
+    cw->playlist_dirty = 0;
 
     deadbeef_api->plt_unref(plt);
 }
@@ -335,6 +355,11 @@ void update_tree_data(cui_widget_t *cw) {
     if (cw->last_ml_modification_idx == current_idx && cw->cached_tree) {
         return;
     }
+    // A real rebuild past this point (library change, search change, or first
+    // build) leaves the viewer playlist out of sync with the new tree. We don't
+    // repopulate it here (the v1.2.4 deferral below), so flag it stale instead;
+    // activate_row rebuilds on the next activation.
+    cw->playlist_dirty = 1;
     scroll_restore_t *sr = calloc(1, sizeof(scroll_restore_t));
     sr->cw = cw;
 

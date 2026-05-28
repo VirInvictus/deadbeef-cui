@@ -117,6 +117,8 @@ void on_column_changed(GtkTreeSelection *selection, gpointer data) {
         cw->changed_col_idx = col_idx;
     }
 
+    cw->playlist_dirty = 1;
+
     if (cw->changed_timeout_id == 0) {
         cw->changed_timeout_id = g_timeout_add(10, deferred_column_changed_cb, cw);
     }
@@ -189,11 +191,35 @@ static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer use
     return FALSE;
 }
 
-static void on_row_activated(GtkTreeView *tree_view, GtkTreePath *path, GtkTreeViewColumn *column, gpointer data) {
-    (void)tree_view;
-    (void)path;
-    (void)column;
-    (void)data;
+// Make the viewer playlist current and in sync with the column selections,
+// then start playback. Three sync cases:
+//  - A debounced selection change is still pending (fast double-click landed
+//    before the 10 ms timer fired): flush it synchronously so playback sees
+//    the freshly built list, not the previous one.
+//  - The playlist is stale (selection/search/library changed since the last
+//    build, or it was never built — update_tree_data defers population by
+//    design, see cui_data.c): rebuild it.
+//  - Already in sync (e.g. double-clicking an already-selected [All] row,
+//    which is not a selection change so no rebuild is needed): just make sure
+//    the viewer is the current playlist, since the user may have switched
+//    tabs, before DB_EV_PLAY_NUM targets index 0.
+// The dirty-flag short-circuit matters because [All] activations would
+// otherwise re-copy the whole matching set into the playlist on every click.
+static void activate_row(cui_widget_t *cw) {
+    if (cw->changed_timeout_id) {
+        g_source_remove(cw->changed_timeout_id);
+        cw->changed_timeout_id = 0;
+        deferred_column_changed_cb(cw);
+    } else if (cw->playlist_dirty) {
+        update_playlist_from_cui(cw);
+    } else {
+        ddb_playlist_t *plt = get_or_create_viewer_playlist(cw);
+        if (plt) {
+            deadbeef_api->plt_set_curr(plt);
+            deadbeef_api->plt_unref(plt);
+        }
+    }
+
     ddb_playlist_t *plt = deadbeef_api->plt_get_curr();
     if (plt) {
         int order = deadbeef_api->conf_get_int("playback.order", 0);
@@ -205,6 +231,17 @@ static void on_row_activated(GtkTreeView *tree_view, GtkTreePath *path, GtkTreeV
         }
         deadbeef_api->plt_unref(plt);
     }
+}
+
+// Fires for keyboard activation (Enter) and the GTK4 path. GTK3 mouse double-
+// clicks are handled in on_tree_button_press instead: the drag source eats the
+// GDK_2BUTTON_PRESS on already-selected rows ([All] is always pre-selected), so
+// row-activated never fires for them. Both routes funnel into activate_row.
+static void on_row_activated(GtkTreeView *tree_view, GtkTreePath *path, GtkTreeViewColumn *column, gpointer data) {
+    (void)tree_view;
+    (void)path;
+    (void)column;
+    activate_row((cui_widget_t *)data);
 }
 
 static void on_menu_add_to_current(GtkMenuItem *item, gpointer user_data) {
@@ -459,6 +496,24 @@ static ddb_playlist_t *build_menu_playlist(cui_widget_t *cw) {
 }
 
 static gboolean on_tree_button_press(GtkWidget *widget, GdkEventButton *event, gpointer user_data) {
+    // Left double-click on a row activates it ourselves rather than relying on
+    // the row-activated signal: the drag source (gtk_drag_source_set below)
+    // defers button handling on an already-selected row, and [All] rows are
+    // always pre-selected, so GTK swallows the GDK_2BUTTON_PRESS and never
+    // emits row-activated. We intercept the press first (this handler runs
+    // before GtkTreeView's default), so it lands every time. Only when the
+    // click is on an actual row — double-clicking empty space falls through.
+    if (event->button == 1 && event->type == GDK_2BUTTON_PRESS) {
+        GtkTreePath *hit = NULL;
+        if (gtk_tree_view_get_path_at_pos(GTK_TREE_VIEW(widget), (int)event->x, (int)event->y,
+                                           &hit, NULL, NULL, NULL) && hit) {
+            gtk_tree_path_free(hit);
+            activate_row((cui_widget_t *)user_data);
+            return TRUE;
+        }
+        return FALSE;
+    }
+
     if (event->type != GDK_BUTTON_PRESS || event->button != 3) return FALSE;
 
     cui_widget_t *cw = (cui_widget_t *)user_data;
@@ -759,6 +814,22 @@ static void cui_destroy(ddb_gtkui_widget_t *w) {
         cw->lib_update_timeout_id = 0;
     }
 
+    // On app shutdown, empty the viewer playlist so DeaDBeeF doesn't persist a
+    // potentially huge filter-mirror across sessions ([All] activations now
+    // populate it with the whole matching set). The engine runs pl_save_all
+    // after the GUI thread tears down widgets but before cui_stop, so clearing
+    // here lands before the save. Gated on shutting_down so removing the widget
+    // from a layout mid-session doesn't wipe a playlist the user is using; the
+    // viewer is a cache, repopulated on the next activation (matches the v1.2.4
+    // deferral that leaves it empty until first interaction).
+    if (shutting_down && deadbeef_api) {
+        ddb_playlist_t *viewer = find_viewer_playlist(cw);
+        if (viewer) {
+            deadbeef_api->plt_clear(viewer);
+            deadbeef_api->plt_unref(viewer);
+        }
+    }
+
     all_cui_widgets = g_list_remove(all_cui_widgets, cw);
 
     if (medialib_plugin && ml_source) {
@@ -1030,6 +1101,7 @@ ddb_gtkui_widget_t *cui_create_widget(void) {
 
     cui_widget_t *cw = calloc(1, sizeof(cui_widget_t));
     cw->changed_col_idx = -1;
+    cw->playlist_dirty = 1;
     ddb_gtkui_widget_t *w = &cw->base;
     w->type = "cui";
 

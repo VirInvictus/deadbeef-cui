@@ -75,6 +75,11 @@ typedef struct {
     guint lib_update_timeout_id;
     int changed_col_idx;
     int initial_sync_done;
+    // Set when the viewer playlist no longer matches the current selection/
+    // search/library state; cleared once update_playlist_from_cui rebuilds it.
+    // Lets activate_row skip a redundant full-library rebuild on every [All]
+    // activation (the cost that made shutdown slow).
+    int playlist_dirty;
 
     GtkWidget *search_entry;
     char *search_text;
