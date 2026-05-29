@@ -11,6 +11,7 @@ ddb_gtkui_widget_t *cui_create_widget(void);
 void show_config_dialog(GtkMenuItem *item, gpointer user_data);
 void rebuild_columns(cui_widget_t *cw);
 void cui_widget_stop(void);
+void cui_clear_viewer_playlists(void);
 
 void sync_source_config(void);
 

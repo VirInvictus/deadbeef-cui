@@ -1,6 +1,14 @@
 # deadbeef-cui — Patch Notes
 
-## v1.3.2 (Current)
+## v1.3.3 (Current)
+
+---
+
+### Bug fixes
+
+**Fixed a crash on every app close (regression from v1.3.2).** v1.3.2 emptied the viewer playlist from `cui_destroy` to avoid persisting a large filter-mirror across sessions. That ran during the asynchronous GTK widget teardown, which races the engine's own shutdown: `gtkui_stop` only schedules the teardown (`g_idle_add(quit_gtk_cb)`) and returns, so the main thread proceeds into `main_cleanup_and_quit` → `streamer_free()` concurrently. `plt_clear` notifies the streamer and play queue per track (`streamer_song_removed_notify`, `playqueue_remove`), so the clear poked the streamer at the same moment it was being freed: a use-after-free that crashed on close every time. The clear now runs in `cui_message` on `DB_EV_TERMINATE`, which is dispatched on the player mainloop before `gui->stop()` / `streamer_free()` and before `pl_save_all`, so the streamer, play queue, and undo subsystems are all still alive, and the emptied playlist still persists empty. Behavior is otherwise unchanged: viewer playlists are still cleared at shutdown and do not carry their contents across sessions. Files: `main.c`, `cui_widget.c`, `cui_widget.h`.
+
+## v1.3.2
 
 ---
 

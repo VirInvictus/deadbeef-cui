@@ -20,6 +20,12 @@ static int cui_message(uint32_t id, uintptr_t ctx, uint32_t p1, uint32_t p2) {
     (void)p2;
     if (id == DB_EV_TERMINATE) {
         shutting_down = 1;
+        // Clear the viewer playlists here, not in cui_destroy: this event is
+        // dispatched on the player mainloop before gui->stop()/streamer_free,
+        // so plt_clear's per-track streamer/playqueue notifications are safe.
+        // Clearing during the async widget teardown raced streamer_free and
+        // crashed on every close.
+        cui_clear_viewer_playlists();
     } else if (id == DB_EV_CONFIGCHANGED) {
         // Coalesce bursts of CONFIGCHANGED via an atomic flag — the handler
         // clears it before doing work, so a change that lands during the check
@@ -45,8 +51,8 @@ int cui_start(void) {
         fprintf(stderr, "deadbeef-cui: medialib plugin not found or unsupported!\n");
     }
 
-    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v1.3.2", DDB_WF_SUPPORTS_EXTENDED_API, cui_create_widget, "cui", NULL);
-    fprintf(stderr, "deadbeef-cui: Facet Browser v1.3.2 registered successfully.\n");
+    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v1.3.3", DDB_WF_SUPPORTS_EXTENDED_API, cui_create_widget, "cui", NULL);
+    fprintf(stderr, "deadbeef-cui: Facet Browser v1.3.3 registered successfully.\n");
 
     return 0;
 }
@@ -107,7 +113,7 @@ static DB_misc_t plugin = {
     .plugin.version_minor = 3,
     .plugin.id = "cui",
     .plugin.name = "Columns UI for DeaDBeeF",
-    .plugin.descr = "A faceted library browser for DeaDBeeF. Version 1.3.2",
+    .plugin.descr = "A faceted library browser for DeaDBeeF. Version 1.3.3",
     .plugin.copyright = "MIT License",
     .plugin.website = "https://github.com/bdkl/deadbeef-cui",
     .plugin.start = cui_start,

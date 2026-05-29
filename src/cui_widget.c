@@ -16,6 +16,27 @@ void cui_widget_stop(void) {
     }
 }
 
+// Empty every instance's viewer playlist at shutdown so DeaDBeeF doesn't
+// persist a potentially huge filter-mirror across sessions ([All] activations
+// populate it with the whole matching set). Called from cui_message on
+// DB_EV_TERMINATE: that event is dispatched inside player_mainloop while the
+// streamer, playqueue, and undo subsystems are still alive, and before
+// pl_save_all runs, so the emptied playlist persists empty. Doing this in
+// cui_destroy instead raced streamer_free — plt_clear notifies the streamer
+// per track, and the engine tears the streamer down concurrently with the
+// async GTK widget teardown, which crashed on every close.
+void cui_clear_viewer_playlists(void) {
+    if (!deadbeef_api) return;
+    for (GList *l = all_cui_widgets; l; l = l->next) {
+        cui_widget_t *cw = (cui_widget_t *)l->data;
+        ddb_playlist_t *viewer = find_viewer_playlist(cw);
+        if (viewer) {
+            deadbeef_api->plt_clear(viewer);
+            deadbeef_api->plt_unref(viewer);
+        }
+    }
+}
+
 // Visual default: when a column ends a population/cascade with nothing
 // selected, auto-select the [All] row so the column never looks "empty"
 // next to its neighbors. Semantically equivalent to no selection — both
@@ -812,22 +833,6 @@ static void cui_destroy(ddb_gtkui_widget_t *w) {
     if (cw->lib_update_timeout_id) {
         g_source_remove(cw->lib_update_timeout_id);
         cw->lib_update_timeout_id = 0;
-    }
-
-    // On app shutdown, empty the viewer playlist so DeaDBeeF doesn't persist a
-    // potentially huge filter-mirror across sessions ([All] activations now
-    // populate it with the whole matching set). The engine runs pl_save_all
-    // after the GUI thread tears down widgets but before cui_stop, so clearing
-    // here lands before the save. Gated on shutting_down so removing the widget
-    // from a layout mid-session doesn't wipe a playlist the user is using; the
-    // viewer is a cache, repopulated on the next activation (matches the v1.2.4
-    // deferral that leaves it empty until first interaction).
-    if (shutting_down && deadbeef_api) {
-        ddb_playlist_t *viewer = find_viewer_playlist(cw);
-        if (viewer) {
-            deadbeef_api->plt_clear(viewer);
-            deadbeef_api->plt_unref(viewer);
-        }
     }
 
     all_cui_widgets = g_list_remove(all_cui_widgets, cw);
