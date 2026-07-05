@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    name: build + test
+    runs-on: ubuntu-latest
+    # The plugin builds against the DeaDBeeF plugin API headers, which live in
+    # /usr/include/deadbeef/ (where CMakeLists.txt expects them). That header
+    # set ships in RPM Fusion's deadbeef-devel, the same package used on the
+    # dev machine; the repo's own .deadbeef/ reference clone is gitignored and
+    # not present in a fresh checkout. Fedora also carries GTK3. Matches the
+    # house Fedora-container CI pattern (see Atrium).
+    container: fedora:latest
+    steps:
+      - name: Enable RPM Fusion (free)
+        run: |
+          dnf install -y \
+            "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm"
+
+      - name: Install system dependencies
+        run: |
+          dnf install -y \
+            gcc \
+            git \
+            cmake \
+            make \
+            pkgconf-pkg-config \
+            gtk3-devel \
+            deadbeef-devel
+
+      - uses: actions/checkout@v4
+
+      # Prove the plugin still compiles from source (the committed
+      # compiled/*.so is kept in lockstep by a local pre-commit hook, which CI
+      # does not touch). BUILD_TESTS=ON also builds the GLib GTest suite, which
+      # runs headless (gtk_init_check + g_test_skip for widget-only cases).
+      - name: cmake configure
+        run: cmake -S . -B build -DBUILD_TESTS=ON
+
+      - name: cmake build
+        run: cmake --build build
+
+      - name: ctest
+        run: ctest --test-dir build --output-on-failure
