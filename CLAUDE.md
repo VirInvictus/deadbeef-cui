@@ -2,6 +2,15 @@
 
 Operator's manual for AI agents (and humans) working in this repo. **This file overrides `~/CLAUDE.md` for everything scoped to `deadbeef-cui`.** It supersedes `design.md` — that file remains for the documented update workflow but is no longer the architecture reference. Read this end to end before touching code; most of what's in here is not derivable from the source.
 
+## Section map (read these ranges on demand)
+
+| Topic | Lines |
+|---|---|
+| §3 `.deadbeef/` — vendored DeaDBeeF source: the map you need + how to use it | 57-171 |
+| §7 Configuration model (legacy global `cui.*` vs per-instance keyvalues, source-config sync) | 350-377 |
+| §8 Title formatting & the scriptable preset | 378-397 |
+| §11 The Gemini Flash incident (why this file exists) | 459-474 |
+
 ---
 
 ## 1. What this plugin is
