@@ -305,7 +305,7 @@ When you add any new async work touching a `cui_widget_t *`, add the same two-st
 
 ### 6.6 `update_tree_data` rebuilds atomically
 
-`update_tree_data` (cui_data.c:317) is the choke point. It:
+`update_tree_data` (cui_data.c:337) is the choke point. It:
 1. Saves current per-column selection texts into `saved_sels[]`.
 2. Frees the cached tree and the track-counts cache.
 3. Re-creates the tree from the scriptable preset.
@@ -315,11 +315,11 @@ When you add any new async work touching a `cui_widget_t *`, add the same two-st
 7. Schedules a vscroll restore on the idle loop (so it runs after GTK's own scroll-position recompute).
 8. Stores `current_idx` in `cw->last_ml_modification_idx` to short-circuit redundant calls.
 
-The modification-index check at the top is what prevents infinite loops with the listener. **Do not** remove the assignment on line 420 — there was a bug where the check ran but the assignment didn't, causing every call to do a full rebuild (fixed in v1.2.0). The cache-skip behavior is correct only if both halves are present.
+The modification-index check at the top is what prevents infinite loops with the listener. **Do not** remove the assignment at the end (`cw->last_ml_modification_idx = current_idx`, cui_data.c:483) — there was a bug where the check ran but the assignment didn't, causing every call to do a full rebuild (fixed in v1.2.0). The cache-skip behavior is correct only if both halves are present.
 
 ### 6.7 Search invalidates the modification cache
 
-When `search_text` changes, `update_tree_data` resets `last_ml_modification_idx = -1` (cui_data.c:330). This forces a full rebuild because the rebuild path is *also* where the search predicate (`track_matches_search`) gets applied — counts and visibility depend on the current search string.
+When `search_text` changes, `update_tree_data` resets `last_ml_modification_idx = -1` (cui_data.c:350). This forces a full rebuild because the rebuild path is *also* where the search predicate (`track_matches_search`) gets applied — counts and visibility depend on the current search string.
 
 ### 6.8 The track-count cache is valid under search, but only because §6.7 always resets it
 
@@ -331,7 +331,7 @@ As of v1.2.5, `count_tracks_recursive` uses `cw->track_counts_cache` regardless 
 
 ### 6.10 The pluralization rule has a deliberate exception
 
-cui_data.c:271-274: `"Album Artist"` collapses to `"Artist"` for the `[All]` label so it reads `[All (123 Artists)]` instead of `[All (123 Album Artists)]`. Don't generalize this — it's a single, deliberate special case for the most common column header.
+cui_data.c:291-293: `"Album Artist"` collapses to `"Artist"` for the `[All]` label so it reads `[All (123 Artists)]` instead of `[All (123 Album Artists)]`. Don't generalize this — it's a single, deliberate special case for the most common column header.
 
 ### 6.11 `pl_lock` is not reentrant; don't take it around `track_matches_search` callers
 
@@ -353,11 +353,11 @@ There are two layers, and migration between them is **read-once, write-never**:
 
 ### 7.1 Legacy global config (`cui.col1_format`, etc.)
 
-Pre-1.2.2 the plugin used flat `conf_get_str/set_str` with global keys. New widgets created today will read these as defaults if no per-instance config exists yet (`cui_create_widget` in `cui_widget.c:1028`). Once read, those values never get written back to global keys — they migrate into the per-instance keyvalue store the next time the layout is saved.
+Pre-1.2.2 the plugin used flat `conf_get_str/set_str` with global keys. New widgets created today will read these as defaults if no per-instance config exists yet (`cui_create_widget` in `cui_widget.c:1104`). Once read, those values never get written back to global keys — they migrate into the per-instance keyvalue store the next time the layout is saved.
 
 ### 7.2 Per-instance keyvalues (current)
 
-Persisted via `ddb_gtkui_widget_extended_api_t`. Keys: `col1_title`..`col5_title`, `col1_format`..`col5_format`, `split_tags`, `ignore_prefix`, `autoplaylist_name`. Serialization in `cui_serialize_to_keyvalues` (cui_widget.c:814), deserialization in `cui_deserialize_from_keyvalues` (cui_widget.c:848). The `found_any` guard ensures we only clobber defaults when the saved layout actually contains real column data.
+Persisted via `ddb_gtkui_widget_extended_api_t`. Keys: `col1_title`..`col5_title`, `col1_format`..`col5_format`, `split_tags`, `ignore_prefix`, `autoplaylist_name`. Serialization in `cui_serialize_to_keyvalues` (cui_widget.c:890), deserialization in `cui_deserialize_from_keyvalues` (cui_widget.c:924). The `found_any` guard ensures we only clobber defaults when the saved layout actually contains real column data.
 
 When you add a new option:
 1. Field on `cui_widget_t` in `cui_globals.h`.
@@ -371,7 +371,7 @@ When you add a new option:
 
 ### 7.3 Source-config sync
 
-`sync_source_config` (cui_widget.c:125) copies `medialib.deadbeef.paths` to `medialib.cui.paths` and enables our source. It only runs on the fallback (own-source) path, not when we share GTKUI's source. Run once at source-creation time only — it's not a continuous mirror.
+`sync_source_config` (cui_widget.c:148) copies `medialib.deadbeef.paths` to `medialib.cui.paths` and enables our source. It only runs on the fallback (own-source) path, not when we share GTKUI's source. Run once at source-creation time only — it's not a continuous mirror.
 
 ---
 
@@ -422,7 +422,7 @@ It fires on every play, skip, pause, and playqueue mutation — not just metadat
 
 ### 10.3 Don't ref-count the GtkMenu manually
 
-The right-click menu uses `gtk_menu_popup_at_pointer` (cui_widget.c:540). GTK takes a floating reference; the menu is destroyed when dismissed. The pre-v1.1.0 code leaked menus by holding an extra ref. Trust GTK's lifecycle here.
+The right-click menu uses `gtk_menu_popup_at_pointer` (cui_widget.c:616). GTK takes a floating reference; the menu is destroyed when dismissed. The pre-v1.1.0 code leaked menus by holding an extra ref. Trust GTK's lifecycle here.
 
 ### 10.4 Don't build a custom track-list view
 
@@ -476,11 +476,11 @@ The user's standing instruction: **stable and clean over clever**. Match style, 
 
 | You're about to… | Read first |
 |---|---|
-| Add a new column option | §7, `cui_widget.c:814-965`, `cui_scriptable.c:49-107` |
-| Touch the medialib listener path | §6.3, §6.4, `cui_widget.c:1086-1162`, `.deadbeef/plugins/medialib/medialib.c` listener emission |
+| Add a new column option | §7, `cui_serialize_to_keyvalues` / `cui_deserialize_from_keyvalues` in `cui_widget.c`, `cui_scriptable.c` |
+| Touch the medialib listener path | §6.3, §6.4, `ml_listener_cb` and its `add_listener` registration in `cui_widget.c`, `.deadbeef/plugins/medialib/medialib.c` listener emission |
 | Change the scriptable preset shape | §6.2, §8, `.deadbeef/plugins/medialib/scriptable_tfquery.c`, `.deadbeef/shared/scriptable/scriptable.c` |
-| Modify shutdown sequence | §6.3, `cui_widget.c:750-812`, `main.c:54-66` |
-| Add a context-menu item | `cui_widget.c:461-547`, `.deadbeef/plugins/gtkui/plmenu.c` for reuse opportunities |
+| Modify shutdown sequence | §6.3, `cui_destroy` in `cui_widget.c`, `main.c:54-66` |
+| Add a context-menu item | the context-menu builder around `gtk_menu_popup_at_pointer` in `cui_widget.c`, `.deadbeef/plugins/gtkui/plmenu.c` for reuse opportunities |
 | Add a new keyboard shortcut | `main.c:68-95` (action), `cui_widget.c:172-190` (per-widget keypress), `.deadbeef/plugins/gtkui/hotkeys.c` |
 | Optimize counting/aggregation | §6.6, §6.8, `cui_data.c:22-52` and `:198-295` |
 | Bump the GTKUI API level we require | gtkui_api.h, ensure `DDB_GTKUI_API_LEVEL` guards on every newer-than-baseline call |

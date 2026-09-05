@@ -176,7 +176,7 @@ The two facet-specific items (`Add selection to current playlist`, `Send selecti
 
 **Deep Bug Fixing.** Reviewed and tightened code for memory leaks, ensuring all GTKUI ownership and widget tearing-down flows correctly without leaving orphans or crashing.
 
-## v0.9.0-alpha (Current)
+## v0.9.0-alpha
 
 ---
 

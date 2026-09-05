@@ -37,7 +37,7 @@ Efficiently queries the internal DeaDBeeF media library database using the `DB_m
 
 - **Dynamic Sorting:** Sort columns by name or item count.
 - **Title Formatting:** Full DeaDBeeF title formatting syntax for custom column display.
-- **Album Art View:** Grid-based cover art display for relevant facets.
+- **Album Art View:** Grid-based cover art display for relevant facets. *(Deferred, annotated 2026-09-05: never built; no album-art code exists in `src/`. Recorded as deferred in the guidance file, not dropped from the contract.)*
 - **Multivalue Tag Support:** Proper handling of `;` or `\\` separated tags.
 - **Integrated Search:** Global real-time search to narrow all facets simultaneously.
 - **Autoplaylists:** Dynamically updating playlists based on the current facet selection.
