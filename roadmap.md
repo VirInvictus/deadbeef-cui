@@ -125,7 +125,9 @@ Measured baseline (6,367-track library, fresh launch with cui in layout but no G
 ### Requires Brandon (external systems / decisions)
 - [ ] **Cross-Platform Verification:** Run the `deadbeef-plugin-builder` Docker environment locally to verify the plugin builds for x86_64 and i686. Manifest is in place; this is a `docker run` away when ready.
 - [ ] **Submission PR:** Open a PR against `DeaDBeeF-Player/deadbeef-plugin-builder` adding the manifest. Requires GitHub credentials and your own description.
+  *(DECIDED 2026-09-12 (Brandon): GO once the first-touch fixes land (the dead bdkl/ URL in manifest.json and main.c) and the builder-Docker verify runs; the PR itself needs your credentials and description.)*
 - [ ] **v2.0.0 Tagging:** A v2.0 release implies a major-feature milestone; v1.3.3 is the current state. Defer until a feature warrants it (or rebrand "stable + plugin-list ready" as v2.0 if you prefer that framing).
+  *(DECIDED 2026-09-12 (Brandon): defer until a feature warrants it.)*
 
 ---
 
