@@ -1,6 +1,6 @@
 # deadbeef-cui — Roadmap
 
-What's done, what's next. Sequenced for feature-parity with foobar2000's Columns UI. Updated as of v1.3.1.
+What's done, what's next. Sequenced for feature-parity with foobar2000's Columns UI. Updated as of v1.3.3.
 
 ---
 
@@ -149,3 +149,28 @@ Measured baseline (6,367-track library, fresh launch with cui in layout but no G
 - [x] **Fix: widget-destroy leaks.** `cui_destroy` now frees `formats[]`, the scriptable preset, and `autoplaylist_name` (previously leaked on every teardown / layout reload).
 - [x] **Investigated, no change:** `[All]` row sort position. `sort_func`'s order-aware pinning keeps `[All]` at iter 0 in all sort orders; the original code was correct. Documented in CLAUDE.md §6.13 and covered by the sort test.
 - [x] **Untracked `pick-it-up.md` at repo root** (workspace sweep, 2026-06-09). Decide whether it should be committed (it is committed in other repos) or removed; right now it is invisible to clones. **Moot: the file no longer exists.** It was removed at some point between that sweep and 2026-07-23, so the "commit or remove" question answered itself as "removed". Closed in the 2026-07-23 reconciliation sweep. Build itself is clean: zero compiler warnings from a from-scratch cmake + make.
+
+## New findings 2026-09-12 (six-lens full audit; detail: audit/FULL-AUDIT-2026-09-12.md, Wave 21)
+
+- [ ] **CRITICAL (issue #1, unacknowledged): Configure Facets Save
+      SEGFAULTs on DeaDBeeF 1.10.3.** cui_widget.c:1036 passes NULL to
+      gtkui_plugin->w_save_layout_to_conf_key (contract: non-NULL;
+      _save_widget_to_json NULL-derefs - the reporter's stack matches),
+      uses the wrong key ("layout" vs DDB_GTKUI_CONF_LAYOUT), and the API
+      landed after tag 1.10.2 so the dev machine's guard reads struct-tail
+      garbage (why it never crashed locally). Fix: version-guard the call
+      (or walk to the root widget and mirror gtkui's w_save), use the real
+      key, rebuild the .so in lockstep, reply on issue #1, ship v1.3.4.
+- [ ] **The submission-PR GO is re-gated:** dead-URL fixes (manifest.json
+      + main.c + the .so rebuild) + the crash fix + issue reply + the
+      Docker verify, in that order.
+- [ ] **Lockstep enforcement is opt-in and CI-blind:** a fresh clone can
+      commit source with a stale compiled/.so. Add a CI build-and-compare
+      step (or a size/hash check).
+- [ ] **Docs:** README's "1.10.x thoroughly tested" is falsified by issue
+      #1 (state the verified floor after the fix); main.c's .plugin.website
+      carries the dead URL baked into the shipped .so; the GTK4 shim gap
+      (menus/dialogs) deserves one README sentence.
+- [ ] **GitHub:** triage issue #1 (the report is high quality); the
+      granted v1.3.3 tag cuts with the queued lane; drop the cpp topic
+      (pure C11); wiki optionally off.
