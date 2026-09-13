@@ -1,6 +1,39 @@
 # deadbeef-cui — Patch Notes
 
-## v1.3.3 (Current)
+## v1.3.4
+
+---
+
+### Bug fixes
+
+**Fixed the crash when confirming the "Configure Facets" dialog (issue #1).**
+The dialog's save handler called the GTKUI function `w_save_layout_to_conf_key`
+with NULL where the contract requires a widget pointer, crashing inside GTKUI's
+layout serializer on every DeaDBeeF 1.10.1 or newer. The call never served its
+intended purpose: the `"layout"` config key it wrote is read by nothing, and the
+widget's per-instance settings are already persisted by GTKUI itself whenever
+the layout is saved (on quit and on design-mode edits). The call has been
+removed. File: `src/cui_widget.c`.
+
+**Fixed blank facet panes after confirming the configuration dialog.** Applying
+a new column configuration rebuilt the internal trees, but the modification-index
+cache short-circuited the refresh, so the new layout only appeared after the next
+library change or search keystroke. The rebuild is now forced when the dialog is
+accepted. This defect was masked by the crash above. File: `src/cui_widget.c`.
+
+### Packaging
+
+**The plugin now builds under its final name, and the dead website URL is fixed.**
+CMake emits `ddb_misc_cui_GTK3.so` directly (`OUTPUT_NAME`, with the empty
+prefix kept), the builder manifests list that name in `out`, and installing is a
+plain copy of the built file. `manifest.json`, `manifest.json.example`, and the
+plugin's website string now point at `https://github.com/VirInvictus/deadbeef-cui`
+instead of the dead `bdkl/` repository. The README compatibility section was
+corrected: the verified DeaDBeeF floor is 1.9.6 (plugin API level 17), tested on
+1.10.x. A regression test (`/cui/config/save_layout`) now locks in that the
+plugin never calls `w_save_layout_to_conf_key`.
+
+## v1.3.3
 
 ---
 
