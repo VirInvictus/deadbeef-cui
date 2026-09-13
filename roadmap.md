@@ -150,27 +150,56 @@ Measured baseline (6,367-track library, fresh launch with cui in layout but no G
 - [x] **Investigated, no change:** `[All]` row sort position. `sort_func`'s order-aware pinning keeps `[All]` at iter 0 in all sort orders; the original code was correct. Documented in CLAUDE.md §6.13 and covered by the sort test.
 - [x] **Untracked `pick-it-up.md` at repo root** (workspace sweep, 2026-06-09). Decide whether it should be committed (it is committed in other repos) or removed; right now it is invisible to clones. **Moot: the file no longer exists.** It was removed at some point between that sweep and 2026-07-23, so the "commit or remove" question answered itself as "removed". Closed in the 2026-07-23 reconciliation sweep. Build itself is clean: zero compiler warnings from a from-scratch cmake + make.
 
-## New findings 2026-09-12 (six-lens full audit; detail: audit/FULL-AUDIT-2026-09-12.md, Wave 21)
+## New findings 2026-09-12 (six-lens audit Wave 21 + the night research blitz; rewritten in place after the blitz verified it)
+
+Detail: the workspace audit repo's FULL-AUDIT-2026-09-12.md (Wave 21,
+~/.gitrepos/audit/) and this repo's RESEARCH-deadbeef-internals-2026-09-13.md
+(the 2026-09-12 night synthesis of five research agents; the authoritative
+reference for the 09-13 fix lane). Where the original audit wording and the
+report disagree, the report wins; the corrections are already applied below.
 
 - [ ] **CRITICAL (issue #1, unacknowledged): Configure Facets Save
-      SEGFAULTs on DeaDBeeF 1.10.3.** cui_widget.c:1036 passes NULL to
-      gtkui_plugin->w_save_layout_to_conf_key (contract: non-NULL;
-      _save_widget_to_json NULL-derefs - the reporter's stack matches),
-      uses the wrong key ("layout" vs DDB_GTKUI_CONF_LAYOUT), and the API
-      landed after tag 1.10.2 so the dev machine's guard reads struct-tail
-      garbage (why it never crashed locally). Fix: version-guard the call
-      (or walk to the root widget and mirror gtkui's w_save), use the real
-      key, rebuild the .so in lockstep, reply on issue #1, ship v1.3.4.
+      SEGFAULTs on DeaDBeeF 1.10.1+.** cui_widget.c:1035-1037 passes NULL
+      as the val parameter of gtkui_plugin->w_save_layout_to_conf_key
+      (contract: "val must be non-NULL"; upstream _save_widget_to_json
+      derefs it at widgets.c:640-642; the reporter's stack matches) and
+      uses the dead key "layout". The member shipped in 1.10.1 (commit
+      9caadf5b1), so the crash is deterministic on 1.10.1, 1.10.2, and
+      1.10.3 alike; the earlier "landed after tag 1.10.2 / struct-tail
+      garbage" mechanism is refuted (the genuine ABI window is <=1.10.0,
+      and this machine runs 1.10.3: no local crash means no OK click
+      since 2026-04-24). Fix (decided): DELETE the call - it never
+      worked, and per-instance settings persist via quit-time w_save()
+      through the extended API - and ship v1.3.4.
+- [ ] **Must pair with the deletion, same commit: blank panes after
+      dialog OK.** The Save handler rebuilds the preset and columns but
+      never resets last_ml_modification_idx, so update_tree_data
+      early-returns and the new layout appears only after the next
+      library change or search keystroke. Masked by the crash until now
+      (cui_widget.c:1033; report section 4, H1).
 - [ ] **The submission-PR GO is re-gated:** dead-URL fixes (manifest.json
       + main.c + the .so rebuild) + the crash fix + issue reply + the
-      Docker verify, in that order.
-- [ ] **Lockstep enforcement is opt-in and CI-blind:** a fresh clone can
-      commit source with a stale compiled/.so. Add a CI build-and-compare
-      step (or a size/hash check).
+      Docker verify (x86_64 only; the builder offers no i686), in that
+      order.
+- [ ] **Lockstep enforcement is CI-blind (the local half is fine):** the
+      pre-commit hook is live here (core.hooksPath = .githooks), but CI
+      never checks compiled/. Add a git-level CI gate (a commit touching
+      src/ or CMakeLists.txt must touch compiled/ddb_misc_cui_GTK3.so);
+      no byte-compare against the floating fedora:latest container.
 - [ ] **Docs:** README's "1.10.x thoroughly tested" is falsified by issue
-      #1 (state the verified floor after the fix); main.c's .plugin.website
-      carries the dead URL baked into the shipped .so; the GTK4 shim gap
-      (menus/dialogs) deserves one README sentence.
-- [ ] **GitHub:** triage issue #1 (the report is high quality); the
-      granted v1.3.3 tag cuts with the queued lane; drop the cpp topic
-      (pure C11); wiki optionally off.
+      #1 (state the verified floor after the fix: DeaDBeeF 1.9.6+ for
+      source builds, core API level 17, exapi since 1.9.0); main.c's
+      .plugin.website carries the dead URL baked into the shipped .so;
+      the GTK4 shim gap (menus/dialogs) deserves one README sentence;
+      CLAUDE.md §6.11's "pl_lock is not reentrant" is false (upstream
+      creates it recursive) and §4 needs the deleted call noted.
+- [ ] **GitHub:** triage issue #1 (the report is high quality); tag
+      policy DECIDED 2026-09-12: v1.3.4 onward only, no catch-up tags
+      for the four untagged releases; drop the cpp topic (pure C11);
+      wiki optionally off.
+- [ ] **Queued for v1.3.5 (decided, report section 5):** shutting_down
+      via g_atomic wrappers; hidden-marker identity for the viewer
+      playlist (a user playlist sharing the name currently gets wiped at
+      quit); two-step-guard uniformity; the PLUG_TEST_COMPAT api probe
+      as a first-class pattern. Search album-field: deferred (charter
+      holds).
