@@ -118,7 +118,7 @@ Measured baseline (6,367-track library, fresh launch with cui in layout but no G
 *Packaging and submitting for official inclusion in the DeaDBeeF ecosystem. (Was Phase 9.)*
 
 - [x] **Consolidated Build System:** Removed the legacy `Makefile` in favor of a single, robust CMake-driven build process.
-- [x] **Manifest Authoring:** `manifest.json` lives in the repo root. It tracks the example template (git source, cmake build at root, GTK3 env vars from the builder, output `cui.so`). Re-verify against the current `deadbeef-plugin-builder` schema when opening the submission PR.
+- [x] **Manifest Authoring:** `manifest.json` lives in the repo root. It tracks the example template (git source, cmake build at root, GTK3 env vars from the builder, output `ddb_misc_cui_GTK3.so`). Re-verify against the current `deadbeef-plugin-builder` schema when opening the submission PR. (v1.3.4: the builder schema check happened early; the manifests now list the final `ddb_misc_cui_GTK3.so` name and CMake emits it directly via `OUTPUT_NAME`, and the dead `bdkl/` git URL is fixed to `VirInvictus/deadbeef-cui`.)
 - [x] **Static Linking Audit:** Audited via `ldd` on the built `cui.so`. The plugin links only against the system GTK3 / glib / cairo / pango stack and `libdl` — all libraries DeaDBeeF itself depends on. Static-linking these would conflict with DeaDBeeF's own GTK and is incorrect for the plugin model. No non-core deps to address.
 - [x] **Repository Readiness:** Repo is clean — README, spec, roadmap, patchnotes, CLAUDE.md, LICENSE, manifest.json, CMakeLists.txt, src/, compiled/ all present. No stale build artifacts checked in beyond the intentional `compiled/ddb_misc_cui_GTK3.so` for non-builders.
 
@@ -158,7 +158,7 @@ Detail: the workspace audit repo's FULL-AUDIT-2026-09-12.md (Wave 21,
 reference for the 09-13 fix lane). Where the original audit wording and the
 report disagree, the report wins; the corrections are already applied below.
 
-- [ ] **CRITICAL (issue #1, unacknowledged): Configure Facets Save
+- [x] **CRITICAL (issue #1, unacknowledged): Configure Facets Save
       SEGFAULTs on DeaDBeeF 1.10.1+.** cui_widget.c:1035-1037 passes NULL
       as the val parameter of gtkui_plugin->w_save_layout_to_conf_key
       (contract: "val must be non-NULL"; upstream _save_widget_to_json
@@ -171,12 +171,18 @@ report disagree, the report wins; the corrections are already applied below.
       since 2026-04-24). Fix (decided): DELETE the call - it never
       worked, and per-instance settings persist via quit-time w_save()
       through the extended API - and ship v1.3.4.
-- [ ] **Must pair with the deletion, same commit: blank panes after
+      (SHIPPED v1.3.4, commit f0986ff: the call is deleted, with the
+      contract and the never-call rule recorded in CLAUDE.md §4; a mock
+      gtkui-vtable tripwire test (`/cui/config/save_layout`) asserts the
+      plugin never calls the function and hard-fails on a NULL val.)
+- [x] **Must pair with the deletion, same commit: blank panes after
       dialog OK.** The Save handler rebuilds the preset and columns but
       never resets last_ml_modification_idx, so update_tree_data
       early-returns and the new layout appears only after the next
       library change or search keystroke. Masked by the crash until now
       (cui_widget.c:1033; report section 4, H1).
+      (SHIPPED v1.3.4, same commit: last_ml_modification_idx = -1 before
+      update_tree_data in the OK handler.)
 - [ ] **The submission-PR GO is re-gated:** dead-URL fixes (manifest.json
       + main.c + the .so rebuild) + the crash fix + issue reply + the
       Docker verify (x86_64 only; the builder offers no i686), in that
@@ -198,13 +204,18 @@ report disagree, the report wins; the corrections are already applied below.
       never checks compiled/. Add a git-level CI gate (a commit touching
       src/ or CMakeLists.txt must touch compiled/ddb_misc_cui_GTK3.so);
       no byte-compare against the floating fedora:latest container.
-- [ ] **Docs:** README's "1.10.x thoroughly tested" is falsified by issue
+- [x] **Docs:** README's "1.10.x thoroughly tested" is falsified by issue
       #1 (state the verified floor after the fix: DeaDBeeF 1.9.6+ for
       source builds, core API level 17, exapi since 1.9.0); main.c's
       .plugin.website carries the dead URL baked into the shipped .so;
       the GTK4 shim gap (menus/dialogs) deserves one README sentence;
       CLAUDE.md §6.11's "pl_lock is not reentrant" is false (upstream
       creates it recursive) and §4 needs the deleted call noted.
+      (SHIPPED v1.3.4: README/spec state the 1.9.6 verified floor, name
+      1.10.3 as the tested runtime, and carry the GTK4 shim caveat;
+      CLAUDE.md §4 records the deleted call, §6.11 is corrected, and
+      §10.10-10.12 cover the GTK4 gaps, the upstream serialize leak, and
+      the PLUG_TEST_COMPAT probe; the website fix rode commit 19132f7.)
 - [ ] **GitHub:** triage issue #1 (the report is high quality); tag
       policy DECIDED 2026-09-12: v1.3.4 onward only, no catch-up tags
       for the four untagged releases; drop the cpp topic (pure C11);

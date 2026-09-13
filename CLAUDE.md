@@ -181,7 +181,7 @@ The points where this plugin meets DeaDBeeF. Use this table as the lookup index 
 | `plug_get_for_id(DDB_GTKUI_PLUGIN_ID)` | gtkui_api.h:44 | `DDB_GTKUI_PLUGIN_ID` resolves to `"gtkui3_1"` for GTK3 builds, `"gtkui_1"` for GTK2. The macro expands at *plugin* compile time based on which GTK we built against. |
 | `gtkui_plugin->w_reg_widget(...)` | gtkui_api.h:221 | Registered with `DDB_WF_SUPPORTS_EXTENDED_API` so our `cw->exapi` block (placed immediately after `base` in `cui_widget_t` — required by the API) is wired up for serialize/deserialize. |
 | `gtkui_plugin->w_override_signals` | gtkui_api.h:227 | Required for design-mode (right-click → "Replace with…", drag-to-reorder, etc.). Called from `cui_init`. |
-| `gtkui_plugin->w_save_layout_to_conf_key` | gtkui_api.h:314 | Called after the config dialog accepts changes so the per-instance keyvalues persist. Available since GTKUI API 2.6 — guard if we ever target older. |
+| ~~`gtkui_plugin->w_save_layout_to_conf_key`~~ | gtkui_api.h:311-314 | **Never call this.** The v1.3.4 issue-#1 fix deleted the plugin's only call: the config dialog passed NULL as `val`, which the contract requires to be a valid widget pointer, and upstream's `_save_widget_to_json` dereferences it (`widgets.c:640-642`): a deterministic SIGSEGV on every DeaDBeeF 1.10.1+ (the member shipped in 1.10.1, commit `9caadf5b1`). It was redundant anyway: per-instance keyvalues persist via the quit-time and design-mode `w_save()` through the extended API. Locked in by the `/cui/config/save_layout` tripwire test. If flush-on-Save is ever genuinely required, probe with `PLUG_TEST_COMPAT` first (§10.12) and pass gtkui's own root-widget conventions: never NULL, never our widget alone. |
 | `gtkui_medialib_get_source` | plugins/gtkui/medialib/medialibmanager.c:22 | Resolved via `dlopen("ddb_gui_GTK3.so", RTLD_LAZY \| RTLD_NOLOAD) + dlsym`. **Not** part of the public ABI; if upstream renames it, we silently fall back to creating our own source. The fallback works but is slower (full second source = full second scan). |
 | `medialib_plugin->create_source` | deadbeef.h:2425 | We **must** pass `"cui"` (not `"deadbeef"`) — see §6.1. |
 | `medialib_plugin->create_item_tree` | deadbeef.h:2458 | Takes our scriptable preset. Returns NULL during scan or on memory pressure — handle it. |
@@ -333,9 +333,9 @@ As of v1.2.5, `count_tracks_recursive` uses `cw->track_counts_cache` regardless 
 
 cui_data.c:291-293: `"Album Artist"` collapses to `"Artist"` for the `[All]` label so it reads `[All (123 Artists)]` instead of `[All (123 Album Artists)]`. Don't generalize this — it's a single, deliberate special case for the most common column header.
 
-### 6.11 `pl_lock` is not reentrant; don't take it around `track_matches_search` callers
+### 6.11 Don't add `pl_lock` around tree traversal; tree text needs no lock
 
-`track_matches_search` already takes `pl_lock` internally. `aggregate_recursive_multi` and `populate_list_multi` don't lock — they only read tree text, which medialib already considers immutable for the caller. Don't add an outer `pl_lock` around tree traversal "for safety"; you'll deadlock against the streamer.
+`pl_lock` is not a deadlock hazard here: upstream creates it recursive (`PTHREAD_MUTEX_RECURSIVE`), and `populate_playlist_from_cui` already nests it. (This section previously claimed `pl_lock` is non-reentrant; that's false, so don't re-propagate it.) The real reason `aggregate_recursive_multi` and `populate_list_multi` don't lock is that they only read tree text, which medialib already considers immutable for the caller. `track_matches_search` takes `pl_lock` internally for its own playlist reads, and that is the only locking the traversal paths need.
 
 ### 6.12 Track copies, not references, into the viewer playlist
 
@@ -455,6 +455,18 @@ GTKUI owns it. Our `cui_destroy` cleans up children and our own state; the tople
 ### 10.9 Beware `conf_get_str_fast` outside `conf_lock`
 
 It's not thread-safe and the returned pointer is invalidated by the next config write. We use it inside `conf_lock`/`conf_unlock` only. If you need a value held across a long operation, copy it with `g_strdup` before unlocking.
+
+### 10.10 Known GTK4 shim gaps (audit before ever claiming GTK4 support)
+
+The §10.8 shim covers the calls it maps, but these are still GTK3-native and unguarded: `GdkEventButton` in `on_tree_button_press` (the shim maps `GdkEventKey` only), `gtk_widget_destroy(dialog)` in the config-dialog path, `gtk_container_get_children`, the whole GtkMenu/GtkMenuItem/GtkMenuShell block (a GTK4 port needs GtkPopoverMenu/GMenu), the unguarded `"key-press-event"` connects (need `GtkEventControllerKey`), and drag-out (needs `GtkDragSource` + `GdkContentProvider`). Two hardcoded GTK3 identities also need special-casing in any GTK4 build: `DDB_GTKUI_PLUGIN_ID` resolves to the GTK2 id `"gtkui_1"` when compiled against GTK4 (the header only branches GTK3-vs-else), and `dlopen("ddb_gui_GTK3.so", ...)` is hardcoded in the dlsym paths. A GTK4 build of this plugin has never been made.
+
+### 10.11 Upstream never frees `serialize_to_keyvalues` output
+
+`_save_widget_to_json` (upstream `widgets.c`, 1.10.3 and master) calls our `exapi.serialize_to_keyvalues` and never calls `free_serialized_keyvalues` on the result (zero call sites upstream). Every layout save (each quit, each design-mode edit) therefore leaks our ~27 strdup'd keyvalue strings. Unfixable plugin-side: the API contract requires returning a heap array, so do not change our allocators to work around it. Known, accepted, upstream's to fix.
+
+### 10.12 Sound GTKUI version probing: `PLUG_TEST_COMPAT`, never struct-tail reads
+
+`ddb_gtkui_t` has no `_size` field, so "does this runtime have member X" cannot be read off the struct: on older runtimes a tail-member read lands past the end of the runtime vtable in adjacent static storage (zero-fill made the deleted `w_save_layout_to_conf_key` guard silently skip; nonzero garbage would have been a wild call). The only sound runtime channel is the published API version: gtkui sets `.gui.plugin.version_major = DDB_GTKUI_API_VERSION_MAJOR` (2) and `.version_minor` (6 on 1.10.1+, 2.5 on 1.9.x through 1.10.0). Check NULL on `gtkui_plugin` first, then `PLUG_TEST_COMPAT(&gtkui_plugin->gui.plugin, 2, 6)` (`deadbeef.h:273`) before any 2.6-only member. Compile-time gating is `#if (DDB_GTKUI_API_LEVEL >= NNN)`.
 
 ---
 

@@ -10,7 +10,7 @@
 
 A faceted library browser plugin for the [DeaDBeeF](https://deadbeef.sourceforge.io/) music player on Linux. It brings a Columns UI / Facets style multi-filter layout to DeaDBeeF, optimized for users who navigate large collections via metadata rather than static playlists.
 
-> **Note:** This is considered completed software. It is effectively feature complete; bug fixes will be addressed as they come, but no new features are planned. It has been thoroughly tested and is known to be fully functional on the primary development environment: **Fedora Linux 44 (Workstation Edition)**, kernel `7.0.10-201.fc44.x86_64`, running **DeaDBeeF 1.10.2** with **GTK 3.24.52**. The plugin is **v1.3.3**, written in C11 against DeaDBeeF Plugin API level 18+ (the installed `deadbeef-devel` here provides level 19), and built with GCC 16 via CMake 4.3. A prebuilt `compiled/ddb_misc_cui_GTK3.so` is kept in sync with the source for users who do not want to build. GTK4 forward-compat shims are in place, but GTK3 is the only officially tested build target.
+> **Note:** This is considered completed software. It is effectively feature complete; bug fixes will be addressed as they come, but no new features are planned. It is developed and tested on the primary development environment: **Fedora Linux 44 (Workstation Edition)**, kernel `7.0.10-201.fc44.x86_64`, running **DeaDBeeF 1.10.3** with **GTK 3.24.52**. The plugin is **v1.3.3**, written in C11 against DeaDBeeF Plugin API level 17 or newer (DeaDBeeF 1.9.6+; the installed `deadbeef-devel` here provides level 19), and built with GCC 16 via CMake 4.3. A prebuilt `compiled/ddb_misc_cui_GTK3.so` is kept in sync with the source for users who do not want to build. GTK4 forward-compat shims exist, but GTK3 is the only build target that has ever been compiled; see the GTK4 note under Hard limitations.
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/0ceaa853-cc2d-4cf8-9dc6-243d0dddfe9d" alt="DeaDBeeF CUI Plugin Screenshot" style="max-width: 100%; border-radius: 8px;">
@@ -34,7 +34,7 @@ The plugin drives DeaDBeeF's existing playlist view seamlessly. To prevent accid
 
 ## Compatibility
 
-This plugin is developed and tested on **Fedora Linux** (currently Fedora 44, x86_64) running **DeaDBeeF 1.10.2** with the GTK3 GUI plugin. The project is effectively feature-complete; I review and fix issues as the community reports them but am not actively adding features.
+This plugin is developed and tested on **Fedora Linux** (currently Fedora 44, x86_64) running **DeaDBeeF 1.10.3** with the GTK3 GUI plugin. The verified API floor is **DeaDBeeF 1.9.6**: every plugin-API member the widget calls (the `DB_mediasource_t` tree API, `plt_select_all`, and the GTKUI widget API with extended per-widget serialization) ships in 1.9.6, and since v1.3.4 nothing newer is required. Versions between 1.9.6 and 1.10.0 meet the floor but are not regularly exercised; the 1.10.x line is what is actually tested. The project is effectively feature-complete; I review and fix issues as the community reports them but am not actively adding features.
 
 ### Pre-built binary (`compiled/ddb_misc_cui_GTK3.so`)
 
@@ -46,7 +46,7 @@ The committed binary is provided as a convenience for users who don't want to co
 | Linux glibc | **2.34 or newer** |
 | Operating system | Linux only (the binary is an ELF `.so`) |
 | GTK | DeaDBeeF's GTK3 GUI plugin (`ddb_gui_GTK3.so`) must be the active GUI |
-| DeaDBeeF | 1.10.x (uses `DB_mediasource_t` API, level 18+) |
+| DeaDBeeF | 1.9.6 or newer (verified API floor, plugin API level 17); tested on 1.10.x |
 
 The glibc 2.34 floor exists because that release moved `dlopen`/`dlsym`/`dlclose` from `libdl.so.2` into `libc.so.6` and rebound them to `GLIBC_2.34`. The binary calls those three functions to share the GTKUI plugin's media library source.
 
@@ -73,7 +73,7 @@ If your system can't run the pre-built binary — **or if you're on any architec
 ### Hard limitations (apply to both pre-built and from-source builds)
 
 - **Linux only.** DeaDBeeF itself runs on Linux, macOS, and Windows, but those platforms use different GUI plugins. This widget is specifically a GTK3 plugin and won't load under macOS Cocoa or Windows native UIs.
-- **GTK3 only.** The codebase carries forward-compatibility shims for GTK4 (see `cui_globals.h`), but DeaDBeeF currently ships only a GTK3 GUI. When DeaDBeeF gets a GTK4 GUI plugin, this widget should compile against it with minimal changes.
+- **GTK3 only.** The codebase carries forward-compatibility shims for GTK4 (see `cui_globals.h`), but DeaDBeeF currently ships only a GTK3 GUI. The shims are partial: button events, context menus, dialogs, container iteration, and drag-out are still written against GTK3 APIs, and a GTK4 build of this plugin has never been made, so a future GTK4 port is a real porting effort rather than a recompile.
 - **Requires the medialib plugin.** Without `medialib.so` enabled, the widget renders an empty layout. The medialib plugin ships with DeaDBeeF — no extra step needed unless you've explicitly disabled it.
 - **No cross-compilation.** The `CMakeLists.txt` uses `pkg-config` to discover GTK3, which assumes a native build environment. Cross-compiling from x86_64 to i686 or aarch64 is plausible but untested.
 
