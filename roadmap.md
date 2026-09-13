@@ -220,6 +220,10 @@ report disagree, the report wins; the corrections are already applied below.
       policy DECIDED 2026-09-12: v1.3.4 onward only, no catch-up tags
       for the four untagged releases; drop the cpp topic (pure C11);
       wiki optionally off.
+      (PROGRESS 2026-09-13: issue #1 triaged, labeled bug, answered
+      with the diagnosis and the v1.3.4 link after the live smoke
+      passed all four reply gates, and closed as completed on the
+      release; the cpp-topic and wiki calls remain.)
 - [ ] **Queued for v1.3.5 (decided, report section 5):** shutting_down
       via g_atomic wrappers; hidden-marker identity for the viewer
       playlist (a user playlist sharing the name currently gets wiped at
