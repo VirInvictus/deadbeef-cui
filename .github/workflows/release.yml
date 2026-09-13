@@ -6,6 +6,11 @@ name: Release
 # the GitHub Release with ddb_misc_cui_GTK3.so attached. The Release body is
 # the tag's own message, which is the verbatim patchnotes entry (house tagging
 # procedure).
+#
+# Constraint: GitHub evaluates workflow files at the pushed ref, so this only
+# fires for tags cut at commits that CONTAIN this file (v1.3.4 predates it; its
+# asset was attached manually per the rule's fallback). Cut every later tag on
+# or after the commit that carries this workflow.
 on:
   push:
     tags: ["v*"]

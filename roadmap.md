@@ -240,5 +240,8 @@ report disagree, the report wins; the corrections are already applied below.
       push it builds in the same fedora container as CI, runs ctest, then
       creates the Release with the CI-built `ddb_misc_cui_GTK3.so`
       attached; the Release body is the tag message, i.e. the verbatim
-      patchnotes entry. Landed before the v1.3.4 tag push so the rule
-      covers this release itself.)
+      patchnotes entry. v1.3.4's own asset was attached MANUALLY per the
+      rule's fallback: the tag points one commit before the workflow
+      landed, and GitHub evaluates workflows at the pushed ref, so the
+      workflow cannot fire for it. From v1.3.5 on, tags are cut at
+      commits that contain release.yml and the workflow covers them.)
