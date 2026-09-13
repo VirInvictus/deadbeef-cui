@@ -11,7 +11,7 @@
             "GTK3_LIBS": "$GTK310_LIBS"
         },
         "out": [
-            "cui.so"
+            "ddb_misc_cui_GTK3.so"
         ]
     }
 }

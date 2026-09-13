@@ -93,7 +93,7 @@ cmake --build build
 ### Installation
 ```bash
 mkdir -p ~/.local/lib/deadbeef
-cp build/cui.so ~/.local/lib/deadbeef/ddb_misc_cui_GTK3.so
+cp build/ddb_misc_cui_GTK3.so ~/.local/lib/deadbeef/ddb_misc_cui_GTK3.so
 ```
 Enter **Design Mode** in DeaDBeeF to add the **Facet Browser (CUI)** widget to your layout.
 

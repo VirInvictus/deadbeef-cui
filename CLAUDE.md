@@ -15,7 +15,7 @@ Operator's manual for AI agents (and humans) working in this repo. **This file o
 
 ## 1. What this plugin is
 
-`deadbeef-cui` is a faceted library browser for [DeaDBeeF](https://deadbeef.sourceforge.io/) — a foobar2000 Columns UI / Facets clone implemented as a native GTK3 plugin. It compiles to a single shared object (`cui.so`, installed as `ddb_misc_cui_GTK3.so`) and registers a dockable widget called **"Facet Browser (CUI)"** through GTKUI's design-mode widget API.
+`deadbeef-cui` is a faceted library browser for [DeaDBeeF](https://deadbeef.sourceforge.io/) — a foobar2000 Columns UI / Facets clone implemented as a native GTK3 plugin. It compiles to a single shared object (`build/ddb_misc_cui_GTK3.so`, the final plugin filename) and registers a dockable widget called **"Facet Browser (CUI)"** through GTKUI's design-mode widget API.
 
 What it actually does at runtime:
 
@@ -209,7 +209,7 @@ cmake -S . -B build
 cmake --build build
 ```
 
-Output: `build/cui.so`.
+Output: `build/ddb_misc_cui_GTK3.so`. The CMake target is `cui` with `OUTPUT_NAME ddb_misc_cui_GTK3` and `PREFIX ""`, so the build emits the final plugin filename directly: DeaDBeeF derives the `_load` entry-point symbol from the plugin filename, and the builder manifests list the final name in `out`.
 
 The build is `-Wall -Wextra -fPIC`, C11. There's currently **no warning policy** — be careful when adding code that the warning count doesn't grow. Don't slap `-Werror` on without a sweep first; the existing code has a few `(void)` casts but is otherwise clean.
 
@@ -217,7 +217,7 @@ The build is `-Wall -Wextra -fPIC`, C11. There's currently **no warning policy**
 
 ```bash
 mkdir -p ~/.local/lib/deadbeef
-cp build/cui.so ~/.local/lib/deadbeef/ddb_misc_cui_GTK3.so
+cp build/ddb_misc_cui_GTK3.so ~/.local/lib/deadbeef/ddb_misc_cui_GTK3.so
 ```
 
 The destination filename matters. DeaDBeeF derives the `_load` entry-point symbol from the file basename — the symbol `ddb_misc_cui_GTK3_load` is wired to the `ddb_misc_cui_GTK3.so` filename. If you rename the installed file, also rename the export in `main.c`.
@@ -236,7 +236,7 @@ The destination filename matters. DeaDBeeF derives the `_load` entry-point symbo
 Refresh it like this (run from the repo root after `build/` is configured):
 
 ```bash
-cmake --build build --target cui && command cp -f build/cui.so compiled/ddb_misc_cui_GTK3.so
+cmake --build build --target cui && command cp -f build/ddb_misc_cui_GTK3.so compiled/ddb_misc_cui_GTK3.so
 ```
 
 `command cp` bypasses the interactive `cp -i` alias; a plain `cp` here can silently skip the overwrite when stdin is not a TTY, leaving `compiled/` stale. The display version strings (§9 step 2) are a separate, release-only bump; keeping `compiled/` current is unconditional and happens on every build-affecting commit, released or not.

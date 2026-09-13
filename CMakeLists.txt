@@ -17,7 +17,10 @@ add_library(cui SHARED
     src/cui_data.c
     src/cui_scriptable.c
 )
-set_target_properties(cui PROPERTIES PREFIX "") # so it compiles to cui.so instead of libcui.so
+# PREFIX "" + OUTPUT_NAME: the build emits ddb_misc_cui_GTK3.so directly, the
+# filename DeaDBeeF requires (the _load entry-point symbol is derived from the
+# plugin filename) and the name the plugin-builder manifests list in "out".
+set_target_properties(cui PROPERTIES PREFIX "" OUTPUT_NAME "ddb_misc_cui_GTK3")
 
 target_include_directories(cui PRIVATE ${GTK3_INCLUDE_DIRS})
 target_link_libraries(cui PRIVATE ${GTK3_LIBRARIES} ${CMAKE_DL_LIBS})

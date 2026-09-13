@@ -23,10 +23,10 @@ fi
 cmake --build build --target cui >/dev/null
 
 # The committed binary must equal a fresh build of the current source.
-if ! cmp -s build/cui.so "$bin"; then
+if ! cmp -s build/ddb_misc_cui_GTK3.so "$bin"; then
     echo "pre-commit: $bin is stale relative to the current source." >&2
     echo "  rebuild and stage it, then recommit:" >&2
-    echo "    cmake --build build --target cui && command cp -f build/cui.so $bin && git add $bin" >&2
+    echo "    cmake --build build --target cui && command cp -f build/ddb_misc_cui_GTK3.so $bin && git add $bin" >&2
     exit 1
 fi
 
