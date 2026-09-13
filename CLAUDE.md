@@ -408,6 +408,8 @@ root (SCRIPTABLE_FLAG_IS_LIST, name="Facets")
 7. **`compiled/` rebuild:** if the change touched the built output (anything in `src/` or `CMakeLists.txt`), rebuild and stage `compiled/ddb_misc_cui_GTK3.so` in the **same commit** as the source change. The committed binary must never lag the source. See §5.4.
 8. **Commit** — one logical change per commit. Never push without being asked. Follow `git log` style for messages.
 
+- **Tagged releases ship the binary (2026-09-13).** From v1.3.4 onward, every release tag carries the rebuilt `compiled/ddb_misc_cui_GTK3.so` as a GitHub Release asset, attached only after CI is green on the release commit; a tag-triggered workflow enforces this from v1.3.4 on.
+
 ---
 
 ## 10. Common pitfalls (with citations)

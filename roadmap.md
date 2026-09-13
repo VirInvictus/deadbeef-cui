@@ -203,3 +203,13 @@ report disagree, the report wins; the corrections are already applied below.
       quit); two-step-guard uniformity; the PLUG_TEST_COMPAT api probe
       as a first-class pattern. Search album-field: deferred (charter
       holds).
+
+- [ ] **Plugin-update rule (Brandon, 2026-09-13): build + attach on every
+      tagged release.** Land with v1.3.4: a tag-triggered workflow job
+      that builds the .so from the tag, runs ctest, and uploads
+      `ddb_misc_cui_GTK3.so` as the Release asset (create the Release on
+      tag push; `permissions: contents: write` - the bindery 403
+      lesson). From v1.3.4 onward, no plugin update ships without a
+      built binary attached to its tag's Release on green CI. Until the
+      workflow exists, the v1.3.4 lane attaches the locally built,
+      CI-verified binary manually.
