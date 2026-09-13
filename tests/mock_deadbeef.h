@@ -41,6 +41,21 @@ extern int  mock_plt_count;
 extern char mock_last_plt_add_title[256];
 extern int  mock_plt_add_called;
 
+// --- gtkui vtable fake (the issue-#1 tripwire) ---
+// gtkui_plugin is populated with a fake vtable whose published API version is
+// switchable (2.6 default, 2.5 models a pre-1.10.1 runtime). The
+// w_save_layout_to_conf_key stub records its arguments and hard-fails (g_error)
+// on a NULL val: passing NULL there is the issue-#1 crash, so any
+// reintroduction in a path the suite exercises dies immediately.
+extern int  mock_gtkui_api_major;
+extern int  mock_gtkui_api_minor;
+extern int  mock_w_save_layout_called;
+extern char mock_w_save_layout_last_key[64];
+extern const ddb_gtkui_widget_t *mock_w_save_layout_last_val;
+// Switchable root handed back by the fake w_get_rootwidget (NULL by default).
+extern ddb_gtkui_widget_t *mock_gtkui_root;
+void mock_gtkui_set_api_version(int major, int minor);
+
 // --- tree builder helpers (test-owned; freed with mock_node_free) ---
 mock_node_t *mock_group(const char *text, mock_node_t *children, mock_node_t *next);
 mock_node_t *mock_leaf(const char *title, const char *artist, mock_node_t *next);

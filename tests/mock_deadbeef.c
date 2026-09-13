@@ -20,6 +20,14 @@ int  mock_plt_count;
 char mock_last_plt_add_title[256];
 int  mock_plt_add_called;
 
+// --- gtkui vtable fake (the issue-#1 tripwire) ---
+int mock_gtkui_api_major;
+int mock_gtkui_api_minor;
+int mock_w_save_layout_called;
+char mock_w_save_layout_last_key[64];
+const ddb_gtkui_widget_t *mock_w_save_layout_last_val;
+ddb_gtkui_widget_t *mock_gtkui_root;
+
 // One static sentinel handed back wherever a non-NULL ddb_playlist_t* is needed.
 static int g_plt_sentinel;
 
@@ -68,8 +76,26 @@ static int mt_plt_get_title(ddb_playlist_t *plt, char *buffer, int bufsize) {
 }
 static void mt_plt_unref(ddb_playlist_t *plt) { (void)plt; }
 
+static ddb_gtkui_widget_t *mt_w_get_rootwidget(void) {
+    return mock_gtkui_root;
+}
+
+static int mt_w_save_layout_to_conf_key(const char *key, ddb_gtkui_widget_t *val) {
+    mock_w_save_layout_called++;
+    snprintf(mock_w_save_layout_last_key, sizeof(mock_w_save_layout_last_key),
+             "%s", key ? key : "(null)");
+    mock_w_save_layout_last_val = val;
+    if (!val) {
+        // The issue-#1 crash: GTKUI's serializer dereferences val
+        // unconditionally; the contract requires a non-NULL widget pointer.
+        g_error("mock gtkui: w_save_layout_to_conf_key called with NULL val");
+    }
+    return 0;
+}
+
 static DB_functions_t g_api;
 static DB_mediasource_t g_ml;
+static ddb_gtkui_t g_gtkui;
 
 void mock_deadbeef_install(void) {
     memset(&g_api, 0, sizeof(g_api));
@@ -91,12 +117,33 @@ void mock_deadbeef_install(void) {
 
     deadbeef_api = &g_api;
     medialib_plugin = &g_ml;
+
+    memset(&g_gtkui, 0, sizeof(g_gtkui));
+    g_gtkui.w_get_rootwidget = mt_w_get_rootwidget;
+#if DDB_GTKUI_API_LEVEL >= 206
+    g_gtkui.w_save_layout_to_conf_key = mt_w_save_layout_to_conf_key;
+#endif
+    gtkui_plugin = &g_gtkui;
+    mock_gtkui_set_api_version(DDB_GTKUI_API_VERSION_MAJOR, DDB_GTKUI_API_VERSION_MINOR);
+}
+
+void mock_gtkui_set_api_version(int major, int minor) {
+    mock_gtkui_api_major = major;
+    mock_gtkui_api_minor = minor;
+    // gtkui publishes its API level through the plugin version fields; that
+    // pair is the only sound runtime channel for member presence (the struct
+    // has no _size tail guard).
+    gtkui_plugin->gui.plugin.version_major = major;
+    gtkui_plugin->gui.plugin.version_minor = minor;
 }
 
 void mock_reset(void) {
     mock_plt_count = 0;
     mock_plt_add_called = 0;
     mock_last_plt_add_title[0] = '\0';
+    mock_w_save_layout_called = 0;
+    mock_w_save_layout_last_key[0] = '\0';
+    mock_w_save_layout_last_val = NULL;
 }
 
 mock_node_t *mock_group(const char *text, mock_node_t *children, mock_node_t *next) {

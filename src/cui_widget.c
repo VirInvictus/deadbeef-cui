@@ -1030,11 +1030,20 @@ static void on_config_dialog_response(GtkDialog *dialog, gint response_id, gpoin
         }
         init_my_preset(cw);
         rebuild_columns(cw);
+        // The dialog replaced the preset and the column stores, so force a
+        // real rebuild: without this reset update_tree_data short-circuits on
+        // the modification-index cache and every pane stays blank until the
+        // next library event or search keystroke.
+        cw->last_ml_modification_idx = -1;
         update_tree_data(cw);
-        
-        if (gtkui_plugin && gtkui_plugin->w_save_layout_to_conf_key) {
-            gtkui_plugin->w_save_layout_to_conf_key("layout", NULL);
-        }
+
+        // No layout save here. The plugin used to call
+        // gtkui_plugin->w_save_layout_to_conf_key("layout", NULL), which
+        // passed NULL as the widget pointer the contract requires and
+        // segfaulted inside GTKUI's serializer on every DeaDBeeF 1.10.1+
+        // (issue #1). The call never worked and was redundant: per-instance
+        // settings persist through the extended API when GTKUI saves the
+        // layout (on quit and on design-mode edits).
     }
     
     gtk_widget_destroy(GTK_WIDGET(dialog));

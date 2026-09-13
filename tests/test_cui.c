@@ -240,6 +240,60 @@ static void test_autoplaylist_name(void) {
     g_free(cw);
 }
 
+// ---- issue #1: the plugin never calls w_save_layout_to_conf_key ------------
+//
+// The Configure Facets OK handler used to call
+// gtkui_plugin->w_save_layout_to_conf_key("layout", NULL) — NULL where the
+// contract requires a widget pointer — segfaulting inside GTKUI's layout
+// serializer on every DeaDBeeF 1.10.1+. The call was deleted in v1.3.4 (it
+// never worked and was redundant: per-instance settings persist through the
+// extended API when GTKUI saves the layout). The mock's stub hard-fails on a
+// NULL val, and this test locks in "the plugin never calls it at all" across
+// the engine paths the suite can reach. Honest limit: the dialog handler
+// itself digs a GtkGrid out of a live GtkDialog and is not callable headless;
+// that path is covered by the real-player smoke test, not here.
+
+static void exercise_engine_paths(void) {
+    cui_widget_t *cw = fresh_widget();
+    init_my_preset(cw);
+    g_assert_nonnull(cw->my_preset);
+
+    mock_node_t *rock = mock_group("Rock",
+        mock_leaf("t1", "A", mock_leaf("t2", "B", NULL)), NULL);
+    cw->track_counts_cache = g_hash_table_new(g_direct_hash, g_direct_equal);
+    g_assert_cmpint(count_tracks_recursive((ddb_medialib_item_t *)rock, cw), ==, 2);
+
+    cw->autoplaylist_name = g_strdup("Viewer");
+    get_or_create_viewer_playlist(cw);
+
+    my_scriptable_free((scriptableItem_t *)cw->my_preset);
+    // init_my_preset's default fallback g_strups the titles/formats onto cw.
+    for (int i = 0; i < MAX_COLUMNS; i++) { g_free(cw->titles[i]); g_free(cw->formats[i]); }
+    g_hash_table_destroy(cw->track_counts_cache);
+    g_free(cw->autoplaylist_name);
+    g_free(cw);
+    mock_node_free(rock);
+}
+
+static void test_config_never_saves_layout(void) {
+    mock_reset();
+
+    // gtkui 2.6 (DeaDBeeF 1.10.1+): the API level where the deleted call
+    // crashed. Exercise the reachable engine paths and assert the layout-save
+    // stub is never touched.
+    mock_gtkui_set_api_version(2, 6);
+    exercise_engine_paths();
+    g_assert_cmpint(mock_w_save_layout_called, ==, 0);
+
+    // gtkui 2.5 (DeaDBeeF <= 1.10.0): the member is absent on those runtimes;
+    // nothing may call it there either.
+    mock_gtkui_set_api_version(2, 5);
+    exercise_engine_paths();
+    g_assert_cmpint(mock_w_save_layout_called, ==, 0);
+
+    mock_gtkui_set_api_version(2, 6);
+}
+
 // ---- sort_func: [All] is pinned to the top in every sort order -------------
 //
 // sort_func reads the active sort order and special-cases the is_all row so it
@@ -302,6 +356,7 @@ int main(int argc, char **argv) {
     g_test_add_func("/cui/count/cache_zero", test_count_cache_zero);
     g_test_add_func("/cui/aggregate/va_collision", test_aggregate_va_collision);
     g_test_add_func("/cui/autoplaylist/name", test_autoplaylist_name);
+    g_test_add_func("/cui/config/save_layout", test_config_never_saves_layout);
     g_test_add_func("/cui/sort/all_row", test_sort_all_row);
 
     return g_test_run();
