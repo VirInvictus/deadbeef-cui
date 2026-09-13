@@ -227,7 +227,7 @@ report disagree, the report wins; the corrections are already applied below.
       as a first-class pattern. Search album-field: deferred (charter
       holds).
 
-- [ ] **Plugin-update rule (Brandon, 2026-09-13): build + attach on every
+- [x] **Plugin-update rule (Brandon, 2026-09-13): build + attach on every
       tagged release.** Land with v1.3.4: a tag-triggered workflow job
       that builds the .so from the tag, runs ctest, and uploads
       `ddb_misc_cui_GTK3.so` as the Release asset (create the Release on
@@ -236,3 +236,9 @@ report disagree, the report wins; the corrections are already applied below.
       built binary attached to its tag's Release on green CI. Until the
       workflow exists, the v1.3.4 lane attaches the locally built,
       CI-verified binary manually.
+      (SHIPPED v1.3.4: `.github/workflows/release.yml` - on a `v*` tag
+      push it builds in the same fedora container as CI, runs ctest, then
+      creates the Release with the CI-built `ddb_misc_cui_GTK3.so`
+      attached; the Release body is the tag message, i.e. the verbatim
+      patchnotes entry. Landed before the v1.3.4 tag push so the rule
+      covers this release itself.)

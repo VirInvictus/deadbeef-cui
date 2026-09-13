@@ -1,0 +1,75 @@
+name: Release
+
+# The plugin-update rule (2026-09-13): from v1.3.4 onward, every release tag
+# ships the rebuilt plugin binary as a Release asset on green CI. This workflow
+# builds the .so from the tag, runs the test suite, and only on success creates
+# the GitHub Release with ddb_misc_cui_GTK3.so attached. The Release body is
+# the tag's own message, which is the verbatim patchnotes entry (house tagging
+# procedure).
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build + test (fedora)
+    runs-on: ubuntu-latest
+    # Same toolchain as ci.yml: the plugin builds against the DeaDBeeF plugin
+    # API headers from RPM Fusion's deadbeef-devel, plus GTK3.
+    container: fedora:latest
+    steps:
+      - name: Enable RPM Fusion (free)
+        run: |
+          dnf install -y \
+            "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm"
+
+      - name: Install system dependencies
+        run: |
+          dnf install -y \
+            gcc \
+            git \
+            cmake \
+            make \
+            pkgconf-pkg-config \
+            gtk3-devel \
+            deadbeef-devel
+
+      - uses: actions/checkout@v4
+
+      - name: cmake configure
+        run: cmake -S . -B build -DBUILD_TESTS=ON
+
+      - name: cmake build
+        run: cmake --build build
+
+      - name: ctest
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Upload plugin binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ddb_misc_cui_GTK3
+          path: build/ddb_misc_cui_GTK3.so
+          if-no-files-found: error
+
+  release:
+    name: create Release with the plugin binary
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download plugin binary
+        uses: actions/download-artifact@v4
+        with:
+          name: ddb_misc_cui_GTK3
+
+      - name: Create Release and attach binary
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --verify-tag \
+            ddb_misc_cui_GTK3.so
