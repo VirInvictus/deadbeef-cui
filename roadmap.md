@@ -181,6 +181,18 @@ report disagree, the report wins; the corrections are already applied below.
       + main.c + the .so rebuild) + the crash fix + issue reply + the
       Docker verify (x86_64 only; the builder offers no i686), in that
       order.
+- [ ] **ADDED 2026-09-13 (Brandon): the issue-#1 reply is gated on FULL
+      testing of the fix, not just the push.** Before replying, ALL of
+      the following must pass: (a) the mock-vtable tripwire test + the
+      full suite green locally; (b) CI green on the release commit;
+      (c) the live 1.10.3 smoke: install the rebuilt .so, restart,
+      open Configure Facets, press OK with the DEFAULT configuration
+      (the reporter's exact scenario) - no crash, panes refresh
+      immediately (the H1 fix), change a setting + OK, quit, relaunch,
+      confirm persistence; (d) a build of the tagged commit. The reply
+      is only drafted until (a)-(d) are done. This supersedes the
+      research report's step order, which had the smoke test after the
+      reply.
 - [ ] **Lockstep enforcement is CI-blind (the local half is fine):** the
       pre-commit hook is live here (core.hooksPath = .githooks), but CI
       never checks compiled/. Add a git-level CI gate (a commit touching

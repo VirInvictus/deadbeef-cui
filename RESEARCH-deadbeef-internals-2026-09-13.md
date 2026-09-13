@@ -210,7 +210,7 @@ Tags: fix / polish / doc / feature / release. Lanes: v1.3.4 (the issue-fix relea
 
 **Pre-flight (no changes):** confirm the tree is clean (verified tonight), `core.hooksPath` = `.githooks` (verified tonight), and `build/` is configured so the hook can rebuild (`build/` exists). The hook will block any src commit that forgets the `.so`; do not bypass with `--no-verify`.
 
-**Commit order** (each commit that touches `src/` or `CMakeLists.txt` carries its rebuilt `.so`; decided re-gate order preserved: dead URLs first, then the crash fix, then the issue reply, then the Docker verify):
+**Commit order** (each commit that touches `src/` or `CMakeLists.txt` carries its rebuilt `.so`; decided re-gate order preserved: dead URLs first, then the crash fix, then the issue reply, then the Docker verify). AMENDED 2026-09-13 (Brandon): the issue-#1 reply is gated on FULL testing - mock tripwire + full suite + CI green at the tag PLUS the live 1.10.3 smoke (step 9) must all pass BEFORE the reply goes out; steps 8 and 9 swap:
 
 1. **Commit A, dead URLs (R6):** `manifest.json:5` + `src/main.c:118`, both to `https://github.com/VirInvictus/deadbeef-cui.git` (drop `.git` in main.c's human-facing website string if preferred; be consistent). Rebuild + stage the `.so`.
 2. **Commit B, packaging (R8):** `manifest.json` out-name, `CMakeLists.txt` OUTPUT_NAME, the hook's two `build/cui.so` references (edit the hook file in the working tree as part of the commit or it blocks on the vanished path), `README.md:96` install snippet, CLAUDE.md §5 notes. Rebuild (the target output is now `build/ddb_misc_cui_GTK3.so`) + stage the `.so` at its unchanged `compiled/` path.
