@@ -78,6 +78,7 @@ jobs:
           # --notes-from-tag together with --repo, and gh derives the
           # repository from GITHUB_REPOSITORY anyway.
           gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
             --verify-tag \
             --notes-from-tag \
             ddb_misc_cui_GTK3.so
