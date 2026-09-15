@@ -32,7 +32,11 @@ fi
 
 # ...and when it differs from HEAD, the refreshed binary must be part of this commit.
 if ! printf '%s\n' "$staged" | grep -qx "$bin"; then
-    if ! git show "HEAD:$bin" 2>/dev/null | cmp -s - build/cui.so; then
+    # Byte-identical output (e.g. comment-only edits) legitimately stages
+    # nothing: allow when HEAD's binary matches the fresh build. (This path
+    # used to compare against build/cui.so, the pre-rename artifact, so it
+    # never fired and identical-output commits were falsely blocked.)
+    if ! git show "HEAD:$bin" 2>/dev/null | cmp -s - build/ddb_misc_cui_GTK3.so; then
         echo "pre-commit: source changed but $bin is not staged." >&2
         echo "    git add $bin" >&2
         exit 1
