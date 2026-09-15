@@ -258,7 +258,18 @@ void populate_list_multi(GtkListStore *store, int target_level, cui_widget_t *cw
         old_vscroll = gtk_adjustment_get_value(adj);
     }
 
+    // The clear below destroys the iters of any selected rows, which fires this
+    // tree's selection "changed" signal. Every populate is programmatic (a
+    // library event, a search keystroke, or the cascade after a click in an
+    // upstream column) — never a user selection on this column — so block the
+    // handler across it. Unblocked, every rebuild armed the selection debounce,
+    // and deferred_column_changed_cb then made the viewer playlist current and
+    // rebuilt it ~10 ms later with no user click (the behavior the v1.2.4
+    // deferral removed). Callers that already block around this call just nest.
+    GtkTreeSelection *sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->trees[col_idx]));
+    g_signal_handlers_block_by_func(sel, (gpointer)on_column_changed, cw);
     gtk_list_store_clear(store);
+    g_signal_handlers_unblock_by_func(sel, (gpointer)on_column_changed, cw);
     if (!cw->cached_tree || !medialib_plugin) return;
 
     GHashTable *seen = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);

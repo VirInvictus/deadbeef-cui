@@ -342,8 +342,74 @@ static void test_sort_all_row(void) {
     g_free(cw);
 }
 
+// ---- fix: programmatic store clears must not arm the selection debounce ----
+//
+// populate_list_multi's gtk_list_store_clear destroys the iters of any selected
+// rows, which fires the tree's selection "changed" signal. update_tree_data
+// populates through that clear on every library event and search keystroke;
+// with the handler unblocked, each of those events armed the 10 ms selection
+// debounce, and deferred_column_changed_cb then made the viewer playlist
+// current and rebuilt it — silently stealing the user's playlist with no click
+// (the behavior the v1.2.4 deferral removed). This test locks in that a
+// programmatic repopulate never re-arms the debounce.
+
+static void test_populate_does_not_steal_selection(void) {
+    if (!g_gtk_ok) { g_test_skip("no display for GtkTreeView"); return; }
+    cui_widget_t *cw = fresh_widget();
+    cw->changed_col_idx = -1;
+    cw->num_columns = 1;
+    // populate_list_multi reads titles[col_idx] for the [All (...)] label;
+    // every real caller runs with titles set by init_my_preset.
+    cw->titles[0] = g_strdup("Genre");
+    cw->stores[0] = gtk_list_store_new(3, G_TYPE_STRING, G_TYPE_INT, G_TYPE_BOOLEAN);
+    cw->trees[0] = gtk_tree_view_new_with_model(GTK_TREE_MODEL(cw->stores[0]));
+    GtkTreeSelection *sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->trees[0]));
+    g_signal_connect(sel, "changed", G_CALLBACK(on_column_changed), cw);
+
+    // A real (mock) library tree so the populate has rows to build.
+    mock_node_t *tree = mock_group(NULL,
+        mock_group("Rock", mock_leaf("t1", "A", NULL), NULL), NULL);
+    cw->cached_tree = (ddb_medialib_item_t *)tree;
+
+    // Simulate the legitimate user click that precedes a cascade repopulate:
+    // select a row (fires the handler, arms the debounce), then consume the
+    // armed debounce exactly like activate_row does.
+    GtkTreeIter it;
+    gtk_list_store_insert_with_values(cw->stores[0], &it, -1, 0, "Rock", 1, 1, 2, FALSE, -1);
+    gtk_tree_selection_select_iter(sel, &it);
+    g_assert_cmpint(cw->changed_col_idx, ==, 0);
+    g_assert_cmpint(cw->changed_timeout_id, !=, 0);
+    g_source_remove(cw->changed_timeout_id);
+    cw->changed_timeout_id = 0;
+    cw->changed_col_idx = -1;
+
+    // The programmatic repopulate (cascade / library event / search keystroke)
+    // clears the selected row's store. It must not re-arm anything.
+    populate_list_multi(cw->stores[0], 1, cw, 0);
+    g_assert_cmpint(cw->changed_col_idx, ==, -1);
+    g_assert_cmpint(cw->changed_timeout_id, ==, 0);
+
+    // ...and the store was really rebuilt: [All] at iter 0 plus the row.
+    GtkTreeModel *m = GTK_TREE_MODEL(cw->stores[0]);
+    g_assert_cmpint(gtk_tree_model_iter_n_children(m, NULL), ==, 2);
+
+    g_signal_handlers_disconnect_by_func(sel, (gpointer)on_column_changed, cw);
+    cw->cached_tree = NULL;
+    g_object_unref(cw->trees[0]);
+    g_object_unref(cw->stores[0]);
+    g_free(cw->titles[0]);
+    mock_node_free(tree);
+    g_free(cw);
+}
+
 int main(int argc, char **argv) {
     g_test_init(&argc, &argv, NULL);
+    // g_test_init promotes warnings to fatal, which aborts the whole suite at
+    // gtk_init_check on any machine whose GTK theme carries a CSS property the
+    // GTK3 parser rejects (Kanagawa-Dark-Dragon ships border-spacing, a GTK4
+    // property). Theme parse noise is not a test failure: keep criticals fatal
+    // (they mean a NULL/bad call in the code under test) and let warnings print.
+    g_log_set_always_fatal(G_LOG_FATAL_MASK | G_LOG_LEVEL_CRITICAL);
     g_gtk_ok = gtk_init_check(&argc, &argv);
     mock_deadbeef_install();
 
@@ -358,6 +424,7 @@ int main(int argc, char **argv) {
     g_test_add_func("/cui/autoplaylist/name", test_autoplaylist_name);
     g_test_add_func("/cui/config/save_layout", test_config_never_saves_layout);
     g_test_add_func("/cui/sort/all_row", test_sort_all_row);
+    g_test_add_func("/cui/populate/no_selection_steal", test_populate_does_not_steal_selection);
 
     return g_test_run();
 }
