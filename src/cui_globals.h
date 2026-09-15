@@ -9,6 +9,14 @@
 #include <string.h>
 #include <dlfcn.h>
 
+// GTK4 forward-compat shims. KNOWN GAPS (a GTK4 build of this plugin has
+// never been made; see CLAUDE.md §10.10 and the README GTK4 note): GdkEventButton
+// in on_tree_button_press, gtk_widget_destroy(dialog) in the config-dialog
+// path, gtk_container_get_children, the whole GtkMenu block (GTK4 wants
+// GtkPopoverMenu/GMenu), the unguarded "key-press-event" connects (need
+// GtkEventControllerKey), and drag-out (needs GtkDragSource). Also
+// GTK2-era: DDB_GTKUI_PLUGIN_ID and the hardcoded "ddb_gui_GTK3.so" dlopen
+// names need special-casing under GTK4.
 #if GTK_MAJOR_VERSION >= 4
 #define gtk_widget_show_all(w) gtk_widget_set_visible(w, TRUE)
 #define gtk_widget_hide(w) gtk_widget_set_visible(w, FALSE)

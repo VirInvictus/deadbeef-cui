@@ -65,8 +65,9 @@ int cui_stop(void) {
     g_atomic_int_set(&shutting_down, 1);
 
     cui_widget_stop();
-    
-    // For now I'll just check `owns_ml_source`.
+
+    // Free the source only when this plugin created it (the shared GTKUI
+    // source is owned by the GTKUI plugin and must not be freed here).
     if (owns_ml_source && medialib_plugin && ml_source) {
         medialib_plugin->free_source(ml_source);
         ml_source = NULL;

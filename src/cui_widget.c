@@ -173,7 +173,9 @@ static void on_search_changed(GtkSearchEntry *entry, gpointer user_data) {
         cw->search_text = NULL;
     }
     if (text && text[0]) {
-        cw->search_text = g_utf8_strdown(text, -1);
+        // Stored as typed: matching is strcasestr (case-insensitive on both
+        // sides), so downcasing here was redundant per-keystroke work.
+        cw->search_text = g_strdup(text);
     }
     update_tree_data(cw);
 }
@@ -413,10 +415,14 @@ static void cui_load_menu_fns(void) {
 
 // Drag-and-drop target name. Matches the GTKUI internal constant defined in
 // .deadbeef/plugins/gtkui/playlist/ddblistview.h:38. The playlist view
-// (ddblistview.c:1732) and the playlist tab strip (ddbtabstrip.c:306) both
-// advertise this target with GTK_TARGET_SAME_APP, and the playlist view
-// receiver pl_item_unrefs each pointer in the payload after use — so each
-// entry we hand off must be alloc+copy'd with refcount=1.
+// (ddblistview.c:1732) advertises this target with GTK_TARGET_SAME_APP and
+// pl_item_unrefs each pointer in the payload after use — so each entry we
+// hand off must be alloc+copy'd with refcount=1. The tab strip also
+// advertises the target, but its receive branch is an upstream FIXME no-op
+// that unconditionally finishes the drag: a drop there silently leaks every
+// handed-off track. That leak is upstream's side of the contract; do not
+// "fix" it by sending refs instead of copies (the playlist view would
+// double-free).
 #define CUI_DRAG_TARGET "DDB_PLAYITEM_POINTERLIST"
 
 // Two-pass collector for the drag payload. Mirrors the same selection +
@@ -926,12 +932,8 @@ static void cui_destroy(ddb_gtkui_widget_t *w) {
         }
     }
     
-    // If we're the last widget and we own the source, it'll be freed in cui_stop.
-    // However, if we're just one of many, we keep it alive.
-    if (all_cui_widgets == NULL && owns_ml_source) {
-        // Source will be cleaned up in cui_stop or when last widget is gone if needed
-    }
-
+    // The shared ml_source is NOT freed here when the last widget goes: it
+    // may be GTKUI's, and even our own is cui_stop's responsibility.
     if (cw->track_counts_cache) {
         g_hash_table_destroy(cw->track_counts_cache);
         cw->track_counts_cache = NULL;

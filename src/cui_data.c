@@ -50,6 +50,9 @@ int count_tracks_recursive(const ddb_medialib_item_t *node, cui_widget_t *cw) {
         child = medialib_plugin->tree_item_get_next(child);
     }
 
+    // Stored as count+1 so a genuine 0 (nothing matched under the search) is
+    // distinguishable from a cache MISS (lookup returns NULL): cached reads
+    // subtract the 1 back off. No per-entry allocation this way.
     if (cache) {
         g_hash_table_insert(cache, (gpointer)node, GINT_TO_POINTER(count + 1));
     }
@@ -135,17 +138,20 @@ void add_tracks_recursive_multi(const ddb_medialib_item_t *node, int current_lev
     }
 }
 
+// The effective viewer name for this instance: the per-instance configured
+// name, or the default when unset or empty.
+static const char *viewer_name(cui_widget_t *cw) {
+    return (cw->autoplaylist_name && cw->autoplaylist_name[0])
+               ? cw->autoplaylist_name : "Library Viewer";
+}
+
 // Core lookup shared by the two finders. With marker_only=0 a playlist that
 // merely carries the viewer's title is returned as a fallback, so viewers
 // created before the marker existed (v1.3.4 and earlier) keep working; with
 // marker_only=1 only marker-matched playlists qualify — that is what the
 // shutdown clear uses, so a same-named user playlist is never touched.
 static ddb_playlist_t *find_viewer_playlist_impl(cui_widget_t *cw, int marker_only) {
-    const char *ap_name = (cw->autoplaylist_name && cw->autoplaylist_name[0])
-                              ? cw->autoplaylist_name : "Library Viewer";
-    char target_name[256];
-    strncpy(target_name, ap_name, sizeof(target_name)-1);
-    target_name[sizeof(target_name)-1] = '\0';
+    const char *target_name = viewer_name(cw);
 
     ddb_playlist_t *fallback = NULL;
     int count = deadbeef_api->plt_get_count();
@@ -200,8 +206,7 @@ ddb_playlist_t *find_marked_viewer_playlist(cui_widget_t *cw) {
 // path — never from the shutdown clear, which must not mark anything the
 // plugin did not create.
 static void stamp_viewer_marker(cui_widget_t *cw, ddb_playlist_t *plt) {
-    const char *ap_name = (cw->autoplaylist_name && cw->autoplaylist_name[0])
-                              ? cw->autoplaylist_name : "Library Viewer";
+    const char *ap_name = viewer_name(cw);
     deadbeef_api->pl_lock();
     const char *marker = deadbeef_api->plt_find_meta(plt, CUI_VIEWER_MARKER);
     int already = marker && strcmp(marker, ap_name) == 0;
@@ -218,11 +223,7 @@ ddb_playlist_t *get_or_create_viewer_playlist(cui_widget_t *cw) {
         return existing;
     }
 
-    const char *ap_name = (cw->autoplaylist_name && cw->autoplaylist_name[0])
-                              ? cw->autoplaylist_name : "Library Viewer";
-    char target_name[256];
-    strncpy(target_name, ap_name, sizeof(target_name)-1);
-    target_name[sizeof(target_name)-1] = '\0';
+    const char *target_name = viewer_name(cw);
 
     int new_idx = deadbeef_api->plt_add(deadbeef_api->plt_get_count(), target_name);
     if (new_idx >= 0) {

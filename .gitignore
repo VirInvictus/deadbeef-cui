@@ -12,7 +12,7 @@ compile_commands.json
 *.o
 *.d
 *.a
-# …but track shipped binaries under compiled/ (stable + beta).
+# …but track the shipped binary under compiled/.
 !compiled/**/*.so
 
 # Editor/IDE
