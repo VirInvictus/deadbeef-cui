@@ -123,39 +123,86 @@ void add_tracks_recursive_multi(const ddb_medialib_item_t *node, int current_lev
     }
 }
 
-// Find this instance's viewer playlist by name. Returns a refcounted handle
-// (caller unrefs) or NULL when it doesn't exist yet. Unlike
-// get_or_create_viewer_playlist this never creates one — used by the shutdown
-// clear so we don't resurrect a deleted playlist just to empty it.
-ddb_playlist_t *find_viewer_playlist(cui_widget_t *cw) {
-    // Per-instance name (set via the config dialog, serialized into the widget's
-    // keyvalues). The old global cui.autoplaylist_name key was never written by
-    // the per-instance path, so reading it here ignored the dialog setting and
-    // made every instance collide on one "Library Viewer" playlist.
+// Core lookup shared by the two finders. With marker_only=0 a playlist that
+// merely carries the viewer's title is returned as a fallback, so viewers
+// created before the marker existed (v1.3.4 and earlier) keep working; with
+// marker_only=1 only marker-matched playlists qualify — that is what the
+// shutdown clear uses, so a same-named user playlist is never touched.
+static ddb_playlist_t *find_viewer_playlist_impl(cui_widget_t *cw, int marker_only) {
     const char *ap_name = (cw->autoplaylist_name && cw->autoplaylist_name[0])
                               ? cw->autoplaylist_name : "Library Viewer";
     char target_name[256];
     strncpy(target_name, ap_name, sizeof(target_name)-1);
     target_name[sizeof(target_name)-1] = '\0';
 
+    ddb_playlist_t *fallback = NULL;
     int count = deadbeef_api->plt_get_count();
     for (int i = 0; i < count; i++) {
         ddb_playlist_t *plt = deadbeef_api->plt_get_for_idx(i);
-        if (plt) {
+        if (!plt) continue;
+
+        deadbeef_api->pl_lock();
+        const char *marker = deadbeef_api->plt_find_meta(plt, CUI_VIEWER_MARKER);
+        int marked = marker && strcmp(marker, target_name) == 0;
+        deadbeef_api->pl_unlock();
+
+        if (marked) {
+            deadbeef_api->plt_unref(fallback);
+            return plt;
+        }
+        if (!marker_only && !fallback) {
+            // Per-instance name (set via the config dialog, serialized into
+            // the widget's keyvalues). The old global cui.autoplaylist_name
+            // key was never written by the per-instance path, so reading it
+            // here ignored the dialog setting and made every instance
+            // collide on one "Library Viewer" playlist.
             char title[256];
             deadbeef_api->plt_get_title(plt, title, sizeof(title));
             if (strcmp(title, target_name) == 0) {
-                return plt;
+                fallback = plt; // ref held for the fallback return
+                continue;
             }
-            deadbeef_api->plt_unref(plt);
         }
+        deadbeef_api->plt_unref(plt);
     }
-    return NULL;
+    return fallback;
+}
+
+// Marker-first lookup with legacy name fallback: what population and
+// activation use. Returns a refcounted handle (caller unrefs) or NULL when no
+// viewer exists yet; never creates one.
+ddb_playlist_t *find_viewer_playlist(cui_widget_t *cw) {
+    return find_viewer_playlist_impl(cw, 0);
+}
+
+// Marker-only lookup for the shutdown clear: a playlist is only emptied when
+// the plugin itself marked it, so a user playlist that happens to share the
+// viewer's name survives every quit.
+ddb_playlist_t *find_marked_viewer_playlist(cui_widget_t *cw) {
+    return find_viewer_playlist_impl(cw, 1);
+}
+
+// Adopt a pre-marker viewer found by title: stamp the marker so every later
+// lookup (the shutdown clear in particular) matches it by marker alone.
+// No-op when the marker is already correct. Called only from the population
+// path — never from the shutdown clear, which must not mark anything the
+// plugin did not create.
+static void stamp_viewer_marker(cui_widget_t *cw, ddb_playlist_t *plt) {
+    const char *ap_name = (cw->autoplaylist_name && cw->autoplaylist_name[0])
+                              ? cw->autoplaylist_name : "Library Viewer";
+    deadbeef_api->pl_lock();
+    const char *marker = deadbeef_api->plt_find_meta(plt, CUI_VIEWER_MARKER);
+    int already = marker && strcmp(marker, ap_name) == 0;
+    deadbeef_api->pl_unlock();
+    if (!already) {
+        deadbeef_api->plt_replace_meta(plt, CUI_VIEWER_MARKER, ap_name);
+    }
 }
 
 ddb_playlist_t *get_or_create_viewer_playlist(cui_widget_t *cw) {
     ddb_playlist_t *existing = find_viewer_playlist(cw);
     if (existing) {
+        stamp_viewer_marker(cw, existing);
         return existing;
     }
 
@@ -167,7 +214,14 @@ ddb_playlist_t *get_or_create_viewer_playlist(cui_widget_t *cw) {
 
     int new_idx = deadbeef_api->plt_add(deadbeef_api->plt_get_count(), target_name);
     if (new_idx >= 0) {
-        return deadbeef_api->plt_get_for_idx(new_idx);
+        ddb_playlist_t *plt = deadbeef_api->plt_get_for_idx(new_idx);
+        if (plt) {
+            // Ownership marker: every later lookup — including the shutdown
+            // clear — identifies the viewer by this even if the user retitles
+            // the playlist, and same-named user playlists stay out of scope.
+            deadbeef_api->plt_replace_meta(plt, CUI_VIEWER_MARKER, target_name);
+            return plt;
+        }
     }
     return NULL;
 }

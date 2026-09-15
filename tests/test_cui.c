@@ -240,6 +240,96 @@ static void test_autoplaylist_name(void) {
     g_free(cw);
 }
 
+// ---- fix: the viewer playlist is identified by a hidden marker, not name ---
+//
+// find_viewer_playlist used to match by title alone, so a user playlist that
+// happened to be named "Library Viewer" was adopted as the viewer, populated
+// over, and emptied by the shutdown clear on every quit (data loss). The
+// plugin now stamps a hidden _cui_viewer meta (value = the viewer name) on
+// playlists it creates and on legacy viewers found by title; the shutdown
+// clear matches by marker ONLY, so a same-named user playlist is out of its
+// reach. All four tests are headless: no GTK widget is involved.
+
+static void test_viewer_marker_on_create(void) {
+    cui_widget_t *cw = fresh_widget();
+    cw->autoplaylist_name = g_strdup("My List");
+    mock_reset();
+    ddb_playlist_t *plt = get_or_create_viewer_playlist(cw);
+    g_assert_nonnull(plt);
+    deadbeef_api->pl_lock();
+    const char *marker = deadbeef_api->plt_find_meta(plt, CUI_VIEWER_MARKER);
+    g_assert_cmpstr(marker, ==, "My List");
+    deadbeef_api->pl_unlock();
+    g_assert_cmpint(mock_plt_add_called, ==, 1);
+
+    g_free(cw->autoplaylist_name);
+    g_free(cw);
+}
+
+static void test_viewer_collision_not_cleared(void) {
+    cui_widget_t *cw = fresh_widget();
+    cw->autoplaylist_name = g_strdup("Library Viewer");
+    mock_reset();
+    // The user's own playlist with the colliding title, no marker...
+    int user_idx = deadbeef_api->plt_add(0, "Library Viewer");
+    // ...and our marked viewer, which the user happened to retitle.
+    int ours_idx = deadbeef_api->plt_add(1, "Renamed by user");
+    deadbeef_api->plt_replace_meta(deadbeef_api->plt_get_for_idx(ours_idx),
+                                   CUI_VIEWER_MARKER, "Library Viewer");
+
+    // The shutdown clear must empty ours and never touch the user's.
+    all_cui_widgets = g_list_append(all_cui_widgets, cw);
+    cui_clear_viewer_playlists();
+    all_cui_widgets = g_list_remove(all_cui_widgets, cw);
+    g_assert_cmpint(mock_plt_clear_called, ==, 1);
+    g_assert_true(mock_plt_was_cleared(ours_idx));
+    g_assert_false(mock_plt_was_cleared(user_idx));
+
+    g_free(cw->autoplaylist_name);
+    g_free(cw);
+}
+
+static void test_viewer_marker_first_matching(void) {
+    cui_widget_t *cw = fresh_widget();
+    cw->autoplaylist_name = g_strdup("Library Viewer");
+    mock_reset();
+    // Title collision (the user's playlist) plus our marker-matched playlist
+    // under a different title: marker-first matching must adopt ours.
+    deadbeef_api->plt_add(0, "Library Viewer");
+    int ours_idx = deadbeef_api->plt_add(1, "Whatever");
+    deadbeef_api->plt_replace_meta(deadbeef_api->plt_get_for_idx(ours_idx),
+                                   CUI_VIEWER_MARKER, "Library Viewer");
+    int adds_after_setup = mock_plt_add_called;
+
+    ddb_playlist_t *plt = get_or_create_viewer_playlist(cw);
+    g_assert_true(plt == deadbeef_api->plt_get_for_idx(ours_idx));
+    g_assert_cmpint(mock_plt_add_called, ==, adds_after_setup);  // nothing new created
+
+    g_free(cw->autoplaylist_name);
+    g_free(cw);
+}
+
+static void test_viewer_legacy_stamped(void) {
+    cui_widget_t *cw = fresh_widget();
+    cw->autoplaylist_name = g_strdup("Library Viewer");
+    mock_reset();
+    // A pre-marker viewer (title match only) keeps working and gains the
+    // marker on first find, so the shutdown clear can match it from then on.
+    int legacy_idx = deadbeef_api->plt_add(0, "Library Viewer");
+    int adds_after_setup = mock_plt_add_called;
+
+    ddb_playlist_t *plt = get_or_create_viewer_playlist(cw);
+    g_assert_true(plt == deadbeef_api->plt_get_for_idx(legacy_idx));
+    g_assert_cmpint(mock_plt_add_called, ==, adds_after_setup);
+    deadbeef_api->pl_lock();
+    const char *marker = deadbeef_api->plt_find_meta(plt, CUI_VIEWER_MARKER);
+    g_assert_cmpstr(marker, ==, "Library Viewer");
+    deadbeef_api->pl_unlock();
+
+    g_free(cw->autoplaylist_name);
+    g_free(cw);
+}
+
 // ---- issue #1: the plugin never calls w_save_layout_to_conf_key ------------
 //
 // The Configure Facets OK handler used to call
@@ -490,6 +580,10 @@ int main(int argc, char **argv) {
     g_test_add_func("/cui/count/cache_zero", test_count_cache_zero);
     g_test_add_func("/cui/aggregate/va_collision", test_aggregate_va_collision);
     g_test_add_func("/cui/autoplaylist/name", test_autoplaylist_name);
+    g_test_add_func("/cui/viewer/marker_on_create", test_viewer_marker_on_create);
+    g_test_add_func("/cui/viewer/collision_not_cleared", test_viewer_collision_not_cleared);
+    g_test_add_func("/cui/viewer/marker_first_matching", test_viewer_marker_first_matching);
+    g_test_add_func("/cui/viewer/legacy_stamped", test_viewer_legacy_stamped);
     g_test_add_func("/cui/config/save_layout", test_config_never_saves_layout);
     g_test_add_func("/cui/sort/all_row", test_sort_all_row);
     g_test_add_func("/cui/populate/no_selection_steal", test_populate_does_not_steal_selection);

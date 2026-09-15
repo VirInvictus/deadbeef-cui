@@ -191,6 +191,8 @@ The points where this plugin meets DeaDBeeF. Use this table as the lookup index 
 | `medialib_plugin->refresh` | deadbeef.h:2443 | User-triggered (right-click → Sync library) and once after we create our own source. **Never** call from `DB_EV_TRACKINFOCHANGED` — that's the Gemini-Flash-era trap. |
 | `medialib_plugin->tree_item_get_text/_track/_next/_children` | deadbeef.h:2486-2495 | The tree is immutable for the caller's lifetime. Don't free children — `free_item_tree` walks the whole thing. |
 | `deadbeef_api->plt_*` | deadbeef.h ~970-1100 | Standard playlist API. Always wrap mutations with `pl_lock`/`pl_unlock` (we do in `populate_playlist_from_cui`). `plt_get_*` returns refcounted handles — pair with `plt_unref`. |
+| `deadbeef_api->plt_find_meta` | deadbeef.h:1029 | Viewer-marker reads (`_cui_viewer`, see §6.14). **Contract: hold `pl_lock` around the call** (deadbeef.h:1028 says so explicitly); the returned pointer is only valid while held. |
+| `deadbeef_api->plt_replace_meta` | deadbeef.h:1018 | Sets the `_cui_viewer` ownership marker (add-or-replace). Locks internally (upstream `pltmeta.c`), so it must be called OUTSIDE `pl_lock`. |
 | `deadbeef_api->pl_item_alloc/copy/ref/unref/insert_item` | deadbeef.h ~1130-1200 | We **copy** tracks into the viewer playlist rather than referencing the medialib's. Copies are cheap; sharing tracks across playlists has subtle interaction issues with the playqueue. |
 | `deadbeef_api->conf_get_str_fast` | deadbeef.h:1331 | **Not thread-safe.** Wrap in `conf_lock`/`conf_unlock`. We do for the bootstrap defaults read in `cui_create_widget`. |
 | `deadbeef_api->sendmessage(DB_EV_PLAYLISTCHANGED, ...)` | deadbeef.h:512 | Send after mutating the viewer playlist so the playlist widget repaints. `DB_EV_TRACKINFOCHANGED` is for fine-grained per-track updates — don't conflate. |
@@ -344,6 +346,15 @@ cui_data.c:291-293: `"Album Artist"` collapses to `"Artist"` for the `[All]` lab
 ### 6.13 `sort_func` pins `[All]` to the top in every sort order; the order-check is load-bearing
 
 `sort_func` (cui_data.c) reads the active sort order and, when one row is the synthetic `[All]` row, returns `(order == GTK_SORT_ASCENDING) ? -1 : 1`. This looks redundant but it is **counteracting** GtkListStore's own negation of the comparator result under `GTK_SORT_DESCENDING`. Net effect: `[All]` sits at iter 0 regardless of sort column (name *or* count) or direction. `auto_select_all_if_empty` depends on this: it grabs `gtk_tree_model_get_iter_first` to select `[All]`, which is correct **only because** of this pinning. Don't "simplify" the order branch out: without it, `[All]` sinks to the bottom on descending sorts and the auto-select highlights the wrong row. Locked in by `tests/test_cui.c` → `/cui/sort/all_row`. (An audit in this repo briefly "fixed" a non-bug here by scanning for the `is_all` column instead of trusting iter 0; the test caught that the scan was unnecessary and the change was reverted.)
+
+### 6.14 The viewer playlist is identified by the `_cui_viewer` marker, never by name alone
+
+Every viewer playlist the plugin creates gets a hidden playlist meta `CUI_VIEWER_MARKER` (`"_cui_viewer"`, value = the viewer name it was created for), set in `get_or_create_viewer_playlist` (cui_data.c). Two finders share `find_viewer_playlist_impl`:
+
+- `find_viewer_playlist` (marker-first, name fallback) is what population and activation use, so viewers created before the marker existed keep working; when the fallback matches, `stamp_viewer_marker` marks the playlist on the spot so later lookups see it as ours.
+- `find_marked_viewer_playlist` (marker-only) is what the shutdown clear (`cui_clear_viewer_playlists`) uses. **Never route the clear through the name fallback**: pre-v1.3.5 matching by title alone emptied any user playlist that happened to be named "Library Viewer" on every quit — the data-loss bug this marker exists to prevent.
+
+Renaming the viewer in the config dialog orphans the old marked playlist (it stops matching and stops being cleared); that is accepted. Locked in by the `/cui/viewer/*` tests (create stamps, collision survives the clear, marker beats title, legacy gets stamped).
 
 ---
 

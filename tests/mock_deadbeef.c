@@ -1,4 +1,5 @@
 #include "cui_globals.h"
+#include "cui_data.h"
 #include "mock_deadbeef.h"
 #include <string.h>
 #include <stdlib.h>
@@ -16,9 +17,27 @@ int ml_modification_idx = 1;
 GList *all_cui_widgets;
 int config_change_pending;
 
-int  mock_plt_count;
 char mock_last_plt_add_title[256];
 int  mock_plt_add_called;
+
+// --- playlist table (titles + the hidden viewer marker + clear capture) ---
+// plt_get_for_idx returns pointers into this table, so tests can compare
+// handles for identity and assert per-playlist effects.
+#define MOCK_MAX_PLTS 16
+typedef struct {
+    char title[256];
+    char marker[128];   // value of the CUI_VIEWER_MARKER meta ('' = unset)
+    int cleared;        // set by mt_plt_clear
+} mock_playlist_t;
+static mock_playlist_t g_plts[MOCK_MAX_PLTS];
+static int g_plts_count = 0;
+
+int mock_plt_clear_called = 0;
+
+int mock_plt_was_cleared(int idx) {
+    if (idx < 0 || idx >= g_plts_count) return 0;
+    return g_plts[idx].cleared;
+}
 
 // --- gtkui vtable fake (the issue-#1 tripwire) ---
 int mock_gtkui_api_major;
@@ -27,9 +46,6 @@ int mock_w_save_layout_called;
 char mock_w_save_layout_last_key[64];
 const ddb_gtkui_widget_t *mock_w_save_layout_last_val;
 ddb_gtkui_widget_t *mock_gtkui_root;
-
-// One static sentinel handed back wherever a non-NULL ddb_playlist_t* is needed.
-static int g_plt_sentinel;
 
 static void mt_pl_lock(void) {}
 static void mt_pl_unlock(void) {}
@@ -55,25 +71,50 @@ static const ddb_medialib_item_t *mt_tree_item_get_children(const ddb_medialib_i
     return (const ddb_medialib_item_t *)((const mock_node_t *)item)->children;
 }
 
-static int mt_plt_get_count(void) { return mock_plt_count; }
+static int mt_plt_get_count(void) { return g_plts_count; }
 
 static int mt_plt_add(int before, const char *title) {
     (void)before;
+    if (g_plts_count >= MOCK_MAX_PLTS) return -1;
+    mock_playlist_t *p = &g_plts[g_plts_count];
+    snprintf(p->title, sizeof(p->title), "%s", title ? title : "");
+    p->marker[0] = '\0';
+    p->cleared = 0;
     mock_plt_add_called++;
     strncpy(mock_last_plt_add_title, title ? title : "", sizeof(mock_last_plt_add_title) - 1);
     mock_last_plt_add_title[sizeof(mock_last_plt_add_title) - 1] = '\0';
-    return 0;
+    return g_plts_count++;
 }
 
 static ddb_playlist_t *mt_plt_get_for_idx(int idx) {
-    (void)idx;
-    return (ddb_playlist_t *)&g_plt_sentinel;
+    if (idx < 0 || idx >= g_plts_count) return NULL;
+    return (ddb_playlist_t *)&g_plts[idx];
 }
+
 static int mt_plt_get_title(ddb_playlist_t *plt, char *buffer, int bufsize) {
-    (void)plt;
-    if (bufsize > 0) buffer[0] = '\0';
+    mock_playlist_t *p = (mock_playlist_t *)plt;
+    if (bufsize > 0) snprintf(buffer, bufsize, "%s", p ? p->title : "");
     return 0;
 }
+
+static void mt_plt_clear(ddb_playlist_t *plt) {
+    mock_plt_clear_called++;
+    ((mock_playlist_t *)plt)->cleared = 1;
+}
+
+static const char *mt_plt_find_meta(ddb_playlist_t *plt, const char *key) {
+    mock_playlist_t *p = (mock_playlist_t *)plt;
+    if (!p) return NULL;
+    if (strcmp(key, CUI_VIEWER_MARKER) == 0) return p->marker[0] ? p->marker : NULL;
+    return NULL;
+}
+
+static void mt_plt_replace_meta(ddb_playlist_t *plt, const char *key, const char *value) {
+    mock_playlist_t *p = (mock_playlist_t *)plt;
+    if (!p) return;
+    if (strcmp(key, CUI_VIEWER_MARKER) == 0) snprintf(p->marker, sizeof(p->marker), "%s", value ? value : "");
+}
+
 static void mt_plt_unref(ddb_playlist_t *plt) { (void)plt; }
 
 static ddb_gtkui_widget_t *mt_w_get_rootwidget(void) {
@@ -129,6 +170,9 @@ void mock_deadbeef_install(void) {
     g_api.plt_add = mt_plt_add;
     g_api.plt_get_for_idx = mt_plt_get_for_idx;
     g_api.plt_get_title = mt_plt_get_title;
+    g_api.plt_clear = mt_plt_clear;
+    g_api.plt_find_meta = mt_plt_find_meta;
+    g_api.plt_replace_meta = mt_plt_replace_meta;
     g_api.plt_unref = mt_plt_unref;
 
     g_ml.tree_item_get_text = mt_tree_item_get_text;
@@ -161,7 +205,8 @@ void mock_gtkui_set_api_version(int major, int minor) {
 }
 
 void mock_reset(void) {
-    mock_plt_count = 0;
+    g_plts_count = 0;
+    mock_plt_clear_called = 0;
     mock_plt_add_called = 0;
     mock_last_plt_add_title[0] = '\0';
     mock_w_save_layout_called = 0;

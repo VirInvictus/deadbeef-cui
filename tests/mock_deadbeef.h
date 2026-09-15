@@ -32,14 +32,18 @@ void mock_deadbeef_install(void);
 // Reset per-test capture state.
 void mock_reset(void);
 
-// --- get_or_create_viewer_playlist capture hooks ---
-// plt_get_count returns this (default 0 = "no existing playlists", so the lookup
-// falls straight through to plt_add and we can capture the requested name).
-extern int  mock_plt_count;
-// Last title handed to plt_add — this is what fix #1 must drive from the
-// per-instance autoplaylist_name rather than the dead global conf key.
+// --- viewer-playlist capture hooks ---
+// plt_get_count/plt_add/plt_get_for_idx operate on an in-memory playlist
+// table (plt_add appends; plt_get_title/plt_find_meta/plt_replace_meta read
+// and write it; plt_clear records which entry it emptied), so tests can
+// assert per-playlist effects. plt_add also captures the requested title —
+// what fix #1 must drive from the per-instance autoplaylist_name rather than
+// the dead global conf key.
 extern char mock_last_plt_add_title[256];
 extern int  mock_plt_add_called;
+extern int  mock_plt_clear_called;
+// Whether mt_plt_clear emptied the playlist at table index idx.
+int mock_plt_was_cleared(int idx);
 
 // --- gtkui vtable fake (the issue-#1 tripwire) ---
 // gtkui_plugin is populated with a fake vtable whose published API version is
