@@ -22,6 +22,7 @@ void cui_clear_viewer_playlists(void);
 void sync_source_config(void);
 
 gboolean deferred_lib_update_cb(gpointer data);
+void cui_update_hint(cui_widget_t *cw);
 gboolean ml_event_idle_cb(gpointer data);
 gboolean cui_handle_config_change(gpointer user_data);
 void ml_listener_cb(ddb_mediasource_event_type_t event, void *user_data);

@@ -65,6 +65,10 @@ mock_node_t *mock_group(const char *text, mock_node_t *children, mock_node_t *ne
 mock_node_t *mock_leaf(const char *title, const char *artist, mock_node_t *next);
 void mock_node_free(mock_node_t *n);
 
+// Settable scanner state for the widget's hint logic (DDB_MEDIASOURCE_STATE_*
+// value; defaults to IDLE).
+extern int mock_scanner_state;
+
 // Tree returned by the fake create_item_tree (what update_tree_data caches).
 // The test owns it: update_tree_data's free_item_tree calls are no-ops here.
 void mock_set_item_tree(mock_node_t *root);

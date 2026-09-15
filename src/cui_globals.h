@@ -88,6 +88,10 @@ typedef struct {
     int playlist_dirty;
 
     GtkWidget *search_entry;
+    // Transient status line shown only when the widget would otherwise be
+    // silently blank (medialib disabled, source unavailable, empty library,
+    // or an in-progress first scan). Hidden once real data populates.
+    GtkWidget *hint_label;
     char *search_text;
     char *last_search_text;
 

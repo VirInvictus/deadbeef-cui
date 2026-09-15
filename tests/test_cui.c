@@ -560,6 +560,70 @@ static void test_modification_index_invalidation(void) {
     g_free(cw);
 }
 
+// ---- feature: in-widget empty-state hint ------------------------------------
+//
+// The only medialib-missing diagnostic used to be a stderr line: with the
+// medialib plugin disabled (or an empty library), the widget rendered a
+// silently blank layout. cui_update_hint now shows a transient status line
+// for exactly those states and hides it once real rows exist. GTK-gated: it
+// drives a real GtkLabel.
+
+static void assert_hint_state(cui_widget_t *cw, const char *needle) {
+    if (needle) {
+        g_assert_true(gtk_widget_get_visible(cw->hint_label));
+        g_assert_nonnull(strstr(gtk_label_get_text(GTK_LABEL(cw->hint_label)), needle));
+    } else {
+        g_assert_false(gtk_widget_get_visible(cw->hint_label));
+    }
+}
+
+static void test_empty_state_hint(void) {
+    if (!g_gtk_ok) { g_test_skip("no display for GtkLabel"); return; }
+    cui_widget_t *cw = fresh_widget();
+    cw->hint_label = gtk_label_new(NULL);
+    gtk_widget_set_no_show_all(cw->hint_label, TRUE);
+
+    // (1) medialib plugin absent.
+    DB_mediasource_t *saved_ml = medialib_plugin;
+    medialib_plugin = NULL;
+    cui_update_hint(cw);
+    assert_hint_state(cw, "medialib plugin is disabled");
+    medialib_plugin = saved_ml;
+
+    // (2) plugin present, source unavailable.
+    ml_source = NULL;
+    cui_update_hint(cw);
+    assert_hint_state(cw, "source is unavailable");
+
+    // (3) source present, empty tree, scanner idle: no folders configured.
+    mock_node_t *empty = mock_group(NULL, NULL, NULL);
+    ml_source = (ddb_mediasource_source_t *)empty;
+    cw->cached_tree = (ddb_medialib_item_t *)empty;
+    mock_scanner_state = 0; // IDLE
+    cui_update_hint(cw);
+    assert_hint_state(cw, "No music folders");
+
+    // (4) same, scanner working: scanning message.
+    mock_scanner_state = 2; // SCANNING
+    cui_update_hint(cw);
+    assert_hint_state(cw, "Scanning");
+
+    // (5) tree has real children: hidden.
+    mock_node_t *full = mock_group(NULL,
+        mock_group("Rock", mock_leaf("t1", "A", NULL), NULL), NULL);
+    cw->cached_tree = (ddb_medialib_item_t *)full;
+    mock_scanner_state = 0;
+    cui_update_hint(cw);
+    assert_hint_state(cw, NULL);
+
+    cw->cached_tree = NULL;
+    ml_source = NULL;
+    gtk_widget_destroy(cw->hint_label);
+    mock_node_free(empty);
+    mock_node_free(full);
+    g_free(cw);
+}
+
 // ---- feature: per-column sort persistence (colN_sort) ----------------------
 
 static void test_sort_persistence_roundtrip(void) {
@@ -641,6 +705,7 @@ int main(int argc, char **argv) {
     g_test_add_func("/cui/populate/no_selection_steal", test_populate_does_not_steal_selection);
     g_test_add_func("/cui/update/modification_index_invalidation", test_modification_index_invalidation);
     g_test_add_func("/cui/sort/persistence", test_sort_persistence_roundtrip);
+    g_test_add_func("/cui/hint/empty_state", test_empty_state_hint);
 
     return g_test_run();
 }

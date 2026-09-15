@@ -74,7 +74,7 @@ If your system can't run the pre-built binary — **or if you're on any architec
 
 - **Linux only.** DeaDBeeF itself runs on Linux, macOS, and Windows, but those platforms use different GUI plugins. This widget is specifically a GTK3 plugin and won't load under macOS Cocoa or Windows native UIs.
 - **GTK3 only.** The codebase carries forward-compatibility shims for GTK4 (see `cui_globals.h`), but DeaDBeeF currently ships only a GTK3 GUI. The shims are partial: button events, context menus, dialogs, container iteration, and drag-out are still written against GTK3 APIs, and a GTK4 build of this plugin has never been made, so a future GTK4 port is a real porting effort rather than a recompile.
-- **Requires the medialib plugin.** Without `medialib.so` enabled, the widget renders an empty layout. The medialib plugin ships with DeaDBeeF — no extra step needed unless you've explicitly disabled it.
+- **Requires the medialib plugin.** Without `medialib.so` enabled, the widget shows a transient status line explaining what is missing instead of a silently blank layout. The medialib plugin ships with DeaDBeeF — no extra step needed unless you've explicitly disabled it.
 - **No cross-compilation.** The `CMakeLists.txt` uses `pkg-config` to discover GTK3, which assumes a native build environment. Cross-compiling from x86_64 to i686 or aarch64 is plausible but untested.
 
 ## Development & Build

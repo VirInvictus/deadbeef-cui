@@ -819,11 +819,24 @@ void rebuild_columns(cui_widget_t *cw) {
     gtk_widget_set_no_show_all(cw->search_entry, TRUE);
     gtk_widget_hide(cw->search_entry);
 
+    // Transient status line for the "silently blank" states (see
+    // cui_update_hint). Hidden unless a state applies; rebuilt with the rest
+    // of the columns here and re-evaluated after every tree build.
+    cw->hint_label = gtk_label_new(NULL);
+    gtk_label_set_xalign(GTK_LABEL(cw->hint_label), 0.5f);
+    gtk_label_set_line_wrap(GTK_LABEL(cw->hint_label), TRUE);
+    gtk_widget_set_no_show_all(cw->hint_label, TRUE);
+    gtk_widget_set_margin_start(cw->hint_label, 8);
+    gtk_widget_set_margin_end(cw->hint_label, 8);
+    gtk_widget_set_margin_top(cw->hint_label, 8);
+    gtk_widget_hide(cw->hint_label);
+
     GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
     gtk_widget_set_margin_start(cw->search_entry, 4);
     gtk_widget_set_margin_end(cw->search_entry, 4);
     gtk_widget_set_margin_top(cw->search_entry, 4);
     gtk_widget_set_margin_bottom(cw->search_entry, 4);
+    gtk_box_pack_start(GTK_BOX(vbox), cw->hint_label, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(vbox), cw->search_entry, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(vbox), top_widget, TRUE, TRUE, 0);
 
@@ -1266,7 +1279,39 @@ gboolean deferred_lib_update_cb(gpointer data) {
     if (medialib_plugin && ml_source) {
         update_tree_data(cw);
     }
+    cui_update_hint(cw);
     return G_SOURCE_REMOVE;
+}
+
+// Show a transient status line when the widget would otherwise be silently
+// blank — the diagnostic gap issue #1 proved unaffordable for a first
+// impression. Hidden again the moment a build produces real rows. Evaluated
+// after every tree build (deferred_lib_update_cb); states in priority order:
+//   - medialib plugin disabled entirely
+//   - medialib present but our source is unavailable
+//   - tree built but empty: scanner still working ("scanning") vs. done and
+//     genuinely empty (no folders configured / empty library)
+void cui_update_hint(cui_widget_t *cw) {
+    if (!cw->hint_label) return;
+    const char *msg = NULL;
+    if (!medialib_plugin) {
+        msg = "The medialib plugin is disabled: enable it in DeaDBeeF preferences to use the Facet Browser.";
+    } else if (!ml_source) {
+        msg = "The media library source is unavailable.";
+    } else if (cw->cached_tree && !medialib_plugin->tree_item_get_children(cw->cached_tree)) {
+        if (medialib_plugin->scanner_state &&
+            medialib_plugin->scanner_state(ml_source) != DDB_MEDIASOURCE_STATE_IDLE) {
+            msg = "Scanning the music library...";
+        } else {
+            msg = "No music folders configured (or the library is empty): add folders under the Media Library section of DeaDBeeF preferences.";
+        }
+    }
+    if (msg) {
+        gtk_label_set_text(GTK_LABEL(cw->hint_label), msg);
+        gtk_widget_show(cw->hint_label);
+    } else {
+        gtk_widget_hide(cw->hint_label);
+    }
 }
 
 // Idle callback fired by main.c's cui_message on DB_EV_CONFIGCHANGED. Walks

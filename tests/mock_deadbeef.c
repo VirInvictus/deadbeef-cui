@@ -58,6 +58,13 @@ static const char *mt_pl_find_meta_raw(DB_playItem_t *it, const char *key) {
     return NULL;
 }
 
+int mock_scanner_state = 0; // DDB_MEDIASOURCE_STATE_IDLE
+
+static ddb_mediasource_state_t mt_scanner_state(ddb_mediasource_source_t *source) {
+    (void)source;
+    return (ddb_mediasource_state_t)mock_scanner_state;
+}
+
 static const char *mt_tree_item_get_text(const ddb_medialib_item_t *item) {
     return ((const mock_node_t *)item)->text;
 }
@@ -179,6 +186,7 @@ void mock_deadbeef_install(void) {
     g_ml.tree_item_get_track = mt_tree_item_get_track;
     g_ml.tree_item_get_next = mt_tree_item_get_next;
     g_ml.tree_item_get_children = mt_tree_item_get_children;
+    g_ml.scanner_state = mt_scanner_state;
     g_ml.create_item_tree = mt_create_item_tree;
     g_ml.free_item_tree = mt_free_item_tree;
 
@@ -205,6 +213,7 @@ void mock_gtkui_set_api_version(int major, int minor) {
 }
 
 void mock_reset(void) {
+    mock_scanner_state = 0;
     g_plts_count = 0;
     mock_plt_clear_called = 0;
     mock_plt_add_called = 0;
