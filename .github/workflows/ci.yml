@@ -34,6 +34,47 @@ jobs:
             deadbeef-devel
 
       - uses: actions/checkout@v4
+        with:
+          # Full history: the lockstep gate below walks the pushed commits.
+          fetch-depth: 0
+
+      # Git-level lockstep enforcement (CLAUDE.md §5.4; the local pre-commit
+      # hook is the other half). Any pushed commit that touches src/ or
+      # CMakeLists.txt must also touch compiled/ddb_misc_cui_GTK3.so. This is
+      # deliberately a pure diff check: byte-comparing a rebuild against this
+      # floating fedora:latest container would false-red whenever the
+      # container toolchain drifts.
+      #
+      # Escape matching the hook's allow-path: a comment-only src edit builds
+      # byte-identical output, and git cannot stage a file with no diff. For
+      # such commits the substantive (non-comment, non-blank) diff lines are
+      # counted; the gate only fires when there is at least one. The hook
+      # remains the byte-exact authority locally.
+      - name: Lockstep gate (compiled/ tracks src/)
+        if: github.event_name == 'push'
+        run: |
+          before="${{ github.event.before }}"
+          if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ]; then
+            range="${{ github.sha }}"
+          else
+            range="${before}..${{ github.sha }}"
+          fi
+          bad=0
+          for c in $(git rev-list "$range" -- 2>/dev/null || echo "${{ github.sha }}"); do
+            if ! git diff-tree --no-commit-id --name-only -r "$c" | grep -qE '^(src/|CMakeLists\.txt$)'; then
+              continue
+            fi
+            if git diff-tree --no-commit-id --name-only -r "$c" | grep -qx 'compiled/ddb_misc_cui_GTK3.so'; then
+              continue
+            fi
+            substantive=$(git diff-tree --no-commit-id -r --unified=0 "$c" -- src/ CMakeLists.txt \
+              | grep -E '^[+-][^+-]' | grep -vcE '^[+-][[:space:]]*(//|/\*|\*|\*/|$)' || true)
+            if [ "${substantive:-0}" -gt 0 ]; then
+              echo "::error::commit $c touches src/ or CMakeLists.txt with code changes but not compiled/ddb_misc_cui_GTK3.so"
+              bad=1
+            fi
+          done
+          exit $bad
 
       # Prove the plugin still compiles from source (the committed
       # compiled/*.so is kept in lockstep by a local pre-commit hook, which CI
