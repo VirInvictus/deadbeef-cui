@@ -7,9 +7,9 @@ Operator's manual for AI agents (and humans) working in this repo. **This file o
 | Topic | Lines |
 |---|---|
 | §3 `.deadbeef/` — vendored DeaDBeeF source: the map you need + how to use it | 57-171 |
-| §7 Configuration model (legacy global `cui.*` vs per-instance keyvalues, source-config sync) | 361-388 |
-| §8 Title formatting & the scriptable preset | 389-408 |
-| §11 The Gemini Flash incident (why this file exists) | 484-499 |
+| §7 Configuration model (legacy global `cui.*` vs per-instance keyvalues, source-config sync) | 367-394 |
+| §8 Title formatting & the scriptable preset | 395-414 |
+| §11 The Gemini Flash incident (why this file exists) | 490-505 |
 
 ---
 
@@ -166,6 +166,12 @@ Don't split `main.c` further unless you have a real reason; the historical mista
 - **When the public header looks ambiguous**, find a real caller first (`rg "func_name *(" .deadbeef/plugins/`). One real call site beats inferring from the signature.
 - **When you change anything that touches `cui_scriptable.h`**, diff against `.deadbeef/shared/scriptable/scriptable.c` first. The struct layout in our header is hand-mirrored; if upstream reordered fields, our code silently corrupts memory.
 - **Don't grep `.deadbeef/` for build settings** — its `Makefile.am` / `premake5.lua` describe upstream's build, not ours. Our build is `CMakeLists.txt`, period.
+
+### 3.3 Repo housekeeping facts (decided, so audits stop re-raising them)
+
+- **The nested clones are canonical.** `.deadbeef/` and `.cui/` live inside this working tree (gitignored, each with its own `.git`) and are THE reference clones for this repo, even though a workspace-level upstream clone also exists. DECIDED 2026-09-15 (Brandon). ⚠ **Hazard: `git clean -xd` would permanently destroy both clones**, including their upstream `.git` directories; recovery is a fresh upstream re-clone. Never run it here.
+- **The manifest twins have roles.** `manifest.json` is the real plugin-builder submission artifact (Phase 10); `manifest.json.example` is its deliberately-identical template mirror, kept for reference. They are byte-identical on purpose.
+- **logo.svg is deliberately absent.** The README badges and screenshot are the repo's visual identity; no mark is wanted (DECIDED 2026-09-15). Audits should stop flagging the gap.
 
 ---
 
