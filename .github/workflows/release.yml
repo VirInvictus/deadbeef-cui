@@ -74,8 +74,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # No explicit --repo: this gh release version rejects
+          # --notes-from-tag together with --repo, and gh derives the
+          # repository from GITHUB_REPOSITORY anyway.
           gh release create "${GITHUB_REF_NAME}" \
-            --repo "${GITHUB_REPOSITORY}" \
             --verify-tag \
             --notes-from-tag \
             ddb_misc_cui_GTK3.so
