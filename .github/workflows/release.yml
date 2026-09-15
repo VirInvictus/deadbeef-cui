@@ -77,4 +77,5 @@ jobs:
           gh release create "${GITHUB_REF_NAME}" \
             --repo "${GITHUB_REPOSITORY}" \
             --verify-tag \
+            --notes-from-tag \
             ddb_misc_cui_GTK3.so

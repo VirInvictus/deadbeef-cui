@@ -251,7 +251,10 @@ report disagree, the report wins; the corrections are already applied below.
       commits that contain release.yml and the workflow covers them.)
 
 ### Final audit 2026-09-13 (THE FINAL AUDIT: NEW findings, one line each; full detail in audit-final/deadbeef-cui/FINAL-REPORT.md)
-- [ ] **HIGH — release.yml will ship a note-less Release on its first real fire (v1.3.5): gh release create has no notes flag, so the documented "body is the tag message" claim is unimplemented in the workflow path (v1.3.4's body exists only because it was hand-made).** Add --notes-from-tag; optionally backfill v1.3.4's empty title.
+- [x] **HIGH — release.yml will ship a note-less Release on its first real fire (v1.3.5): gh release create has no notes flag, so the documented "body is the tag message" claim is unimplemented in the workflow path (v1.3.4's body exists only because it was hand-made).** Add --notes-from-tag; optionally backfill v1.3.4's empty title.
+      (DONE 2026-09-15: --notes-from-tag added to the release job; v1.3.4's
+      empty title backfilled to "v1.3.4" via gh release edit, body and asset
+      untouched. Brandon confirmed both, Q1/Q3.)
 - [ ] MED — Blank panes on playlist-font change: CONFIGCHANGED rebuilds all stores but update_tree_data early-returns on the modification-index cache (cui_widget.c:1191-1209, cui_data.c:355-357) — the v1.3.4 bug family, missed in the CONFIGCHANGED path. Set last_ml_modification_idx = -1 before the refill.
 - [ ] MED — Library events and search keystrokes silently steal the current playlist: store clears fire the unblocked selection-changed handler → deferred_column_changed_cb unconditionally plt_set_curr(Library Viewer) + clear-and-copy 10 ms after every event/keystroke, no user click (the exact behavior the v1.2.4 fix removed). Block the handlers around the clears or disarm the timeout in update_tree_data.
 - [ ] MED — roadmap.md:76's ticked plt_find_by_name box is false (zero call sites anywhere; the pickaxe hits are DWARF strings in rebuilt .so blobs). Untick and reword "investigated, no change", or actually switch find_viewer_playlist.
