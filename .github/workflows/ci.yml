@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
 
+# Read-only token for the build/test job; no workflow or write scopes needed
+# here (release.yml is the one that needs contents: write, correctly scoped).
+permissions:
+  contents: read
+
 jobs:
   build:
     name: build + test

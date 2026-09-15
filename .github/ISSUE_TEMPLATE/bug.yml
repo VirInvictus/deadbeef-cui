@@ -1,0 +1,43 @@
+name: Bug report
+description: Report a crash or wrong behavior in the Facet Browser plugin
+labels: ["bug"]
+body:
+  - type: input
+    id: deadbeef-version
+    attributes:
+      label: DeaDBeeF version
+      description: "From the About dialog or `deadbeef --version` (e.g. 1.10.3). Crash reports against 1.10.1+ especially need this."
+    validations:
+      required: true
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: Install method
+      options:
+        - Prebuilt compiled/ddb_misc_cui_GTK3.so from this repository
+        - Built from source (CMake)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Desktop environment
+      description: "Desktop/WM, GTK version, distro, and whether DeaDBeeF uses the GTK3 GUI plugin (ddb_gui_GTK3.so). This widget requires the GTK3 GUI."
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: "What you clicked, what you expected, what happened instead."
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Debug log
+      description: "Run `deadbeef --gui GTK3 -d` (or set DEADBEEF_CUI_DEBUG=1 for the plugin's own lines), reproduce, and paste anything relevant from stderr."
+      render: shell
+    validations:
+      required: false

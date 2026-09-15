@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or feature idea
+    url: https://github.com/VirInvictus/deadbeef-cui/discussions
+    about: "Please check existing issues first; the repo is in bug-fixes-only mode."
