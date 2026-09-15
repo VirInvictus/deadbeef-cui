@@ -18,9 +18,9 @@ A faceted library browser plugin for the [DeaDBeeF](https://deadbeef.sourceforge
 
 ## Why this exists
 
-DeaDBeeF is inherently playlist-focused. For users with libraries exceeding 10,000 tracks, navigating via manual playlists or simple searches is insufficient. `deadbeef-cui` bridges this gap by implementing a dynamic, multi-pane filter layout mirroring foobar2000's Columns UI.
+DeaDBeeF is playlist-focused by design. Once a library grows past ten thousand tracks, manual playlists and simple searches stop scaling. `deadbeef-cui` fills that hole with a dynamic, multi-pane filter layout modeled on foobar2000's Columns UI.
 
-The plugin drives DeaDBeeF's existing playlist view seamlessly. To prevent accidental deletion of your manual playlists, the plugin dynamically creates and targets a dedicated "Library Viewer" playlist. Selecting items in the facets automatically populates this playlist with the corresponding tracks, combining the power of faceted browsing with the player's lightweight core.
+The plugin drives DeaDBeeF's ordinary playlist view. To keep your manual playlists safe, it targets a dedicated "Library Viewer" playlist that it creates itself: selecting items in the facets populates that playlist with the matching tracks, so browsing and playback stay inside the player you already have.
 
 ## Features
 
@@ -34,7 +34,7 @@ The plugin drives DeaDBeeF's existing playlist view seamlessly. To prevent accid
 
 ## Compatibility
 
-This plugin is developed and tested on **Fedora Linux** (currently Fedora 44, x86_64) running **DeaDBeeF 1.10.3** with the GTK3 GUI plugin. The verified API floor is **DeaDBeeF 1.9.6**: every plugin-API member the widget calls (the `DB_mediasource_t` tree API, `plt_select_all`, and the GTKUI widget API with extended per-widget serialization) ships in 1.9.6, and since v1.3.4 nothing newer is required. Versions between 1.9.6 and 1.10.0 meet the floor but are not regularly exercised; the 1.10.x line is what is actually tested. The project is effectively feature-complete; I review and fix issues as the community reports them but am not actively adding features.
+The verified DeaDBeeF floor is **1.9.6** (plugin API level 17): every plugin-API member the widget calls (the `DB_mediasource_t` tree API, `plt_select_all`, and the GTKUI widget API with extended per-widget serialization) ships in 1.9.6, and since v1.3.4 nothing newer is required. Versions between 1.9.6 and 1.10.0 meet the floor but are not regularly exercised; the 1.10.x line is what is actually tested. The project is effectively feature-complete; I review and fix issues as the community reports them but am not actively adding features.
 
 ### Pre-built binary (`compiled/ddb_misc_cui_GTK3.so`)
 
@@ -61,27 +61,27 @@ The glibc 2.34 floor exists because that release moved `dlopen`/`dlsym`/`dlclose
 | RHEL / Rocky / Alma 9 | 2022 | 2.34 | ✅ |
 | openSUSE Leap 15.6 | 2024 | 2.38 | ✅ |
 | Arch / Tumbleweed | rolling | latest | ✅ |
-| Ubuntu 20.04 LTS | 2020 | 2.31 | ❌ — compile from source |
-| Debian 11 (Bullseye) | 2021 | 2.31 | ❌ — compile from source |
-| RHEL / Rocky / Alma 8 | 2019 | 2.28 | ❌ — compile from source |
-| openSUSE Leap 15.5 | 2023 | 2.31 | ❌ — compile from source |
+| Ubuntu 20.04 LTS | 2020 | 2.31 | ❌ (compile from source) |
+| Debian 11 (Bullseye) | 2021 | 2.31 | ❌ (compile from source) |
+| RHEL / Rocky / Alma 8 | 2019 | 2.28 | ❌ (compile from source) |
+| openSUSE Leap 15.5 | 2023 | 2.31 | ❌ (compile from source) |
 
 ### Source build (recommended for unsupported distros)
 
-If your system can't run the pre-built binary — **or if you're on any architecture other than x86_64, or any OS where DeaDBeeF runs with the GTK3 GUI** — compile from source. The result will be linked against your system's libraries and will work on that system regardless of how old its glibc is. See the [Development & Build](#development--build) section below.
+If your system can't run the pre-built binary (**or if you're on any architecture other than x86_64, or any OS where DeaDBeeF runs with the GTK3 GUI**), compile from source. The result will be linked against your system's libraries and will work on that system regardless of how old its glibc is. See the [Development & Build](#development--build) section below.
 
 ### Hard limitations (apply to both pre-built and from-source builds)
 
 - **Linux only.** DeaDBeeF itself runs on Linux, macOS, and Windows, but those platforms use different GUI plugins. This widget is specifically a GTK3 plugin and won't load under macOS Cocoa or Windows native UIs.
 - **GTK3 only.** The codebase carries forward-compatibility shims for GTK4 (see `cui_globals.h`), but DeaDBeeF currently ships only a GTK3 GUI. The shims are partial: button events, context menus, dialogs, container iteration, and drag-out are still written against GTK3 APIs, and a GTK4 build of this plugin has never been made, so a future GTK4 port is a real porting effort rather than a recompile.
-- **Requires the medialib plugin.** Without `medialib.so` enabled, the widget shows a transient status line explaining what is missing instead of a silently blank layout. The medialib plugin ships with DeaDBeeF — no extra step needed unless you've explicitly disabled it.
+- **Requires the medialib plugin.** Without `medialib.so` enabled, the widget shows a transient status line explaining what is missing instead of a silently blank layout. The medialib plugin ships with DeaDBeeF; no extra step needed unless you've explicitly disabled it.
 - **No cross-compilation.** The `CMakeLists.txt` uses `pkg-config` to discover GTK3, which assumes a native build environment. Cross-compiling from x86_64 to i686 or aarch64 is plausible but untested.
 
 ## Development & Build
 
 ### Requirements
 - GTK+ 3.0 development headers (`gtk3-devel` on Fedora/RHEL, `libgtk-3-dev` on Debian/Ubuntu)
-- DeaDBeeF development headers (`deadbeef-devel` on Fedora/RHEL; on Debian/Ubuntu you may need to grab them from DeaDBeeF's source release if not packaged) — should land at `/usr/include/deadbeef/`
+- DeaDBeeF development headers (`deadbeef-devel` on Fedora/RHEL; on Debian/Ubuntu you may need to grab them from DeaDBeeF's source release if not packaged); they should land at `/usr/include/deadbeef/`
 - CMake 3.10+ & a C11-capable compiler (GCC 4.8+ / Clang 3.3+)
 
 ### Build Pipeline
@@ -99,11 +99,11 @@ Enter **Design Mode** in DeaDBeeF to add the **Facet Browser (CUI)** widget to y
 
 ### Verifying your build
 
-Launch DeaDBeeF from a terminal with `deadbeef --gui GTK3 -d 2>&1 | grep cui` — you should see `deadbeef-cui: Facet Browser v1.3.4 registered successfully.` on startup. If the line is missing, the plugin failed to load (check the rest of the log for unresolved symbols or missing libraries).
+Launch DeaDBeeF from a terminal with `deadbeef --gui GTK3 -d 2>&1 | grep cui`: you should see `deadbeef-cui: Facet Browser v1.3.4 registered successfully.` on startup. If the line is missing, the plugin failed to load (check the rest of the log for unresolved symbols or missing libraries).
 
 ## Acknowledgments
 
-Inspired by the gold standard of library management: **[foobar2000](https://www.foobar2000.org/)** and its legendary **[Columns UI](https://yuo.be/columns-ui)** and **[Facets](https://www.foobar2000.org/components/view/foo_facets)** components.
+Inspired by **[foobar2000](https://www.foobar2000.org/)** and its **[Columns UI](https://yuo.be/columns-ui)** and **[Facets](https://www.foobar2000.org/components/view/foo_facets)** components.
 
 ## Support
 

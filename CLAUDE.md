@@ -1,12 +1,12 @@
-# CLAUDE.md — deadbeef-cui
+# CLAUDE.md: deadbeef-cui
 
-Operator's manual for AI agents (and humans) working in this repo. **This file overrides `~/CLAUDE.md` for everything scoped to `deadbeef-cui`.** It supersedes `design.md` — that file remains for the documented update workflow but is no longer the architecture reference. Read this end to end before touching code; most of what's in here is not derivable from the source.
+Operator's manual for AI agents (and humans) working in this repo. **This file overrides `~/CLAUDE.md` for everything scoped to `deadbeef-cui`.** It supersedes `design.md`; that file remains for the documented update workflow but is no longer the architecture reference. Read this end to end before touching code; most of what's in here is not derivable from the source.
 
 ## Section map (read these ranges on demand)
 
 | Topic | Lines |
 |---|---|
-| §3 `.deadbeef/` — vendored DeaDBeeF source: the map you need + how to use it | 57-171 |
+| §3 `.deadbeef/`: vendored DeaDBeeF source, the map you need + how to use it | 57-171 |
 | §7 Configuration model (legacy global `cui.*` vs per-instance keyvalues, source-config sync) | 367-394 |
 | §8 Title formatting & the scriptable preset | 395-414 |
 | §11 The Gemini Flash incident (why this file exists) | 490-505 |
@@ -15,7 +15,7 @@ Operator's manual for AI agents (and humans) working in this repo. **This file o
 
 ## 1. What this plugin is
 
-`deadbeef-cui` is a faceted library browser for [DeaDBeeF](https://deadbeef.sourceforge.io/) — a foobar2000 Columns UI / Facets clone implemented as a native GTK3 plugin. It compiles to a single shared object (`build/ddb_misc_cui_GTK3.so`, the final plugin filename) and registers a dockable widget called **"Facet Browser (CUI)"** through GTKUI's design-mode widget API.
+`deadbeef-cui` is a faceted library browser for [DeaDBeeF](https://deadbeef.sourceforge.io/), a foobar2000 Columns UI / Facets clone implemented as a native GTK3 plugin. It compiles to a single shared object (`build/ddb_misc_cui_GTK3.so`, the final plugin filename) and registers a dockable widget called **"Facet Browser (CUI)"** through GTKUI's design-mode widget API.
 
 What it actually does at runtime:
 
@@ -25,7 +25,7 @@ What it actually does at runtime:
 4. Recursively walks that tree to populate up to 5 `GtkTreeView` panes side by side.
 5. On selection change, debounces (10 ms), recomputes downstream panes, and rebuilds a single dedicated playlist (default name: "Library Viewer") with the matching tracks via `plt_clear` + `plt_insert_item`.
 
-The plugin **never owns its own track-list view** — it always pumps results into a DeaDBeeF playlist and lets the standard playlist widget render them. This is intentional (see §10.4).
+The plugin **never owns its own track-list view**: it always pumps results into a DeaDBeeF playlist and lets the standard playlist widget render them. This is intentional (see §10.4).
 
 Plugin metadata lives in `src/main.c:112-127`. The build version, the `w_reg_widget` title string, the stderr registration log line, the `.plugin.descr` version, the README badge, and the `spec.md` Version line must all match.
 
@@ -54,9 +54,9 @@ Don't split `main.c` further unless you have a real reason; the historical mista
 
 ---
 
-## 3. `.deadbeef/` — vendored DeaDBeeF source as a reference
+## 3. `.deadbeef/`: vendored DeaDBeeF source as a reference
 
-`.deadbeef/` is a clone of upstream DeaDBeeF kept solely as a **read-only API reference**. **It is not built, never linked, and never deployed.** `CMakeLists.txt` only adds `/usr/include` for headers — the system-installed `deadbeef-devel` package is what actually provides the compile-time API surface. `.deadbeef/` exists so we can `grep -r` real implementations when the public headers aren't enough.
+`.deadbeef/` is a clone of upstream DeaDBeeF kept solely as a **read-only API reference**. **It is not built, never linked, and never deployed.** `CMakeLists.txt` only adds `/usr/include` for headers; the system-installed `deadbeef-devel` package is what actually provides the compile-time API surface. `.deadbeef/` exists so we can `grep -r` real implementations when the public headers aren't enough.
 
 ### 3.1 The map you actually need
 
@@ -77,7 +77,7 @@ Don't split `main.c` further unless you have a real reason; the historical mista
 │   │   ├── gtkui.c         ← w_reg_widget impl, design-mode plumbing. Look here when a widget
 │   │   │                     callback isn't firing as expected.
 │   │   ├── widgets.c/.h    ← Widget container/append/replace impls. Reference for how the
-│   │   │                     splitter and tabs handle child lifetimes — relevant if we ever
+│   │   │                     splitter and tabs handle child lifetimes, relevant if we ever
 │   │   │                     want to support child-containing widgets.
 │   │   ├── medialib/
 │   │   │   ├── medialibmanager.c ← `gtkui_medialib_get_source()`. We dlsym this to share the
@@ -99,18 +99,18 @@ Don't split `main.c` further unless you have a real reason; the historical mista
 │   │   ├── hotkeys.c       ← How GTKUI exposes actions to the hotkeys plugin. Our
 │   │   │                     `Search Facets` action shows up there because of DB_ACTION_COMMON.
 │   │   └── ddb_splitter.c  ← Custom GtkPaned subclass with persisted size mode. We currently
-│   │                         use stock gtk_paned_new — switch to this if we want sizes to
+│   │                         use stock gtk_paned_new; switch to this if we want sizes to
 │   │                         survive layout reload.
 │   │
 │   ├── medialib/           ← The plugin we drive. Read this whenever a tree query misbehaves.
 │   │   ├── medialib.c      ← Plugin entry, exposes the DB_mediasource_t vtable.
 │   │   ├── medialib.h      ← ddb_medialib_plugin_api_t (the *extended* API, accessed via
-│   │   │                     get_extended_api). We currently don't use this — it's how you'd
+│   │   │                     get_extended_api). We currently don't use this; it's how you'd
 │   │   │                     edit the watched-folders list programmatically.
 │   │   ├── medialibtree.c  ← _create_item_tree_from_collection. THIS is what our scriptable
 │   │   │                     preset is fed into. Read this if you want to understand exactly
 │   │   │                     how our preset becomes the tree we walk.
-│   │   ├── medialibtree.h  ← ml_tree_item_s — internal layout. Our ddb_medialib_item_t * is
+│   │   ├── medialibtree.h  ← ml_tree_item_s: internal layout. Our ddb_medialib_item_t * is
 │   │   │                     a const cast over this. Don't dereference it directly.
 │   │   ├── medialibsource.c/.h  ← The source object lifecycle (create_source / free_source).
 │   │   ├── medialibscanner.c    ← Folder scanner state machine. Reference for understanding
@@ -129,7 +129,7 @@ Don't split `main.c` further unless you have a real reason; the historical mista
 │   ├── scriptable/
 │   │   ├── scriptable.h    ← The PUBLIC interface to scriptableItem_t (alloc/free/property
 │   │   │                     accessors). DeaDBeeF doesn't actually export these symbols to
-│   │   │                     plugins — that's why we mirror the struct in cui_scriptable.h.
+│   │   │                     plugins; that's why we mirror the struct in cui_scriptable.h.
 │   │   │                     Read this header to confirm field semantics before changing
 │   │   │                     our manual layout.
 │   │   ├── scriptable.c    ← The implementation. Source of truth for the layout our
@@ -154,7 +154,7 @@ Don't split `main.c` further unless you have a real reason; the historical mista
 │                             - Verifying conf file formats
 │
 ├── Tests/                  ← gtest suite. Reference for how upstream verifies medialib
-│                             behavior — closest thing to documented expected behavior.
+│                             behavior, the closest thing to documented expected behavior.
 │
 └── (everything else)       ← Build files (configure.ac, premake5.lua, Makefile.am), CI
                               scripts, docs, translations, icons. Ignore.
@@ -165,7 +165,7 @@ Don't split `main.c` further unless you have a real reason; the historical mista
 - **Default search path**: `rg <symbol> .deadbeef/include .deadbeef/plugins/{gtkui,medialib} .deadbeef/shared/scriptable`. That covers ~95% of useful hits. Only widen to `.deadbeef/src` or other plugins when those come up empty.
 - **When the public header looks ambiguous**, find a real caller first (`rg "func_name *(" .deadbeef/plugins/`). One real call site beats inferring from the signature.
 - **When you change anything that touches `cui_scriptable.h`**, diff against `.deadbeef/shared/scriptable/scriptable.c` first. The struct layout in our header is hand-mirrored; if upstream reordered fields, our code silently corrupts memory.
-- **Don't grep `.deadbeef/` for build settings** — its `Makefile.am` / `premake5.lua` describe upstream's build, not ours. Our build is `CMakeLists.txt`, period.
+- **Don't grep `.deadbeef/` for build settings**: its `Makefile.am` / `premake5.lua` describe upstream's build, not ours. Our build is `CMakeLists.txt`, period.
 
 ### 3.3 Repo housekeeping facts (decided, so audits stop re-raising them)
 
@@ -182,26 +182,26 @@ The points where this plugin meets DeaDBeeF. Use this table as the lookup index 
 | What we use | Defined in | Notes |
 |---|---|---|
 | `DB_misc_t plugin` | deadbeef.h | We're a `DB_PLUGIN_MISC` because we don't fit any other category and `DB_PLUGIN_GUI` is reserved for the actual GUI plugin. |
-| `ddb_misc_cui_GTK3_load` | (exported by us) | Symbol name **must** match the installed `.so` filename minus the trailing `_GTK3` rules — DeaDBeeF derives the entry-point name from the file. Renaming the install target requires changing this symbol. |
-| `plug_get_for_id("medialib")` | deadbeef.h:1354 | Returns NULL if the medialib plugin is disabled. We log and continue with a degraded plugin — the widget still renders, just empty. |
+| `ddb_misc_cui_GTK3_load` | (exported by us) | Symbol name **must** match the installed `.so` filename minus the trailing `_GTK3` rules: DeaDBeeF derives the entry-point name from the file. Renaming the install target requires changing this symbol. |
+| `plug_get_for_id("medialib")` | deadbeef.h:1354 | Returns NULL if the medialib plugin is disabled. We log and continue with a degraded plugin; the widget still renders, just empty. |
 | `plug_get_for_id(DDB_GTKUI_PLUGIN_ID)` | gtkui_api.h:44 | `DDB_GTKUI_PLUGIN_ID` resolves to `"gtkui3_1"` for GTK3 builds, `"gtkui_1"` for GTK2. The macro expands at *plugin* compile time based on which GTK we built against. |
-| `gtkui_plugin->w_reg_widget(...)` | gtkui_api.h:221 | Registered with `DDB_WF_SUPPORTS_EXTENDED_API` so our `cw->exapi` block (placed immediately after `base` in `cui_widget_t` — required by the API) is wired up for serialize/deserialize. |
+| `gtkui_plugin->w_reg_widget(...)` | gtkui_api.h:221 | Registered with `DDB_WF_SUPPORTS_EXTENDED_API` so our `cw->exapi` block (placed immediately after `base` in `cui_widget_t`, as the API requires) is wired up for serialize/deserialize. |
 | `gtkui_plugin->w_override_signals` | gtkui_api.h:227 | Required for design-mode (right-click → "Replace with…", drag-to-reorder, etc.). Called from `cui_init`. |
 | ~~`gtkui_plugin->w_save_layout_to_conf_key`~~ | gtkui_api.h:311-314 | **Never call this.** The v1.3.4 issue-#1 fix deleted the plugin's only call: the config dialog passed NULL as `val`, which the contract requires to be a valid widget pointer, and upstream's `_save_widget_to_json` dereferences it (`widgets.c:640-642`): a deterministic SIGSEGV on every DeaDBeeF 1.10.1+ (the member shipped in 1.10.1, commit `9caadf5b1`). It was redundant anyway: per-instance keyvalues persist via the quit-time and design-mode `w_save()` through the extended API. Locked in by the `/cui/config/save_layout` tripwire test. If flush-on-Save is ever genuinely required, probe with `PLUG_TEST_COMPAT` first (§10.12) and pass gtkui's own root-widget conventions: never NULL, never our widget alone. |
 | `gtkui_medialib_get_source` | plugins/gtkui/medialib/medialibmanager.c:22 | Resolved via `dlopen("ddb_gui_GTK3.so", RTLD_LAZY \| RTLD_NOLOAD) + dlsym`. **Not** part of the public ABI; if upstream renames it, we silently fall back to creating our own source. The fallback works but is slower (full second source = full second scan). |
-| `medialib_plugin->create_source` | deadbeef.h:2425 | We **must** pass `"cui"` (not `"deadbeef"`) — see §6.1. |
-| `medialib_plugin->create_item_tree` | deadbeef.h:2458 | Takes our scriptable preset. Returns NULL during scan or on memory pressure — handle it. |
+| `medialib_plugin->create_source` | deadbeef.h:2425 | We **must** pass `"cui"` (not `"deadbeef"`); see §6.1. |
+| `medialib_plugin->create_item_tree` | deadbeef.h:2458 | Takes our scriptable preset. Returns NULL during scan or on memory pressure; handle it. |
 | `medialib_plugin->free_item_tree` | deadbeef.h:2461 | Must be called before re-creating, and before destroying the source. Cached in `cw->cached_tree`. |
 | `medialib_plugin->add_listener` / `remove_listener` | deadbeef.h:2450/2453 | **Listener fires on a background thread** (deadbeef.h:2448-2449 says so). Always `g_idle_add` to dispatch. |
 | `medialib_plugin->scanner_state` | deadbeef.h:2464 | We poll this from the idle callback to skip refreshes during ongoing scans. |
-| `medialib_plugin->refresh` | deadbeef.h:2443 | User-triggered (right-click → Sync library) and once after we create our own source. **Never** call from `DB_EV_TRACKINFOCHANGED` — that's the Gemini-Flash-era trap. |
-| `medialib_plugin->tree_item_get_text/_track/_next/_children` | deadbeef.h:2486-2495 | The tree is immutable for the caller's lifetime. Don't free children — `free_item_tree` walks the whole thing. |
-| `deadbeef_api->plt_*` | deadbeef.h ~970-1100 | Standard playlist API. Always wrap mutations with `pl_lock`/`pl_unlock` (we do in `populate_playlist_from_cui`). `plt_get_*` returns refcounted handles — pair with `plt_unref`. |
+| `medialib_plugin->refresh` | deadbeef.h:2443 | User-triggered (right-click → Sync library) and once after we create our own source. **Never** call from `DB_EV_TRACKINFOCHANGED`; that's the Gemini-Flash-era trap. |
+| `medialib_plugin->tree_item_get_text/_track/_next/_children` | deadbeef.h:2486-2495 | The tree is immutable for the caller's lifetime. Don't free children; `free_item_tree` walks the whole thing. |
+| `deadbeef_api->plt_*` | deadbeef.h ~970-1100 | Standard playlist API. Always wrap mutations with `pl_lock`/`pl_unlock` (we do in `populate_playlist_from_cui`). `plt_get_*` returns refcounted handles; pair with `plt_unref`. |
 | `deadbeef_api->plt_find_meta` | deadbeef.h:1029 | Viewer-marker reads (`_cui_viewer`, see §6.14). **Contract: hold `pl_lock` around the call** (deadbeef.h:1028 says so explicitly); the returned pointer is only valid while held. |
 | `deadbeef_api->plt_replace_meta` | deadbeef.h:1018 | Sets the `_cui_viewer` ownership marker (add-or-replace). Locks internally (upstream `pltmeta.c`), so it must be called OUTSIDE `pl_lock`. |
 | `deadbeef_api->pl_item_alloc/copy/ref/unref/insert_item` | deadbeef.h ~1130-1200 | We **copy** tracks into the viewer playlist rather than referencing the medialib's. Copies are cheap; sharing tracks across playlists has subtle interaction issues with the playqueue. |
 | `deadbeef_api->conf_get_str_fast` | deadbeef.h:1331 | **Not thread-safe.** Wrap in `conf_lock`/`conf_unlock`. We do for the bootstrap defaults read in `cui_create_widget`. |
-| `deadbeef_api->sendmessage(DB_EV_PLAYLISTCHANGED, ...)` | deadbeef.h:512 | Send after mutating the viewer playlist so the playlist widget repaints. `DB_EV_TRACKINFOCHANGED` is for fine-grained per-track updates — don't conflate. |
+| `deadbeef_api->sendmessage(DB_EV_PLAYLISTCHANGED, ...)` | deadbeef.h:512 | Send after mutating the viewer playlist so the playlist widget repaints. `DB_EV_TRACKINFOCHANGED` is for fine-grained per-track updates; don't conflate. |
 | `DB_EV_TERMINATE` | deadbeef.h:504 | Our `cui_message` flips `shutting_down=1` here. Every long-lived callback checks it. |
 
 If you add a new API call, add a row.
@@ -219,7 +219,7 @@ cmake --build build
 
 Output: `build/ddb_misc_cui_GTK3.so`. The CMake target is `cui` with `OUTPUT_NAME ddb_misc_cui_GTK3` and `PREFIX ""`, so the build emits the final plugin filename directly: DeaDBeeF derives the `_load` entry-point symbol from the plugin filename, and the builder manifests list the final name in `out`.
 
-The build is `-Wall -Wextra -fPIC`, C11. There's currently **no warning policy** — be careful when adding code that the warning count doesn't grow. Don't slap `-Werror` on without a sweep first; the existing code has a few `(void)` casts but is otherwise clean.
+The build is `-Wall -Wextra -fPIC`, C11. There's currently **no warning policy**: be careful when adding code that the warning count doesn't grow. Don't slap `-Werror` on without a sweep first; the existing code has a few `(void)` casts but is otherwise clean.
 
 ### 5.2 Install
 
@@ -228,14 +228,14 @@ mkdir -p ~/.local/lib/deadbeef
 cp build/ddb_misc_cui_GTK3.so ~/.local/lib/deadbeef/ddb_misc_cui_GTK3.so
 ```
 
-The destination filename matters. DeaDBeeF derives the `_load` entry-point symbol from the file basename — the symbol `ddb_misc_cui_GTK3_load` is wired to the `ddb_misc_cui_GTK3.so` filename. If you rename the installed file, also rename the export in `main.c`.
+The destination filename matters. DeaDBeeF derives the `_load` entry-point symbol from the file basename: the symbol `ddb_misc_cui_GTK3_load` is wired to the `ddb_misc_cui_GTK3.so` filename. If you rename the installed file, also rename the export in `main.c`.
 
 ### 5.3 Run / debug
 
 - **Verbose plugin log**: launch `deadbeef --gui GTK3 -d` from a terminal. Our `fprintf(stderr, ...)` lines and the registration message land there.
 - **Our own debug log**: set `DEADBEEF_CUI_DEBUG=1` in the environment. `CUI_DEBUG(...)` (defined in `cui_globals.h`) prints to stderr. There are call-sites in `cui_create_widget`, `update_tree_data`, `update_playlist_from_cui`, `init_my_preset`, and the dlsym path. Use it; don't add raw `fprintf`s.
-- **Reload the plugin without restarting**: not possible — DeaDBeeF doesn't unload `DB_PLUGIN_MISC` plugins cleanly. Restart DeaDBeeF after every install.
-- **Crash on shutdown** is the canonical bug shape — see §6.3.
+- **Reload the plugin without restarting**: not possible; DeaDBeeF doesn't unload `DB_PLUGIN_MISC` plugins cleanly. Restart DeaDBeeF after every install.
+- **Crash on shutdown** is the canonical bug shape; see §6.3.
 
 ### 5.4 Compiled binary
 
@@ -273,7 +273,7 @@ Each rule here is here because violating it has caused, or will cause, a real bu
 
 `CUI_SOURCE_PATH` in `cui_globals.h:37`. The GTKUI's own medialib browser creates its source with `create_source("deadbeef")`. If we use the same path, both plugins write to the same on-disk state files (`~/.config/deadbeef/medialib.deadbeef.dat`), interleave scanner runs, and corrupt each other's selection state. Always `"cui"`.
 
-The shared-source dlsym shortcut (`gtkui_medialib_get_source`) bypasses this — when we use the GTKUI's source, we don't call `create_source` at all and `owns_ml_source` stays `0`. Only the fallback path creates our own.
+The shared-source dlsym shortcut (`gtkui_medialib_get_source`) bypasses this: when we use the GTKUI's source, we don't call `create_source` at all and `owns_ml_source` stays `0`. Only the fallback path creates our own.
 
 ### 6.2 The `scriptableItem_t` mirror is hand-maintained
 
@@ -283,9 +283,9 @@ DeaDBeeF doesn't export `scriptableItemAlloc` etc. to plugins, so we can't use t
 diff <(grep -A30 'struct scriptableItem_s' .deadbeef/shared/scriptable/scriptable.c) src/cui_scriptable.h
 ```
 
-The fields we care about (in order): `next`, `flags`, `properties`, `parent`, `children`, `childrenTail`, `type`, `configDialog`, `overrides`. We only write `flags` and `properties`/`children` — the rest are zeroed by `calloc`. `medialib_plugin->create_item_tree` reads `flags & SCRIPTABLE_FLAG_IS_LIST` to know the root is a list, then walks children for the column hierarchy.
+The fields we care about (in order): `next`, `flags`, `properties`, `parent`, `children`, `childrenTail`, `type`, `configDialog`, `overrides`. We only write `flags` and `properties`/`children`; the rest are zeroed by `calloc`. `medialib_plugin->create_item_tree` reads `flags & SCRIPTABLE_FLAG_IS_LIST` to know the root is a list, then walks children for the column hierarchy.
 
-### 6.3 Shutdown is async — `shutting_down` must be checked everywhere
+### 6.3 Shutdown is async: `shutting_down` must be checked everywhere
 
 `gtkui_stop()` schedules `quit_gtk_cb` on GTK's idle loop. Widget `destroy` callbacks fire **before** our `cui_stop`. That means:
 
@@ -301,15 +301,15 @@ Defenses, all required:
 - `cui_destroy` cancels both pending timeouts (`changed_timeout_id`, `lib_update_timeout_id`).
 - `cui_destroy` calls `medialib_plugin->remove_listener` *before* freeing the cached tree.
 
-When you add any new async work touching a `cui_widget_t *`, add the same two-step guard. **No exceptions.** This is the single most damage-prone area of the codebase — see §11.
+When you add any new async work touching a `cui_widget_t *`, add the same two-step guard. **No exceptions.** This is the single most damage-prone area of the codebase (see §11).
 
 ### 6.4 The medialib listener fires on a background thread
 
-`add_listener`'s contract (deadbeef.h:2448-2449) explicitly says so. `ml_listener_cb` does *only* three things: check `shutting_down`, atomic-increment `ml_modification_idx`, and `g_idle_add(ml_event_idle_cb, cw)`. It must not touch widget state, GTK, or the playlist directly. If you "just need to log the event type" — log it, but don't reach into `cw`.
+`add_listener`'s contract (deadbeef.h:2448-2449) explicitly says so. `ml_listener_cb` does *only* three things: check `shutting_down`, atomic-increment `ml_modification_idx`, and `g_idle_add(ml_event_idle_cb, cw)`. It must not touch widget state, GTK, or the playlist directly. If you "just need to log the event type", log it, but don't reach into `cw`.
 
 ### 6.5 Selection-change handling is debounced (10 ms)
 
-`on_column_changed` records the leftmost changed column in `cw->changed_col_idx` and arms `deferred_column_changed_cb` once. Without this, dragging across a column with multi-select fires hundreds of cascading rebuilds. Don't switch this to synchronous "for clarity" — it's load-bearing for selection performance on 50k-track libraries.
+`on_column_changed` records the leftmost changed column in `cw->changed_col_idx` and arms `deferred_column_changed_cb` once. Without this, dragging across a column with multi-select fires hundreds of cascading rebuilds. Don't switch this to synchronous "for clarity"; it's load-bearing for selection performance on 50k-track libraries.
 
 ### 6.6 `update_tree_data` rebuilds atomically
 
@@ -323,11 +323,11 @@ When you add any new async work touching a `cui_widget_t *`, add the same two-st
 7. Schedules a vscroll restore on the idle loop (so it runs after GTK's own scroll-position recompute).
 8. Stores `current_idx` in `cw->last_ml_modification_idx` to short-circuit redundant calls.
 
-The modification-index check at the top is what prevents infinite loops with the listener. **Do not** remove the assignment at the end (`cw->last_ml_modification_idx = current_idx`, cui_data.c:578) — there was a bug where the check ran but the assignment didn't, causing every call to do a full rebuild (fixed in v1.2.0). The cache-skip behavior is correct only if both halves are present.
+The modification-index check at the top is what prevents infinite loops with the listener. **Do not** remove the assignment at the end (`cw->last_ml_modification_idx = current_idx`, cui_data.c:578); there was a bug where the check ran but the assignment didn't, causing every call to do a full rebuild (fixed in v1.2.0). The cache-skip behavior is correct only if both halves are present.
 
 ### 6.7 Search invalidates the modification cache
 
-When `search_text` changes, `update_tree_data` resets `last_ml_modification_idx = -1` (cui_data.c:434). This forces a full rebuild because the rebuild path is *also* where the search predicate (`track_matches_search`) gets applied — counts and visibility depend on the current search string.
+When `search_text` changes, `update_tree_data` resets `last_ml_modification_idx = -1` (cui_data.c:434). This forces a full rebuild because the rebuild path is *also* where the search predicate (`track_matches_search`) gets applied; counts and visibility depend on the current search string.
 
 ### 6.8 The track-count cache is valid under search, but only because §6.7 always resets it
 
@@ -335,15 +335,15 @@ As of v1.2.5, `count_tracks_recursive` uses `cw->track_counts_cache` regardless 
 
 ### 6.9 The `[All]` aggregate row is synthesised, not from the tree
 
-`populate_list_multi` inserts the `[All (N Plurals)]` row with the third store column (`is_all`) set to `TRUE`. The selection hash in `update_selection_hash` checks this column — selecting an `[All]` row destroys the per-text hash entirely (a NULL hash means "all values match downstream"). Don't change the column count of the `GtkListStore` (currently 3: text, count, is_all) without auditing every reader.
+`populate_list_multi` inserts the `[All (N Plurals)]` row with the third store column (`is_all`) set to `TRUE`. The selection hash in `update_selection_hash` checks this column; selecting an `[All]` row destroys the per-text hash entirely (a NULL hash means "all values match downstream"). Don't change the column count of the `GtkListStore` (currently 3: text, count, is_all) without auditing every reader.
 
 ### 6.10 The pluralization rule has a deliberate exception
 
-cui_data.c:367-371: `"Album Artist"` collapses to `"Artist"` for the `[All]` label so it reads `[All (123 Artists)]` instead of `[All (123 Album Artists)]`. Don't generalize this — it's a single, deliberate special case for the most common column header.
+cui_data.c:367-371: `"Album Artist"` collapses to `"Artist"` for the `[All]` label so it reads `[All (123 Artists)]` instead of `[All (123 Album Artists)]`. Don't generalize this; it's a single, deliberate special case for the most common column header.
 
 ### 6.11 Don't add `pl_lock` around tree traversal; tree text needs no lock
 
-`pl_lock` is not a deadlock hazard here: upstream creates it recursive (`PTHREAD_MUTEX_RECURSIVE`), and `populate_playlist_from_cui` already nests it. (This section previously claimed `pl_lock` is non-reentrant; that's false, so don't re-propagate it.) The real reason `aggregate_recursive_multi` and `populate_list_multi` don't lock is that they only read tree text, which medialib already considers immutable for the caller. `track_matches_search` takes `pl_lock` internally for its own playlist reads, and that is the only locking the aggregation/selection paths need. (The v1.3.5 queue added explicit `pl_lock` wraps on the menu/drag copy walks, which read track metadata — see `build_menu_playlist` and `collect_tracks_for_drag` in `cui_widget.c`.)
+`pl_lock` is not a deadlock hazard here: upstream creates it recursive (`PTHREAD_MUTEX_RECURSIVE`), and `populate_playlist_from_cui` already nests it. (This section previously claimed `pl_lock` is non-reentrant; that's false, so don't re-propagate it.) The real reason `aggregate_recursive_multi` and `populate_list_multi` don't lock is that they only read tree text, which medialib already considers immutable for the caller. `track_matches_search` takes `pl_lock` internally for its own playlist reads, and that is the only locking the aggregation/selection paths need. (The v1.3.5 queue added explicit `pl_lock` wraps on the menu/drag copy walks, which read track metadata (see `build_menu_playlist` and `collect_tracks_for_drag`) in `cui_widget.c`.)
 
 ### 6.12 Track copies, not references, into the viewer playlist
 
@@ -358,7 +358,7 @@ cui_data.c:367-371: `"Album Artist"` collapses to `"Artist"` for the `[All]` lab
 Every viewer playlist the plugin creates gets a hidden playlist meta `CUI_VIEWER_MARKER` (`"_cui_viewer"`, value = the viewer name it was created for), set in `get_or_create_viewer_playlist` (cui_data.c). Two finders share `find_viewer_playlist_impl`:
 
 - `find_viewer_playlist` (marker-first, name fallback) is what population and activation use, so viewers created before the marker existed keep working; when the fallback matches, `stamp_viewer_marker` marks the playlist on the spot so later lookups see it as ours.
-- `find_marked_viewer_playlist` (marker-only) is what the shutdown clear (`cui_clear_viewer_playlists`) uses. **Never route the clear through the name fallback**: pre-v1.3.5 matching by title alone emptied any user playlist that happened to be named "Library Viewer" on every quit — the data-loss bug this marker exists to prevent.
+- `find_marked_viewer_playlist` (marker-only) is what the shutdown clear (`cui_clear_viewer_playlists`) uses. **Never route the clear through the name fallback**: pre-v1.3.5 matching by title alone emptied any user playlist that happened to be named "Library Viewer" on every quit: the data-loss bug this marker exists to prevent.
 
 Renaming the viewer in the config dialog orphans the old marked playlist (it stops matching and stops being cleared); that is accepted. Locked in by the `/cui/viewer/*` tests (create stamps, collision survives the clear, marker beats title, legacy gets stamped).
 
@@ -370,7 +370,7 @@ There are two layers, and migration between them is **read-once, write-never**:
 
 ### 7.1 Legacy global config (`cui.col1_format`, etc.)
 
-Pre-1.2.2 the plugin used flat `conf_get_str/set_str` with global keys. New widgets created today will read these as defaults if no per-instance config exists yet (`cui_create_widget` in `cui_widget.c:1153`). Once read, those values never get written back to global keys — they migrate into the per-instance keyvalue store the next time the layout is saved.
+Pre-1.2.2 the plugin used flat `conf_get_str/set_str` with global keys. New widgets created today will read these as defaults if no per-instance config exists yet (`cui_create_widget` in `cui_widget.c:1153`). Once read, those values never get written back to global keys; they migrate into the per-instance keyvalue store the next time the layout is saved.
 
 ### 7.2 Per-instance keyvalues (current)
 
@@ -378,7 +378,7 @@ Persisted via `ddb_gtkui_widget_extended_api_t`. Keys: `col1_title`..`col5_title
 
 When you add a new option:
 1. Field on `cui_widget_t` in `cui_globals.h`.
-2. Default in `cui_create_widget` (both branches — the bootstrap and the migration path).
+2. Default in `cui_create_widget` (both branches: the bootstrap and the migration path).
 3. Pair of entries in `cui_serialize_to_keyvalues` and `cui_deserialize_from_keyvalues`.
 4. Widget in `show_config_dialog` and read-back in `on_config_dialog_response`.
 5. If it affects the scriptable preset, plumb through `init_my_preset`.
@@ -388,7 +388,7 @@ When you add a new option:
 
 ### 7.3 Source-config sync
 
-`sync_source_config` (cui_widget.c:159) copies `medialib.deadbeef.paths` to `medialib.cui.paths` and enables our source. It only runs on the fallback (own-source) path, not when we share GTKUI's source. Run once at source-creation time only — it's not a continuous mirror.
+`sync_source_config` (cui_widget.c:159) copies `medialib.deadbeef.paths` to `medialib.cui.paths` and enables our source. It only runs on the fallback (own-source) path, not when we share GTKUI's source. Run once at source-creation time only; it's not a continuous mirror.
 
 ---
 
@@ -416,14 +416,14 @@ root (SCRIPTABLE_FLAG_IS_LIST, name="Facets")
 
 `design.md` carries the same workflow in prose (superseded banner included); CLAUDE.md is the authority when the two disagree. The bullet-point version, in priority order:
 
-1. **`patchnotes.md`** — append a new section for any user-visible change, bug fix, or refactor. Be specific: what changed, why, which files. Pre-existing entries are reverse-chronological with the current version on top.
-2. **Version bump** — only when the user says we're cutting a release. Touch `src/main.c` (`.plugin.version_minor`, `.plugin.descr`, the `w_reg_widget` title string, the stderr registration log line), `README.md` (badge + the registration version reference), `spec.md` (Version line). Semantic versioning. The `version_major`/`version_minor` ints encode the release LINE (1.3.x = major 1, minor 3), matching DeaDBeeF core's own major.minor encoding; the patch digit lives only in the string carriers. (DECIDED 2026-09-15, Brandon.)
-3. **`roadmap.md`** — flip `[ ]` to `[x]` for completed items. Add new entries to the appropriate phase, or to "Deferred (v2.0+)" if they're scope-creep.
-4. **`README.md` / `spec.md`** — only on architectural changes (new dependency, new GTK version, new top-level feature surface). Don't churn for cosmetic fixes.
-5. **This file (`CLAUDE.md`)** — when an invariant changes, when the source map shifts, or when a new API touch-point is introduced. Sections 2, 4, and 6 are the most likely to need updates.
-6. **`design.md`** — only if Section 2 ("What Code Does What Where") needs to change. Otherwise, prefer updating this file.
+1. **`patchnotes.md`**: append a new section for any user-visible change, bug fix, or refactor. Be specific: what changed, why, which files. Pre-existing entries are reverse-chronological with the current version on top.
+2. **Version bump**: only when the user says we're cutting a release. Touch `src/main.c` (`.plugin.version_minor`, `.plugin.descr`, the `w_reg_widget` title string, the stderr registration log line), `README.md` (badge + the registration version reference), `spec.md` (Version line). Semantic versioning. The `version_major`/`version_minor` ints encode the release LINE (1.3.x = major 1, minor 3), matching DeaDBeeF core's own major.minor encoding; the patch digit lives only in the string carriers. (DECIDED 2026-09-15, Brandon.)
+3. **`roadmap.md`**: flip `[ ]` to `[x]` for completed items. Add new entries to the appropriate phase, or to "Deferred (v2.0+)" if they're scope-creep.
+4. **`README.md` / `spec.md`**: only on architectural changes (new dependency, new GTK version, new top-level feature surface). Don't churn for cosmetic fixes.
+5. **This file (`CLAUDE.md`)**: update when an invariant changes, when the source map shifts, or when a new API touch-point is introduced. Sections 2, 4, and 6 are the most likely to need updates.
+6. **`design.md`**: only if Section 2 ("What Code Does What Where") needs to change. Otherwise, prefer updating this file.
 7. **`compiled/` rebuild:** if the change touched the built output (anything in `src/` or `CMakeLists.txt`), rebuild and stage `compiled/ddb_misc_cui_GTK3.so` in the **same commit** as the source change. The committed binary must never lag the source. See §5.4.
-8. **Commit** — one logical change per commit. Never push without being asked. Follow `git log` style for messages.
+8. **Commit**: one logical change per commit. Never push without being asked. Follow `git log` style for messages.
 
 - **Tagged releases ship the binary (2026-09-13).** From v1.3.4 onward, every release tag carries the rebuilt plugin binary as a GitHub Release asset on a green release commit. `.github/workflows/release.yml` (tag-triggered) builds the `.so` from the tag, runs ctest, and creates the Release with the CI-built binary attached; the Release body is the tag's annotation, which the house tagging procedure makes the verbatim patchnotes entry. Constraint: GitHub evaluates workflows at the pushed ref, so the automation only fires for tags cut at commits that contain `release.yml` (v1.3.4 predates it; its asset was attached manually per the plugin-update rule's fallback). For any tag the workflow misses, attach the locally built binary manually after CI is green; never skip the asset.
 
@@ -437,7 +437,7 @@ root (SCRIPTABLE_FLAG_IS_LIST, name="Facets")
 
 ### 10.2 Don't subscribe to `DB_EV_TRACKINFOCHANGED`
 
-It fires on every play, skip, pause, and playqueue mutation — not just metadata edits. The pre-v1.2.0 version handled this event and rebuilt the tree on every play, scrolling all facets back to the top. The handler is gone; the test for "a new tag was edited" is now a user-initiated **Sync library** menu action instead. Don't reinstate the handler.
+It fires on every play, skip, pause, and playqueue mutation, not just metadata edits. The pre-v1.2.0 version handled this event and rebuilt the tree on every play, scrolling all facets back to the top. The handler is gone; the test for "a new tag was edited" is now a user-initiated **Sync library** menu action instead. Don't reinstate the handler.
 
 ### 10.3 Don't ref-count the GtkMenu manually
 
@@ -448,14 +448,14 @@ The right-click menu uses `gtk_menu_popup_at_pointer` (cui_widget.c:616). GTK ta
 This was deliberately decided: the plugin populates DeaDBeeF's playlist widget. Reasons (from `spec.md` §4 and historical context):
 
 - Avoids reimplementing playqueue, focus tracking, drag-drop, column customization, replaygain UI, etc.
-- The "Library Viewer" playlist is a real playlist — users can save it, modify it, send tracks elsewhere. A custom widget would be a one-way view.
+- The "Library Viewer" playlist is a real playlist: users can save it, modify it, send tracks elsewhere. A custom widget would be a one-way view.
 - Performance: GTKUI's playlist already handles 50k+ rows efficiently. We'd just be reinventing it.
 
 Push back on any feature request that requires its own track view.
 
 ### 10.5 Don't bypass the debounce on selection change
 
-The debounce (`changed_timeout_id`, 10 ms in `on_column_changed`) protects against multi-select drags. Direct synchronous calls to `populate_list_multi` from selection callbacks were a Gemini-Flash regression — reverted, do not reintroduce.
+The debounce (`changed_timeout_id`, 10 ms in `on_column_changed`) protects against multi-select drags. Direct synchronous calls to `populate_list_multi` from selection callbacks were a Gemini-Flash regression; reverted, do not reintroduce.
 
 ### 10.6 Don't pass `NULL` to `g_utf8_collate` or `strcasestr`
 
@@ -487,7 +487,7 @@ The §10.8 shim covers the calls it maps, but these are still GTK3-native and un
 
 ---
 
-## 11. The Gemini Flash incident — why this file exists
+## 11. The Gemini Flash incident: why this file exists
 
 Between v1.1.0 and v1.2.0, an AI assistant (Gemini Flash) was given free rein on this repo and produced 14 commits attempting to debug shutdown crashes and listener races. All of them were reverted. The damage pattern was instructive:
 
@@ -519,4 +519,4 @@ The user's standing instruction: **stable and clean over clever**. Match style, 
 
 ---
 
-**End of CLAUDE.md.** When in doubt, ask — Brandon's standing preference is "I don't know, should I look?" over a confident guess that touches the wrong file.
+**End of CLAUDE.md.** When in doubt, ask; Brandon's standing preference is "I don't know, should I look?" over a confident guess that touches the wrong file.

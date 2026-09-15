@@ -1,4 +1,4 @@
-# deadbeef-cui — Application Specification
+# deadbeef-cui: Application Specification
 
 **Version:** 1.3.4  
 **Language:** C (C11)  
@@ -26,7 +26,7 @@ A series of list views (facets) that filter hierarchically. While the default is
 - **Aggregate Selection:** "All" rows and multi-selection support for broad filtering.
 
 ### 2.3 Recursive Filter Engine
-A robust recursive aggregation system that ensures hierarchical filtering works correctly at all levels, even when broad "All" categories are selected. It resolves the "Various Artists" collision by aggregating child albums from all matching nodes across the library tree.
+A recursive aggregation system that keeps hierarchical filtering correct at all levels, even when broad "All" categories are selected. It resolves the "Various Artists" collision by aggregating child albums from all matching nodes across the library tree.
 
 ### 2.4 Database Querying
 Efficiently queries the internal DeaDBeeF media library database using the `DB_mediasource_t` API. By generating hierarchical tree views and extracting the underlying `DB_playItem_t` tracks, it pumps the results directly into DeaDBeeF's existing playlist view, avoiding the need for a custom track list viewer.

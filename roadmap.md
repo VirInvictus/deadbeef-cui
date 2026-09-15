@@ -1,4 +1,4 @@
-# deadbeef-cui — Roadmap
+# deadbeef-cui: Roadmap
 
 What's done, what's next. Sequenced for feature-parity with foobar2000's Columns UI. Updated as of v1.3.4.
 
@@ -73,7 +73,7 @@ What's done, what's next. Sequenced for feature-parity with foobar2000's Columns
 *Hardening the architecture and improving performance for large libraries.*
 
 - [x] **Selection Persistence:** Restore previously selected items after a list refresh.
-- [x] **Efficient Playlist Lookup:** Investigated `plt_find_by_name` — no change. The swap never happened: the pickaxe hits that looked like adoption were DWARF strings in rebuilt `.so` blobs, and the manual iteration stayed. It is now also moot: viewer lookup is marker-based (the `_cui_viewer` meta, CLAUDE.md §6.14), which a title-only search cannot express.
+- [x] **Efficient Playlist Lookup:** Investigated `plt_find_by_name`: no change. The swap never happened: the pickaxe hits that looked like adoption were DWARF strings in rebuilt `.so` blobs, and the manual iteration stayed. It is now also moot: viewer lookup is marker-based (the `_cui_viewer` meta, CLAUDE.md §6.14), which a title-only search cannot express.
 - [x] **Search Allocation Storm:** Optimize `track_matches_search` by removing redundant `g_utf8_strdown` heap allocations.
 - [x] **Thread-Safe Tree Teardown:** Fix the race condition in `cui_destroy` by ensuring `ml_source` remains valid until all widgets are destroyed.
 - [x] **Instance-Specific Settings:** Move from global `cui.*` config keys to proper `ddb_gtkui_widget_extended_api_t` serialization to support multiple independent browser instances.
@@ -93,7 +93,7 @@ What's done, what's next. Sequenced for feature-parity with foobar2000's Columns
 
 ### Dropped from Phase 8
 
-- ~~**Incremental Playlist Updates** via `DDB_PLAYLIST_CHANGE_CONTENT`~~ — investigated and dropped in v1.2.5. The flag value is `0`, which is what we already pass to `sendmessage(DB_EV_PLAYLISTCHANGED, 0, 0, 0)`. The playlist widget treats that event as a full rebuild signal regardless, so a diff-based incremental update would require reimplementing the rebuild path with per-track add/remove tracking against the current playlist contents — a complex change for ~50–100 ms savings on selection switches that nobody has flagged as sluggish. The v1.2.4 fix that stopped auto-populating the playlist on first init already addressed the only observed pain point.
+- ~~**Incremental Playlist Updates** via `DDB_PLAYLIST_CHANGE_CONTENT`~~ (investigated and dropped in v1.2.5). The flag value is `0`, which is what we already pass to `sendmessage(DB_EV_PLAYLISTCHANGED, 0, 0, 0)`. The playlist widget treats that event as a full rebuild signal regardless, so a diff-based incremental update would require reimplementing the rebuild path with per-track add/remove tracking against the current playlist contents; a complex change for ~50–100 ms savings on selection switches that nobody has flagged as sluggish. The v1.2.4 fix that stopped auto-populating the playlist on first init already addressed the only observed pain point.
 - [x] **Modular Refactoring:** Break up the monolithic `main.c` into domain-specific modules for better maintainability (v1.2.3).
 
 ## Phase 9: Startup Latency & Theme Conformance
@@ -118,8 +118,8 @@ Measured baseline (6,367-track library, fresh launch with cui in layout but no G
 
 - [x] **Consolidated Build System:** Removed the legacy `Makefile` in favor of a single, robust CMake-driven build process.
 - [x] **Manifest Authoring:** `manifest.json` lives in the repo root. It tracks the example template (git source, cmake build at root, GTK3 env vars from the builder, output `ddb_misc_cui_GTK3.so`). Re-verify against the current `deadbeef-plugin-builder` schema when opening the submission PR. (v1.3.4: the builder schema check happened early; the manifests now list the final `ddb_misc_cui_GTK3.so` name and CMake emits it directly via `OUTPUT_NAME`, and the dead `bdkl/` git URL is fixed to `VirInvictus/deadbeef-cui`.)
-- [x] **Static Linking Audit:** Audited via `ldd` on the built `ddb_misc_cui_GTK3.so`. The plugin links only against the system GTK3 / glib / cairo / pango stack — all libraries DeaDBeeF itself depends on (the `dlopen`/`dlsym` calls resolve from libc itself, as the README documents; there is no libdl link). Static-linking these would conflict with DeaDBeeF's own GTK and is incorrect for the plugin model. No non-core deps to address.
-- [x] **Repository Readiness:** Repo is clean — README, spec, roadmap, patchnotes, CLAUDE.md, LICENSE, manifest.json, CMakeLists.txt, src/, compiled/ all present. No stale build artifacts checked in beyond the intentional `compiled/ddb_misc_cui_GTK3.so` for non-builders.
+- [x] **Static Linking Audit:** Audited via `ldd` on the built `ddb_misc_cui_GTK3.so`. The plugin links only against the system GTK3 / glib / cairo / pango stack, all of them libraries DeaDBeeF itself depends on (the `dlopen`/`dlsym` calls resolve from libc itself, as the README documents; there is no libdl link). Static-linking these would conflict with DeaDBeeF's own GTK and is incorrect for the plugin model. No non-core deps to address.
+- [x] **Repository Readiness:** Repo is clean: README, spec, roadmap, patchnotes, CLAUDE.md, LICENSE, manifest.json, CMakeLists.txt, src/, compiled/ all present. No stale build artifacts checked in beyond the intentional `compiled/ddb_misc_cui_GTK3.so` for non-builders.
 
 ### Requires Brandon (external systems / decisions)
 - [ ] **Cross-Platform Verification:** Run the `deadbeef-plugin-builder` Docker environment locally to verify the plugin builds for x86_64 (the builder offers no i686; the earlier "x86_64 and i686" wording was wrong). Manifest is in place; this is a `docker run` away when ready.
@@ -279,8 +279,8 @@ report disagree, the report wins; the corrections are already applied below.
       switching is moot now that viewer lookup is marker-based, which
       plt_find_by_name's title-only search cannot express.)
 - [x] MED — §6.3's "Defenses, all required" claim is falsified: deferred_column_changed_cb skips the g_list_find guard; restore_vscroll_idle skips the shutting_down check (saved only by cui_destroy's cancellation). Fix the doc or add the missing halves.
-      (RESOLVED 2026-09-15, commit bb80417: the missing halves were ADDED — the
-      queued guard-uniformity item — so all four named callbacks check
+      (RESOLVED 2026-09-15, commit bb80417: the missing halves were ADDED (the
+      queued guard-uniformity item), so all four named callbacks check
       shutting_down then g_list_find before touching anything, and §6.3's
       claim is true as written. Timeout-id clears moved after the guards.)
 - [ ] MED — design.md (workflow-canonical per CLAUDE.md §9) is stale on the v1.3.4 changes: still says cui.so, its Mandatory Update Workflow omits the compiled/ lockstep step, its carrier list omits three. Honesty pass or demote the §9 wording.
@@ -303,4 +303,4 @@ report disagree, the report wins; the corrections are already applied below.
 - [ ] Feature candidates logged (FINAL-REPORT L4; complete-posture respected): sort persistence per column (finishes shipped Phase 3; zero default change); in-widget empty-state hint (timed to the plugin-list submission); MAX_COLUMNS lift or spec softening (spec already promises arbitrary); pane-width persistence via our own exapi keyvalues (the DdbSplitter pointer was mechanism-wrong). Confirmed stays-parked: search album field, gtkScriptable editor, Album Art View, GTK4 port (the blocker list is the plan).
 - [ ] Prose pass: 68 live em-dashes (CLAUDE.md 52, README 9, roadmap 5, spec 1); the README marketing stratum ("seamlessly", "combining the power of", "bridges this gap", "gold standard… legendary"); README:13/:37 duplication; spec "robust" echo of a v0.5.0-alpha patchnote sentence.
 
-**CONFIRMED-prior (final-audit verification):** the queued v1.3.5 items (shutting_down atomics, viewer-name identity, guard uniformity, PLUG_TEST_COMPAT) unchanged; lockstep CI-blind open by decision; strcasestr/_GNU_SOURCE. SUPERSEDED (verified fixed with tripwire): the CRITICAL NULL-val call and the HIGH blank-panes-after-dialog; dead bdkl/ URLs; the 1.10.x-tested claim; the stale roadmap header. Audit-side: the sheet's build-output paths are pre-rename (build/ddb_misc_cui_GTK3.so now). Slop-reader verdict: two prose strata — the current forensic voice is human-grade; the residue is 68 live em-dashes, the README marketing paragraphs, and the pre-v1.2.4 patchnotes stratum (records policy, author's call).
+**CONFIRMED-prior (final-audit verification):** the queued v1.3.5 items (shutting_down atomics, viewer-name identity, guard uniformity, PLUG_TEST_COMPAT) unchanged; lockstep CI-blind open by decision; strcasestr/_GNU_SOURCE. SUPERSEDED (verified fixed with tripwire): the CRITICAL NULL-val call and the HIGH blank-panes-after-dialog; dead bdkl/ URLs; the 1.10.x-tested claim; the stale roadmap header. Audit-side: the sheet's build-output paths are pre-rename (build/ddb_misc_cui_GTK3.so now). Slop-reader verdict: two prose strata: the current forensic voice is human-grade; the residue is 68 live em-dashes, the README marketing paragraphs, and the pre-v1.2.4 patchnotes stratum (records policy, author's call).
