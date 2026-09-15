@@ -91,6 +91,13 @@ void update_selection_hash(GtkTreeSelection *selection, GHashTable **hash_ptr) {
 }
 
 static gboolean deferred_column_changed_cb(gpointer data) {
+    // No shutting_down / g_list_find guard here, unlike its sibling idle
+    // callbacks: this runs from a g_timeout_add whose id lives on cw, and
+    // cui_destroy cancels changed_timeout_id and removes the widget from
+    // all_cui_widgets before freeing anything, so this body never runs on a
+    // freed or removed widget. The cancellation IS the guard — keep it in
+    // cui_destroy intact if you touch either side. (activate_row also calls
+    // this directly, but only from live-widget signal handlers.)
     cui_widget_t *cw = (cui_widget_t *)data;
     cw->changed_timeout_id = 0;
 
@@ -1272,6 +1279,13 @@ gboolean ml_event_idle_cb(gpointer data) {
     return G_SOURCE_REMOVE;
 }
 
+// Medialib listener. Runs on a BACKGROUND thread (the add_listener contract,
+// deadbeef.h:2448-2449), so this callback may do exactly three things: check
+// shutting_down, atomically bump ml_modification_idx, and g_idle_add the
+// dispatch to the GTK main thread. It must never touch cw, GTK, playlists, or
+// any widget state: the listener thread outlives individual widget lifetimes
+// and races all of it. The actual work happens in ml_event_idle_cb on the
+// main loop, guarded per CLAUDE.md §6.3.
 void ml_listener_cb(ddb_mediasource_event_type_t event, void *user_data) {
     if (g_atomic_int_get(&shutting_down)) return;
     if (event != DDB_MEDIASOURCE_EVENT_STATE_DID_CHANGE &&

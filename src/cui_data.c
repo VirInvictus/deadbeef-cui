@@ -79,6 +79,13 @@ int sort_func(GtkTreeModel *model, GtkTreeIter *a, GtkTreeIter *b, gpointer user
     int result = 0;
     if (name_a && name_b) {
         if (is_all_a && !is_all_b) {
+            // [All] pinning, order-aware ON PURPOSE: GtkListStore negates the
+            // comparator under GTK_SORT_DESCENDING, so a plain -1 here would
+            // sink [All] to the bottom on descending sorts. This branch is
+            // what keeps [All] at iter 0 in every sort column and direction,
+            // which auto_select_all_if_empty relies on. Do not simplify;
+            // /cui/sort/all_row locks it in (CLAUDE.md §6.13 records an audit
+            // once breaking exactly this).
             result = (order == GTK_SORT_ASCENDING) ? -1 : 1;
         } else if (!is_all_a && is_all_b) {
             result = (order == GTK_SORT_ASCENDING) ? 1 : -1;
@@ -422,6 +429,13 @@ void update_tree_data(cui_widget_t *cw) {
 
     int current_idx = g_atomic_int_get(&ml_modification_idx);
     CUI_DEBUG("update_tree_data called (ml_idx=%d, cw_idx=%d)", current_idx, cw->last_ml_modification_idx);
+    // Modification-index cache. PAIRED with the assignment at the very end of
+    // this function — the check and the store must stay in sync or every call
+    // becomes a full rebuild (the v1.2.0 bug was losing the store half). The
+    // flip side: a caller that swaps the stores/preset behind our back must
+    // reset last_ml_modification_idx to -1 before calling, or this skip
+    // leaves its new stores blank (the dialog-OK bug fixed in v1.3.4 and the
+    // CONFIGCHANGED bug fixed in v1.3.5 were both missing resets).
     if (cw->last_ml_modification_idx == current_idx && cw->cached_tree) {
         return;
     }
@@ -550,5 +564,9 @@ void update_tree_data(cui_widget_t *cw) {
         auto_select_all_if_empty(cw, i);
     }
 
+    // Second half of the paired modification-index invariant (see the cache
+    // check at the top): record the index the rebuild was built from so the
+    // next call can skip. Removing this line turns every call into a full
+    // rebuild; that regression shipped once as v1.2.0.
     cw->last_ml_modification_idx = current_idx;
 }
