@@ -398,6 +398,13 @@ typedef struct {
 
 static gboolean restore_vscroll_idle(gpointer data) {
     scroll_restore_t *sr = (scroll_restore_t *)data;
+    // Uniform two-step guard (§6.3). This idle has NO cancellation in
+    // cui_destroy (nothing tracks its id), so the guards are its only
+    // protection; sr is ours to free on every path.
+    if (g_atomic_int_get(&shutting_down)) {
+        free(sr);
+        return G_SOURCE_REMOVE;
+    }
     if (g_list_find(all_cui_widgets, sr->cw)) {
         for (int i = 0; i < sr->cw->num_columns; i++) {
             GtkWidget *scroll = gtk_widget_get_parent(sr->cw->trees[i]);

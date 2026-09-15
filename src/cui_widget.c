@@ -91,20 +91,22 @@ void update_selection_hash(GtkTreeSelection *selection, GHashTable **hash_ptr) {
 }
 
 static gboolean deferred_column_changed_cb(gpointer data) {
-    // No shutting_down / g_list_find guard here, unlike its sibling idle
-    // callbacks: this runs from a g_timeout_add whose id lives on cw, and
-    // cui_destroy cancels changed_timeout_id and removes the widget from
-    // all_cui_widgets before freeing anything, so this body never runs on a
-    // freed or removed widget. The cancellation IS the guard — keep it in
-    // cui_destroy intact if you touch either side. (activate_row also calls
-    // this directly, but only from live-widget signal handlers.)
+    // Uniform two-step guard (CLAUDE.md §6.3): check shutting_down, then
+    // verify the widget is still registered, before any dereference. This
+    // callback also has a second safety net its siblings share: it runs from
+    // a g_timeout_add whose id lives on cw, and cui_destroy cancels
+    // changed_timeout_id before freeing anything. (activate_row calls it
+    // directly too, but only from live-widget signal handlers.)
     cui_widget_t *cw = (cui_widget_t *)data;
+    if (g_atomic_int_get(&shutting_down)) return G_SOURCE_REMOVE;
+    if (!g_list_find(all_cui_widgets, cw)) return G_SOURCE_REMOVE;
+
     cw->changed_timeout_id = 0;
 
     int start_col = cw->changed_col_idx;
     cw->changed_col_idx = -1;
 
-    if (start_col == -1 || g_atomic_int_get(&shutting_down)) return G_SOURCE_REMOVE;
+    if (start_col == -1) return G_SOURCE_REMOVE;
 
     for (int col_idx = start_col; col_idx < cw->num_columns; col_idx++) {
         GtkTreeSelection *selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->trees[col_idx]));
@@ -1209,14 +1211,16 @@ ddb_gtkui_widget_t *cui_create_widget(void) {
 
 gboolean deferred_lib_update_cb(gpointer data) {
     cui_widget_t *cw = (cui_widget_t *)data;
+    // Uniform two-step guard (§6.3) before touching cw, including the id
+    // clear: a guard-tripped return leaves the id stale, which is harmless
+    // (cui_destroy cancels and zeroes it).
+    if (g_atomic_int_get(&shutting_down)) return G_SOURCE_REMOVE;
+    if (!g_list_find(all_cui_widgets, cw)) return G_SOURCE_REMOVE;
+
     cw->lib_update_timeout_id = 0;
 
-    if (g_atomic_int_get(&shutting_down)) return G_SOURCE_REMOVE;
-
-    if (g_list_find(all_cui_widgets, cw)) {
-        if (medialib_plugin && ml_source) {
-            update_tree_data(cw);
-        }
+    if (medialib_plugin && ml_source) {
+        update_tree_data(cw);
     }
     return G_SOURCE_REMOVE;
 }
