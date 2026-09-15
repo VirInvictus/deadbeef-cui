@@ -557,6 +557,34 @@ static ddb_playlist_t *build_menu_playlist(cui_widget_t *cw) {
     return plt;
 }
 
+// Teardown for the on-demand right-click menu: sink the floating reference
+// at popup time and destroy the menu when it closes, so dismissed menus
+// don't leak. The destroy is DEFERRED to the next idle: GTK emits
+// "deactivate" BEFORE the activated item's "activate" emission completes
+// (gtk_menu_shell_activate_item pops the shell down first), so a synchronous
+// destroy here freed the menu items mid-activation and every menu item
+// stopped working (caught in the v1.3.5 live smoke). Every popdown path
+// (item activation, Esc, outside click) passes through exactly one
+// deactivate.
+static gboolean cui_destroy_menu_idle(gpointer data) {
+    GtkWidget *menu = GTK_WIDGET(data);
+    gtk_widget_destroy(menu);
+    g_object_unref(menu); // drops the ref_sink reference from cui_setup_menu_autodestroy
+    return G_SOURCE_REMOVE;
+}
+
+static void cui_menu_deactivate(GtkWidget *menu, gpointer user_data) {
+    (void)user_data;
+    if (g_object_get_data(G_OBJECT(menu), "cui-destroy-scheduled")) return;
+    g_object_set_data(G_OBJECT(menu), "cui-destroy-scheduled", (gpointer)1);
+    g_idle_add(cui_destroy_menu_idle, menu);
+}
+
+void cui_setup_menu_autodestroy(GtkWidget *menu) {
+    g_object_ref_sink(menu);
+    g_signal_connect(menu, "deactivate", G_CALLBACK(cui_menu_deactivate), NULL);
+}
+
 static gboolean on_tree_button_press(GtkWidget *widget, GdkEventButton *event, gpointer user_data) {
     // Left double-click on a row activates it ourselves rather than relying on
     // the row-activated signal: the drag source (gtk_drag_source_set below)
@@ -654,11 +682,7 @@ static gboolean on_tree_button_press(GtkWidget *widget, GdkEventButton *event, g
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), item_config);
 
     gtk_widget_show_all(menu);
-    // The menu comes back with only a floating reference, which nothing ever
-    // releases: sink it and destroy it when it closes, or every right-click
-    // leaks the whole menu tree.
-    g_object_ref_sink(menu);
-    g_signal_connect(menu, "deactivate", G_CALLBACK(gtk_widget_destroy), NULL);
+    cui_setup_menu_autodestroy(GTK_WIDGET(menu));
     gtk_menu_popup_at_pointer(GTK_MENU(menu), (GdkEvent *)event);
 
     // Drop our ref on the temp playlist. plmenu's _set_playlist already plt_ref'd

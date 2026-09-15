@@ -16,6 +16,7 @@ void cui_free_serialized_keyvalues(ddb_gtkui_widget_t *w, const char **keyvalues
 ddb_gtkui_widget_t *cui_create_widget(void);
 void show_config_dialog(GtkMenuItem *item, gpointer user_data);
 void rebuild_columns(cui_widget_t *cw);
+void cui_setup_menu_autodestroy(GtkWidget *menu);
 void cui_widget_stop(void);
 void cui_clear_viewer_playlists(void);
 

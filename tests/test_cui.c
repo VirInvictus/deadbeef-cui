@@ -560,6 +560,52 @@ static void test_modification_index_invalidation(void) {
     g_free(cw);
 }
 
+// ---- fix: menu item activation survives the autodestroy teardown -----------
+//
+// The right-click menu is destroyed on close so dismissed menus don't leak.
+// Destroying it synchronously on "deactivate" broke every menu item: GTK
+// emits deactivate BEFORE the activated item's "activate" emission completes
+// (gtk_menu_shell_activate_item pops the shell down first), so the items were
+// freed mid-activation and nothing on the menu worked (caught in the v1.3.5
+// live smoke). The teardown is now deferred to the idle; this test drives the
+// real gtk_menu_shell_activate_item sequence and requires the item's
+// activate handler to fire exactly once, with the menu finalized afterwards
+// (no leak).
+
+static int g_menu_activations = 0;
+static void on_test_item_activate(GtkMenuItem *item, gpointer data) {
+    (void)item; (void)data;
+    g_menu_activations++;
+}
+
+static void test_menu_activation_survives_teardown(void) {
+    if (!g_gtk_ok) { g_test_skip("no display for GtkMenu"); return; }
+    GtkWidget *menu = gtk_menu_new();
+    GtkWidget *item = gtk_menu_item_new_with_label("Tripwire");
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
+    g_signal_connect(item, "activate", G_CALLBACK(on_test_item_activate), NULL);
+    gtk_widget_show_all(menu);
+    gtk_widget_realize(menu);
+
+    // The ref_sink + idle teardown ends with destroy + unref: when both land,
+    // the object finalizes and the weak pointer goes NULL.
+    gpointer weak = menu;
+    g_object_add_weak_pointer(G_OBJECT(menu), &weak);
+    cui_setup_menu_autodestroy(menu);
+
+    g_menu_activations = 0;
+    // A never-popped-up shell is not "active", so activate_item's internal
+    // deactivate would be a no-op here; emit it first to mirror the real
+    // popdown that precedes item activation on screen.
+    g_signal_emit_by_name(menu, "deactivate");
+    gtk_menu_shell_activate_item(GTK_MENU_SHELL(menu), item, TRUE);
+    g_assert_cmpint(g_menu_activations, ==, 1);
+
+    // Run the main context so the deferred teardown actually runs.
+    while (g_main_context_pending(NULL)) g_main_context_iteration(NULL, FALSE);
+    g_assert_null(weak); // destroyed AND finalized: no leaked menu shell
+}
+
 // ---- feature: in-widget empty-state hint ------------------------------------
 //
 // The only medialib-missing diagnostic used to be a stderr line: with the
@@ -713,6 +759,7 @@ int main(int argc, char **argv) {
     g_test_add_func("/cui/update/modification_index_invalidation", test_modification_index_invalidation);
     g_test_add_func("/cui/sort/persistence", test_sort_persistence_roundtrip);
     g_test_add_func("/cui/hint/empty_state", test_empty_state_hint);
+    g_test_add_func("/cui/menu/activation_survives_teardown", test_menu_activation_survives_teardown);
 
     return g_test_run();
 }
