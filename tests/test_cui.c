@@ -560,6 +560,58 @@ static void test_modification_index_invalidation(void) {
     g_free(cw);
 }
 
+// ---- feature: per-column sort persistence (colN_sort) ----------------------
+
+static void test_sort_persistence_roundtrip(void) {
+    // Serialize writes colN_sort from the tracked fields; deserialize parses
+    // them back, rejecting out-of-range values. Headless: the keyvalue paths
+    // touch no widgets (applying the sort to a live store rides the desktop
+    // suite like the other widget-dependent paths).
+    cui_widget_t *cw = fresh_widget();
+    cw->titles[0] = g_strdup("Genre");
+    cw->formats[0] = g_strdup("%genre%");
+    cw->autoplaylist_name = g_strdup("V");
+    cw->sort_ids[0] = 1;    // count
+    cw->sort_orders[0] = 1; // descending
+    cw->sort_ids[2] = 1;
+    cw->sort_orders[2] = 0; // count, ascending
+
+    const char **kv = cui_serialize_to_keyvalues((ddb_gtkui_widget_t *)cw);
+    const char *saved_sort1 = NULL;
+    const char *saved_sort3 = NULL;
+    for (int i = 0; kv[i]; i += 2) {
+        if (strcmp(kv[i], "col1_sort") == 0) saved_sort1 = kv[i + 1];
+        if (strcmp(kv[i], "col3_sort") == 0) saved_sort3 = kv[i + 1];
+    }
+    g_assert_cmpstr(saved_sort1, ==, "1:1");
+    g_assert_cmpstr(saved_sort3, ==, "1:0");
+    cui_free_serialized_keyvalues((ddb_gtkui_widget_t *)cw, kv);
+
+    // Round-trip into a fresh widget, plus one malformed key that must be
+    // ignored (fields stay at the name/ascending default).
+    const char *handmade[] = {
+        "col1_format", "%genre%",       // satisfies the found_any guard
+        "col1_sort",   "1:1",
+        "col2_sort",   "9:9",           // invalid: rejected
+        "col3_sort",   "garbage",       // invalid: rejected
+        NULL, NULL,
+    };
+    cui_widget_t *cw2 = fresh_widget();
+    cui_deserialize_from_keyvalues((ddb_gtkui_widget_t *)cw2, handmade);
+    g_assert_cmpint(cw2->sort_ids[0], ==, 1);
+    g_assert_cmpint(cw2->sort_orders[0], ==, 1);
+    g_assert_cmpint(cw2->sort_ids[1], ==, 0);
+    g_assert_cmpint(cw2->sort_orders[1], ==, 0);
+    g_assert_cmpint(cw2->sort_ids[2], ==, 0);
+    g_assert_cmpint(cw2->sort_orders[2], ==, 0);
+
+    g_free(cw->titles[0]);
+    g_free(cw->formats[0]);
+    g_free(cw->autoplaylist_name);
+    g_free(cw);
+    g_free(cw2);
+}
+
 int main(int argc, char **argv) {
     g_test_init(&argc, &argv, NULL);
     // g_test_init promotes warnings to fatal, which aborts the whole suite at
@@ -588,6 +640,7 @@ int main(int argc, char **argv) {
     g_test_add_func("/cui/sort/all_row", test_sort_all_row);
     g_test_add_func("/cui/populate/no_selection_steal", test_populate_does_not_steal_selection);
     g_test_add_func("/cui/update/modification_index_invalidation", test_modification_index_invalidation);
+    g_test_add_func("/cui/sort/persistence", test_sort_persistence_roundtrip);
 
     return g_test_run();
 }

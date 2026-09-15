@@ -61,6 +61,12 @@ typedef struct {
     GHashTable *sel_texts[MAX_COLUMNS];
     char *titles[MAX_COLUMNS];
     char *formats[MAX_COLUMNS];
+    // Active sort per column (id 0 = name, 1 = count; order 0 = ascending,
+    // 1 = descending), tracked from the stores' sort-column-changed signal and
+    // applied to every freshly built store so the choice survives font-change
+    // rebuilds and quit/relaunch (serialized as colN_sort).
+    int sort_ids[MAX_COLUMNS];
+    int sort_orders[MAX_COLUMNS];
     int ignore_prefix;
     int split_tags;
     char *autoplaylist_name;

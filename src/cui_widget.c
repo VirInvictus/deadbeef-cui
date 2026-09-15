@@ -736,6 +736,23 @@ static GtkWidget *create_column(const char *title, GtkListStore **out_store, Gtk
     return scroll;
 }
 
+// Track the column's active sort (set by header clicks) so it can be
+// serialized as colN_sort and re-applied to freshly built stores — the
+// choice otherwise evaporates on font-change rebuilds and quit.
+static void on_sort_column_changed(GtkTreeSortable *sortable, gpointer user_data) {
+    cui_widget_t *cw = (cui_widget_t *)user_data;
+    gint id;
+    GtkSortType order;
+    if (!gtk_tree_sortable_get_sort_column_id(sortable, &id, &order)) return;
+    for (int i = 0; i < cw->num_columns; i++) {
+        if (GTK_TREE_SORTABLE(cw->stores[i]) == sortable) {
+            cw->sort_ids[i] = (int)id;
+            cw->sort_orders[i] = (int)order;
+            break;
+        }
+    }
+}
+
 void rebuild_columns(cui_widget_t *cw) {
     if (cw->num_columns <= 0) return;
 
@@ -764,6 +781,14 @@ void rebuild_columns(cui_widget_t *cw) {
         GtkTreeSelection *sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->trees[i]));
         gtk_tree_selection_set_mode(sel, GTK_SELECTION_MULTIPLE);
         g_signal_connect(sel, "changed", G_CALLBACK(on_column_changed), cw);
+
+        // Persisted sort (colN_sort): apply this column's saved sort to the
+        // fresh store and track further changes. Fresh widgets start at the
+        // calloc default (0, 0) = name, ascending, the pre-persistence
+        // default, so nothing changes for users who never touched a header.
+        gtk_tree_sortable_set_sort_column_id(GTK_TREE_SORTABLE(cw->stores[i]),
+                                             cw->sort_ids[i], (GtkSortType)cw->sort_orders[i]);
+        g_signal_connect(cw->stores[i], "sort-column-changed", G_CALLBACK(on_sort_column_changed), cw);
         g_signal_connect(cw->trees[i], "row-activated", G_CALLBACK(on_row_activated), cw);
 #if GTK_MAJOR_VERSION < 4
         g_signal_connect(cw->trees[i], "button-press-event", G_CALLBACK(on_tree_button_press), cw);
@@ -927,22 +952,30 @@ static void cui_destroy(ddb_gtkui_widget_t *w) {
     cw->last_header_font = NULL;
 }
 
-static const char **cui_serialize_to_keyvalues(ddb_gtkui_widget_t *w) {
+const char **cui_serialize_to_keyvalues(ddb_gtkui_widget_t *w) {
     cui_widget_t *cw = (cui_widget_t *)w;
-    int num_items = MAX_COLUMNS * 2 + 3; // formats, titles, split_tags, ignore_prefix, autoplaylist
+    int num_items = MAX_COLUMNS * 3 + 3; // titles, formats, sorts, split_tags, ignore_prefix, autoplaylist
     char **keyvalues = calloc(num_items * 2 + 1, sizeof(char *));
     int idx = 0;
-    
+
     for (int i = 0; i < MAX_COLUMNS; i++) {
-        char key_title[32], key_format[32];
+        char key_title[32], key_format[32], key_sort[32], val_sort[16];
         snprintf(key_title, sizeof(key_title), "col%d_title", i + 1);
         snprintf(key_format, sizeof(key_format), "col%d_format", i + 1);
-        
+
         keyvalues[idx++] = strdup(key_title);
         keyvalues[idx++] = cw->titles[i] ? strdup(cw->titles[i]) : strdup("");
-        
+
         keyvalues[idx++] = strdup(key_format);
         keyvalues[idx++] = cw->formats[i] ? strdup(cw->formats[i]) : strdup("");
+
+        // Persisted sort: "<id>:<order>", id 0 = name, 1 = count; order
+        // 0 = ascending, 1 = descending. Tracked live by
+        // on_sort_column_changed, applied to every rebuilt store.
+        snprintf(key_sort, sizeof(key_sort), "col%d_sort", i + 1);
+        snprintf(val_sort, sizeof(val_sort), "%d:%d", cw->sort_ids[i], cw->sort_orders[i]);
+        keyvalues[idx++] = strdup(key_sort);
+        keyvalues[idx++] = strdup(val_sort);
     }
     
     keyvalues[idx++] = strdup("split_tags");
@@ -961,7 +994,7 @@ static const char **cui_serialize_to_keyvalues(ddb_gtkui_widget_t *w) {
     return (const char **)keyvalues;
 }
 
-static void cui_deserialize_from_keyvalues(ddb_gtkui_widget_t *w, const char **keyvalues) {
+void cui_deserialize_from_keyvalues(ddb_gtkui_widget_t *w, const char **keyvalues) {
     cui_widget_t *cw = (cui_widget_t *)w;
     
     if (keyvalues) {
@@ -994,6 +1027,17 @@ static void cui_deserialize_from_keyvalues(ddb_gtkui_widget_t *w, const char **k
                             cw->formats[col] = g_strdup(v);
                         }
                     }
+                } else if (strncmp(k, "col", 3) == 0 && strstr(k, "_sort")) {
+                    // colN_sort = "<id>:<order>"; invalid or out-of-range
+                    // values fall back to the calloc default (name, ascending).
+                    int col = k[3] - '1';
+                    int id = -1, order = -1;
+                    if (col >= 0 && col < MAX_COLUMNS
+                        && sscanf(v, "%d:%d", &id, &order) == 2
+                        && (id == 0 || id == 1) && (order == 0 || order == 1)) {
+                        cw->sort_ids[col] = id;
+                        cw->sort_orders[col] = order;
+                    }
                 } else if (strcmp(k, "split_tags") == 0) {
                     cw->split_tags = atoi(v);
                 } else if (strcmp(k, "ignore_prefix") == 0) {
@@ -1007,7 +1051,7 @@ static void cui_deserialize_from_keyvalues(ddb_gtkui_widget_t *w, const char **k
     }
 }
 
-static void cui_free_serialized_keyvalues(ddb_gtkui_widget_t *w, const char **keyvalues) {
+void cui_free_serialized_keyvalues(ddb_gtkui_widget_t *w, const char **keyvalues) {
     (void)w;
     if (!keyvalues) return;
     for (int i = 0; keyvalues[i]; i++) {

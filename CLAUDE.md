@@ -368,7 +368,7 @@ Pre-1.2.2 the plugin used flat `conf_get_str/set_str` with global keys. New widg
 
 ### 7.2 Per-instance keyvalues (current)
 
-Persisted via `ddb_gtkui_widget_extended_api_t`. Keys: `col1_title`..`col5_title`, `col1_format`..`col5_format`, `split_tags`, `ignore_prefix`, `autoplaylist_name`. Serialization in `cui_serialize_to_keyvalues` (cui_widget.c:930), deserialization in `cui_deserialize_from_keyvalues` (cui_widget.c:964). The `found_any` guard ensures we only clobber defaults when the saved layout actually contains real column data.
+Persisted via `ddb_gtkui_widget_extended_api_t`. Keys: `col1_title`..`col5_title`, `col1_format`..`col5_format`, `col1_sort`..`col5_sort` (`"<id>:<order>"`: id 0 = name, 1 = count; order 0 = ascending, 1 = descending; v1.3.5), `split_tags`, `ignore_prefix`, `autoplaylist_name`. Serialization in `cui_serialize_to_keyvalues` (cui_widget.c:930), deserialization in `cui_deserialize_from_keyvalues` (cui_widget.c:964). The `found_any` guard ensures we only clobber defaults when the saved layout actually contains real column data.
 
 When you add a new option:
 1. Field on `cui_widget_t` in `cui_globals.h`.
