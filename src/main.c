@@ -19,7 +19,7 @@ static int cui_message(uint32_t id, uintptr_t ctx, uint32_t p1, uint32_t p2) {
     (void)p1;
     (void)p2;
     if (id == DB_EV_TERMINATE) {
-        shutting_down = 1;
+        g_atomic_int_set(&shutting_down, 1);
         // Clear the viewer playlists here, not in cui_destroy: this event is
         // dispatched on the player mainloop before gui->stop()/streamer_free,
         // so plt_clear's per-track streamer/playqueue notifications are safe.
@@ -29,8 +29,12 @@ static int cui_message(uint32_t id, uintptr_t ctx, uint32_t p1, uint32_t p2) {
     } else if (id == DB_EV_CONFIGCHANGED) {
         // Coalesce bursts of CONFIGCHANGED via an atomic flag — the handler
         // clears it before doing work, so a change that lands during the check
-        // still gets a fresh follow-up dispatch.
-        if (!shutting_down && g_atomic_int_compare_and_exchange(&config_change_pending, 0, 1)) {
+        // still gets a fresh follow-up dispatch. Plain get/set instead of
+        // g_atomic_int_compare_and_exchange: the CAS needs GLib 2.74+ (a real
+        // compile floor — Ubuntu 22.04 ships 2.72), and a lost race here only
+        // queues one extra idempotent idle pass.
+        if (!g_atomic_int_get(&shutting_down) && !g_atomic_int_get(&config_change_pending)) {
+            g_atomic_int_set(&config_change_pending, 1);
             g_idle_add(cui_handle_config_change, NULL);
         }
     }
@@ -38,7 +42,7 @@ static int cui_message(uint32_t id, uintptr_t ctx, uint32_t p1, uint32_t p2) {
 }
 
 int cui_start(void) {
-    shutting_down = 0;
+    g_atomic_int_set(&shutting_down, 0);
 
     gtkui_plugin = (ddb_gtkui_t *)deadbeef_api->plug_get_for_id(DDB_GTKUI_PLUGIN_ID);
     if (!gtkui_plugin) {
@@ -58,7 +62,7 @@ int cui_start(void) {
 }
 
 int cui_stop(void) {
-    shutting_down = 1;
+    g_atomic_int_set(&shutting_down, 1);
 
     cui_widget_stop();
     

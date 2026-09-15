@@ -97,7 +97,7 @@ static gboolean deferred_column_changed_cb(gpointer data) {
     int start_col = cw->changed_col_idx;
     cw->changed_col_idx = -1;
 
-    if (start_col == -1 || shutting_down) return G_SOURCE_REMOVE;
+    if (start_col == -1 || g_atomic_int_get(&shutting_down)) return G_SOURCE_REMOVE;
 
     for (int col_idx = start_col; col_idx < cw->num_columns; col_idx++) {
         GtkTreeSelection *selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->trees[col_idx]));
@@ -333,6 +333,16 @@ static char *get_selected_facet_names(GtkTreeView *tv) {
     }
     if (out->len > 200) {
         g_string_truncate(out, 200);
+        // Never split a multi-byte UTF-8 sequence at the cut: trim trailing
+        // continuation bytes, then a lead byte left with no continuation.
+        while (out->len > 0) {
+            guchar tail = (guchar)out->str[out->len - 1];
+            if ((tail & 0xC0) == 0x80 || (tail & 0xC0) == 0xC0) {
+                g_string_truncate(out, out->len - 1);
+            } else {
+                break;
+            }
+        }
         g_string_append(out, "…");
     }
     return g_string_free(out, FALSE);
@@ -447,13 +457,19 @@ static DB_playItem_t **collect_tracks_for_drag(cui_widget_t *cw, int *count_out)
     *count_out = 0;
     if (!cw->cached_tree || !medialib_plugin) return NULL;
 
+    // Same lock discipline as build_menu_playlist: the copies read track
+    // metadata that concurrent tag edits can be rewriting.
+    deadbeef_api->pl_lock();
     int total = 0;
     const ddb_medialib_item_t *child = medialib_plugin->tree_item_get_children(cw->cached_tree);
     while (child) {
         total += collect_drag_count_recursive(child, 1, cw);
         child = medialib_plugin->tree_item_get_next(child);
     }
-    if (total == 0) return NULL;
+    if (total == 0) {
+        deadbeef_api->pl_unlock();
+        return NULL;
+    }
 
     DB_playItem_t **arr = calloc(total, sizeof(DB_playItem_t *));
     int idx = 0;
@@ -462,6 +478,7 @@ static DB_playItem_t **collect_tracks_for_drag(cui_widget_t *cw, int *count_out)
         collect_drag_fill_recursive(child, 1, cw, arr, &idx, total);
         child = medialib_plugin->tree_item_get_next(child);
     }
+    deadbeef_api->pl_unlock();
     *count_out = idx;
     return arr;
 }
@@ -503,6 +520,11 @@ static ddb_playlist_t *build_menu_playlist(cui_widget_t *cw) {
     ddb_playlist_t *plt = deadbeef_api->plt_alloc("CUI Action Playlist");
     if (!plt) return NULL;
 
+    // Hold pl_lock across the copy walk, like populate_playlist_from_cui:
+    // pl_item_copy reads track metadata that concurrent tag edits can be
+    // rewriting. pl_lock is recursive, so add_tracks_recursive_multi's
+    // internal track_matches_search lock is fine inside it.
+    deadbeef_api->pl_lock();
     DB_playItem_t *after = NULL;
     const ddb_medialib_item_t *child = medialib_plugin->tree_item_get_children(cw->cached_tree);
     while (child) {
@@ -510,8 +532,10 @@ static ddb_playlist_t *build_menu_playlist(cui_widget_t *cw) {
         child = medialib_plugin->tree_item_get_next(child);
     }
     if (after) deadbeef_api->pl_item_unref(after);
+    int empty = deadbeef_api->plt_get_item_count(plt, PL_MAIN) == 0;
+    deadbeef_api->pl_unlock();
 
-    if (deadbeef_api->plt_get_item_count(plt, PL_MAIN) == 0) {
+    if (empty) {
         deadbeef_api->plt_unref(plt);
         return NULL;
     }
@@ -615,6 +639,11 @@ static gboolean on_tree_button_press(GtkWidget *widget, GdkEventButton *event, g
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), item_config);
 
     gtk_widget_show_all(menu);
+    // The menu comes back with only a floating reference, which nothing ever
+    // releases: sink it and destroy it when it closes, or every right-click
+    // leaks the whole menu tree.
+    g_object_ref_sink(menu);
+    g_signal_connect(menu, "deactivate", G_CALLBACK(gtk_widget_destroy), NULL);
     gtk_menu_popup_at_pointer(GTK_MENU(menu), (GdkEvent *)event);
 
     // Drop our ref on the temp playlist. plmenu's _set_playlist already plt_ref'd
@@ -1175,7 +1204,7 @@ gboolean deferred_lib_update_cb(gpointer data) {
     cui_widget_t *cw = (cui_widget_t *)data;
     cw->lib_update_timeout_id = 0;
 
-    if (shutting_down) return G_SOURCE_REMOVE;
+    if (g_atomic_int_get(&shutting_down)) return G_SOURCE_REMOVE;
 
     if (g_list_find(all_cui_widgets, cw)) {
         if (medialib_plugin && ml_source) {
@@ -1193,7 +1222,7 @@ gboolean deferred_lib_update_cb(gpointer data) {
 gboolean cui_handle_config_change(gpointer user_data) {
     (void)user_data;
     g_atomic_int_set(&config_change_pending, 0);
-    if (shutting_down) return G_SOURCE_REMOVE;
+    if (g_atomic_int_get(&shutting_down)) return G_SOURCE_REMOVE;
 
     int new_override = deadbeef_api->conf_get_int("gtkui.override_listview_colors", 0);
     char *new_row = NULL;
@@ -1223,7 +1252,7 @@ gboolean cui_handle_config_change(gpointer user_data) {
 
 gboolean ml_event_idle_cb(gpointer data) {
     cui_widget_t *cw = (cui_widget_t *)data;
-    if (shutting_down) return G_SOURCE_REMOVE;
+    if (g_atomic_int_get(&shutting_down)) return G_SOURCE_REMOVE;
     if (!g_list_find(all_cui_widgets, cw)) return G_SOURCE_REMOVE;
     if (!medialib_plugin || !ml_source) return G_SOURCE_REMOVE;
 
@@ -1244,7 +1273,7 @@ gboolean ml_event_idle_cb(gpointer data) {
 }
 
 void ml_listener_cb(ddb_mediasource_event_type_t event, void *user_data) {
-    if (shutting_down) return;
+    if (g_atomic_int_get(&shutting_down)) return;
     if (event != DDB_MEDIASOURCE_EVENT_STATE_DID_CHANGE &&
         event != DDB_MEDIASOURCE_EVENT_CONTENT_DID_CHANGE) {
         return;

@@ -1,3 +1,8 @@
+// strcasestr (used in track_matches_search) is a GNU extension: without this
+// define it only compiles where glibc leaks the declaration by default; musl
+// and strict feature-test macros reject the implicit declaration.
+#define _GNU_SOURCE
+
 #include "cui_data.h"
 #include "cui_scriptable.h"
 #include "cui_widget.h"
@@ -400,7 +405,7 @@ static gboolean restore_vscroll_idle(gpointer data) {
 }
 
 void update_tree_data(cui_widget_t *cw) {
-    if (shutting_down || !medialib_plugin || !ml_source) return;
+    if (g_atomic_int_get(&shutting_down) || !medialib_plugin || !ml_source) return;
 
     int search_changed = 0;
     if (cw->search_text && (!cw->last_search_text || strcmp(cw->search_text, cw->last_search_text) != 0)) {
