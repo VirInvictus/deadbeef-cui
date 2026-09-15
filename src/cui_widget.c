@@ -1204,6 +1204,12 @@ gboolean cui_handle_config_change(gpointer user_data) {
             g_strcmp0(cw->last_row_font, new_row) != 0 ||
             g_strcmp0(cw->last_header_font, new_hdr) != 0) {
             rebuild_columns(cw);
+            // rebuild_columns replaced every store with a fresh empty one, but
+            // update_tree_data would early-return on the modification-index
+            // cache (the library itself didn't change). Invalidate it — the
+            // same reset the config-dialog OK handler applies — or the new
+            // panes stay blank until the next library event or keystroke.
+            cw->last_ml_modification_idx = -1;
             update_tree_data(cw);
         }
     }

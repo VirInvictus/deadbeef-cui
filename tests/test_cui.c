@@ -402,6 +402,74 @@ static void test_populate_does_not_steal_selection(void) {
     g_free(cw);
 }
 
+// ---- fix: the CONFIGCHANGED refill must invalidate the modification cache --
+//
+// cui_handle_config_change (playlist-font change) and the config-dialog OK
+// handler both replace the column stores underneath the engine and then rely
+// on update_tree_data to refill them. update_tree_data early-returns when
+// last_ml_modification_idx matches the library's current index and a tree is
+// cached — correct for pure library events, wrong for a caller that just
+// swapped the stores. Both callers must reset the index to -1 first (the
+// dialog OK path since v1.3.4, CONFIGCHANGED since v1.3.5). This test locks
+// the contract those callers depend on: unchanged index skips, -1 rebuilds.
+// The CONFIGCHANGED call site itself drives a live widget hierarchy
+// (rebuild_columns), so it is covered by the real-player smoke test, not here.
+
+static void test_modification_index_invalidation(void) {
+    if (!g_gtk_ok) { g_test_skip("no display for GtkTreeView"); return; }
+    cui_widget_t *cw = fresh_widget();
+    cw->changed_col_idx = -1;
+    cw->titles[0] = g_strdup("Genre");
+    cw->formats[0] = g_strdup("%genre%");
+    init_my_preset(cw);
+    g_assert_cmpint(cw->num_columns, ==, 1);
+
+    cw->stores[0] = gtk_list_store_new(3, G_TYPE_STRING, G_TYPE_INT, G_TYPE_BOOLEAN);
+    cw->trees[0] = gtk_tree_view_new_with_model(GTK_TREE_MODEL(cw->stores[0]));
+    GtkTreeSelection *sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->trees[0]));
+    g_signal_connect(sel, "changed", G_CALLBACK(on_column_changed), cw);
+
+    mock_node_t *tree = mock_group(NULL,
+        mock_group("Rock", mock_leaf("t1", "A", mock_leaf("t2", "B", NULL)), NULL), NULL);
+    mock_set_item_tree(tree);
+    ml_source = (ddb_mediasource_source_t *)tree;  // any non-NULL handle
+
+    // First build (cache cold: last=0 from the zeroed struct, library idx=1).
+    update_tree_data(cw);
+    GtkTreeModel *m = GTK_TREE_MODEL(cw->stores[0]);
+    g_assert_cmpint(gtk_tree_model_iter_n_children(m, NULL), ==, 2); // [All] + Rock
+    g_assert_cmpint(cw->last_ml_modification_idx, ==, g_atomic_int_get(&ml_modification_idx));
+
+    // The short-circuit: same index + cached tree leaves an emptied store
+    // empty. This is exactly why both store-replacing callers must invalidate.
+    gtk_list_store_clear(cw->stores[0]);
+    cw->changed_col_idx = -1;  // the clear (legitimately) fired the handler
+    if (cw->changed_timeout_id) {
+        g_source_remove(cw->changed_timeout_id);
+        cw->changed_timeout_id = 0;
+    }
+    update_tree_data(cw);
+    g_assert_cmpint(gtk_tree_model_iter_n_children(m, NULL), ==, 0);
+
+    // The invalidation contract: -1 forces the real rebuild the caller's new
+    // stores need.
+    cw->last_ml_modification_idx = -1;
+    update_tree_data(cw);
+    g_assert_cmpint(gtk_tree_model_iter_n_children(m, NULL), ==, 2);
+
+    g_signal_handlers_disconnect_by_func(sel, (gpointer)on_column_changed, cw);
+    cw->cached_tree = NULL;
+    ml_source = NULL;
+    mock_set_item_tree(NULL);
+    g_object_unref(cw->trees[0]);
+    g_object_unref(cw->stores[0]);
+    my_scriptable_free((scriptableItem_t *)cw->my_preset);
+    g_hash_table_destroy(cw->track_counts_cache);
+    for (int i = 0; i < MAX_COLUMNS; i++) { g_free(cw->titles[i]); g_free(cw->formats[i]); }
+    mock_node_free(tree);
+    g_free(cw);
+}
+
 int main(int argc, char **argv) {
     g_test_init(&argc, &argv, NULL);
     // g_test_init promotes warnings to fatal, which aborts the whole suite at
@@ -425,6 +493,7 @@ int main(int argc, char **argv) {
     g_test_add_func("/cui/config/save_layout", test_config_never_saves_layout);
     g_test_add_func("/cui/sort/all_row", test_sort_all_row);
     g_test_add_func("/cui/populate/no_selection_steal", test_populate_does_not_steal_selection);
+    g_test_add_func("/cui/update/modification_index_invalidation", test_modification_index_invalidation);
 
     return g_test_run();
 }

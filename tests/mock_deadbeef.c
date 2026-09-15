@@ -80,6 +80,27 @@ static ddb_gtkui_widget_t *mt_w_get_rootwidget(void) {
     return mock_gtkui_root;
 }
 
+// The tree the fake create_item_tree hands back (test-settable). Ownership
+// stays with the test — mt_free_item_tree is a deliberate no-op because
+// update_tree_data calls it on refresh paths and the test frees the tree
+// itself with mock_node_free.
+static mock_node_t *g_mock_item_tree;
+
+static ddb_medialib_item_t *mt_create_item_tree(ddb_mediasource_source_t *source,
+                                                ddb_scriptable_item_t *preset,
+                                                const char *filter) {
+    (void)source; (void)preset; (void)filter;
+    return (ddb_medialib_item_t *)g_mock_item_tree;
+}
+
+static void mt_free_item_tree(ddb_mediasource_source_t *source, ddb_medialib_item_t *list) {
+    (void)source; (void)list;
+}
+
+void mock_set_item_tree(mock_node_t *root) {
+    g_mock_item_tree = root;
+}
+
 static int mt_w_save_layout_to_conf_key(const char *key, ddb_gtkui_widget_t *val) {
     mock_w_save_layout_called++;
     snprintf(mock_w_save_layout_last_key, sizeof(mock_w_save_layout_last_key),
@@ -114,6 +135,8 @@ void mock_deadbeef_install(void) {
     g_ml.tree_item_get_track = mt_tree_item_get_track;
     g_ml.tree_item_get_next = mt_tree_item_get_next;
     g_ml.tree_item_get_children = mt_tree_item_get_children;
+    g_ml.create_item_tree = mt_create_item_tree;
+    g_ml.free_item_tree = mt_free_item_tree;
 
     deadbeef_api = &g_api;
     medialib_plugin = &g_ml;
