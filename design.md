@@ -1,5 +1,10 @@
 # deadbeef-cui - Design & Workflow Guidelines
 
+> **Superseded notice (2026-09-15):** `CLAUDE.md` is the authoritative
+> architecture and invariants reference for this repo; this file remains
+> only for the textual update workflow in Section 3 (which CLAUDE.md §9
+> condenses). Where the two disagree, CLAUDE.md wins.
+
 This document serves as the "brain" for AI agents (and human contributors) working on the `deadbeef-cui` project. It details the repository structure, how we interact with the DeaDBeeF API via the local `.deadbeef` source, what each part of our source code does, and the mandatory workflow for making changes.
 
 ## 1. Using the `.deadbeef` Reference Source
@@ -13,7 +18,7 @@ We keep a clone of the official DeaDBeeF source code in the `.deadbeef/` directo
 
 ## 2. Codebase Architecture: What Code Does What Where
 
-Our plugin is a native C shared library (`cui.so`) built via CMake. The codebase is broken down into modular components:
+Our plugin is a native C shared library built via CMake (CMake emits the final plugin filename `ddb_misc_cui_GTK3.so` directly: DeaDBeeF derives the `_load` entry-point symbol from the plugin filename). The codebase is broken down into modular components:
 
 ### Core Modules
 - **`src/main.c`**: Plugin entry points (`cui_start`, `cui_stop`, `cui_message`) and action handlers (like the global search hotkey). Connects DeaDBeeF to the UI layer.
@@ -37,10 +42,11 @@ Whenever you make structural changes, add features, or fix bugs, you MUST follow
 ### B. Updating Version Numbers
 - **When:** When a feature is finalized or a release is conceptually ready (always confirm with user instructions).
 - **Where:** 
-  - `src/main.c` inside the `DB_misc_t plugin` definition (`plugin.version_major`, `plugin.version_minor`).
-  - `README.md` (Update the version badges at the top).
+  - `src/main.c` inside the `DB_misc_t plugin` definition (`plugin.version_major`, `plugin.version_minor`) — plus the **two other literals in the same file**: the `w_reg_widget` title string ("Facet Browser (CUI) vX.Y.Z") and the registration log line ("Facet Browser vX.Y.Z registered successfully."), and the version in `plugin.descr`.
+  - `README.md` (Update the version badge at the top and the "The plugin is vX.Y.Z" sentence in the note).
   - `spec.md` (Update the Version line).
-- **How:** Follow standard Semantic Versioning.
+  - `patchnotes.md` (The release's entry, newest-first).
+- **How:** Follow standard Semantic Versioning. The version carrier set is: the four `src/main.c` literals + README + spec + patchnotes (no VERSION file; see CLAUDE.md §9 for the release-only rule).
 
 ### C. Updating `roadmap.md`
 - **When:** When a task is completed, mark it as done (e.g., `- [x]`). If new technical debt is introduced or future work is identified during implementation, append it to the roadmap.
@@ -53,7 +59,14 @@ Whenever you make structural changes, add features, or fix bugs, you MUST follow
 - **When:** If the project structure changes (e.g., splitting `src/main.c` into multiple files like `ui.c`, `medialib_sync.c`), or if a new strategy for querying `.deadbeef` is adopted.
 - **How:** Modify Section 2 ("What Code Does What Where") to reflect the new file layout so future AI interactions do not hallucinate the old structure.
 
-### F. Committing to Git
+### F. Rebuilding the compiled binary (lockstep rule)
+- **When:** With EVERY commit that touches `src/` or `CMakeLists.txt`, released or not.
+- **How:** Rebuild and stage `compiled/ddb_misc_cui_GTK3.so` in the same commit:
+  `cmake --build build --target cui && command cp -f build/ddb_misc_cui_GTK3.so compiled/ddb_misc_cui_GTK3.so`.
+  The committed binary must never lag the source. Enforced by the repo-local
+  pre-commit hook (enable once per clone: `git config core.hooksPath .githooks`).
+
+### G. Committing to Git
 - **When:** After completing any phase, increment, bug fix, or significant update (and after successfully verifying the build and updating all documentation files above).
 - **How:** Use `git add` to stage the changes and `git commit` with a clear, descriptive message summarizing the changes. Never leave successful work uncommitted. Do not push to remote unless explicitly asked by the user.
 

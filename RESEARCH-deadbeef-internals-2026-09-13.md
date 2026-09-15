@@ -1,7 +1,7 @@
 # RESEARCH: DeaDBeeF internals for the deadbeef-cui fix blitz
 
 **Produced:** night of 2026-09-12, for the fix lane on 2026-09-13.
-**Method:** 5 research-only subagents (GTKUI API deep-dive; our widget tree + fix design; ecosystem survey; issue #1 forensics + bug hunt; improvement backlog), synthesized in the main thread. Every load-bearing fact was verified from source in `/home/bdkl/.gitrepos/deadbeef` (upstream reference clone, read-only) and `/home/bdkl/.gitrepos/deadbeef-cui` (ours). No builds, no live DeaDBeeF runs, no installs. Nothing committed; this is the only file created in the repo. Third-party survey clones live in `/tmp/deadbeef-plugin-survey/`.
+**Method:** 5 research-only subagents (GTKUI API deep-dive; our widget tree + fix design; ecosystem survey; issue #1 forensics + bug hunt; improvement backlog), synthesized in the main thread. Every load-bearing fact was verified from source in the workspace's read-only upstream DeaDBeeF reference clone and in this repo. No builds, no live DeaDBeeF runs, no installs. (Postscript 2026-09-15: this file IS committed and roadmap-designated authoritative, so the original "nothing committed" wording was wrong the day it shipped; the ephemeral `/tmp` survey clones it originally pointed at are gone.)
 
 **Headline:** issue #1 is confirmed and is worse than the audit thought: the crashing call is deterministic on every DeaDBeeF 1.10.1+ runtime, including the dev machine (which actually runs 1.10.3, not 1.10.2). The prior audit's ABI-window story ("landed after tag 1.10.2") is refuted. The fix is to delete the call entirely; it never worked and is fully redundant. One masked bug (blank panes after dialog OK) must be fixed in the same commit, or deleting the crash exposes it.
 

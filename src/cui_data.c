@@ -27,7 +27,7 @@ int track_matches_search(DB_playItem_t *track, const char *search_text) {
 int count_tracks_recursive(const ddb_medialib_item_t *node, cui_widget_t *cw) {
     // Cache is valid under search too — update_tree_data destroys and recreates
     // track_counts_cache whenever cw->search_text changes (via the modification
-    // index reset at line 323), so any cached count always reflects the current
+    // index reset at its top), so any cached count always reflects the current
     // filter. The previous code disabled the cache under search out of caution.
     GHashTable *cache = cw->track_counts_cache;
     if (cache) {

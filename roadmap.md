@@ -63,7 +63,7 @@ What's done, what's next. Sequenced for feature-parity with foobar2000's Columns
 *Polishing the aesthetic and reaching feature-parity.*
 
 - [x] **Deep Bug Fixing** - Refactor anything worth refactoring. Clean up code use in testing. Make sure everything is as tight as it can be.
-- [x] **Assure GTK4-compiance without breaking GTK3** - I gotta assume Deadbeef won't be GTK3 forever.
+- [x] **Assure GTK4-compliance without breaking GTK3** - I gotta assume Deadbeef won't be GTK3 forever.
 - [x] **Design Mode Integration:** Support for DeaDBeeF's Design Mode for seamless layout embedding.
 - [x] **1.0.0 Stable Release:** Final documentation, icon assets, and feature-parity verification with foobar2000 Columns UI.
 
@@ -73,7 +73,7 @@ What's done, what's next. Sequenced for feature-parity with foobar2000's Columns
 *Hardening the architecture and improving performance for large libraries.*
 
 - [x] **Selection Persistence:** Restore previously selected items after a list refresh.
-- [x] **Efficient Playlist Lookup:** Replace manual playlist iteration with `plt_find_by_name`.
+- [x] **Efficient Playlist Lookup:** Investigated `plt_find_by_name` — no change. The swap never happened: the pickaxe hits that looked like adoption were DWARF strings in rebuilt `.so` blobs, and the manual iteration stayed. It is now also moot: viewer lookup is marker-based (the `_cui_viewer` meta, CLAUDE.md §6.14), which a title-only search cannot express.
 - [x] **Search Allocation Storm:** Optimize `track_matches_search` by removing redundant `g_utf8_strdown` heap allocations.
 - [x] **Thread-Safe Tree Teardown:** Fix the race condition in `cui_destroy` by ensuring `ml_source` remains valid until all widgets are destroyed.
 - [x] **Instance-Specific Settings:** Move from global `cui.*` config keys to proper `ddb_gtkui_widget_extended_api_t` serialization to support multiple independent browser instances.
@@ -95,7 +95,6 @@ What's done, what's next. Sequenced for feature-parity with foobar2000's Columns
 
 - ~~**Incremental Playlist Updates** via `DDB_PLAYLIST_CHANGE_CONTENT`~~ — investigated and dropped in v1.2.5. The flag value is `0`, which is what we already pass to `sendmessage(DB_EV_PLAYLISTCHANGED, 0, 0, 0)`. The playlist widget treats that event as a full rebuild signal regardless, so a diff-based incremental update would require reimplementing the rebuild path with per-track add/remove tracking against the current playlist contents — a complex change for ~50–100 ms savings on selection switches that nobody has flagged as sluggish. The v1.2.4 fix that stopped auto-populating the playlist on first init already addressed the only observed pain point.
 - [x] **Modular Refactoring:** Break up the monolithic `main.c` into domain-specific modules for better maintainability (v1.2.3).
-- [x] **Standardized Shortcuts:** Unify shortcut keys (`CTRL-SHIFT-F`) and ensure they don't conflict with DeaDBeeF core.
 
 ## Phase 9: Startup Latency & Theme Conformance
 *Closing the gap between widget creation and a populated, theme-correct view.*
@@ -119,11 +118,11 @@ Measured baseline (6,367-track library, fresh launch with cui in layout but no G
 
 - [x] **Consolidated Build System:** Removed the legacy `Makefile` in favor of a single, robust CMake-driven build process.
 - [x] **Manifest Authoring:** `manifest.json` lives in the repo root. It tracks the example template (git source, cmake build at root, GTK3 env vars from the builder, output `ddb_misc_cui_GTK3.so`). Re-verify against the current `deadbeef-plugin-builder` schema when opening the submission PR. (v1.3.4: the builder schema check happened early; the manifests now list the final `ddb_misc_cui_GTK3.so` name and CMake emits it directly via `OUTPUT_NAME`, and the dead `bdkl/` git URL is fixed to `VirInvictus/deadbeef-cui`.)
-- [x] **Static Linking Audit:** Audited via `ldd` on the built `cui.so`. The plugin links only against the system GTK3 / glib / cairo / pango stack and `libdl` — all libraries DeaDBeeF itself depends on. Static-linking these would conflict with DeaDBeeF's own GTK and is incorrect for the plugin model. No non-core deps to address.
+- [x] **Static Linking Audit:** Audited via `ldd` on the built `ddb_misc_cui_GTK3.so`. The plugin links only against the system GTK3 / glib / cairo / pango stack — all libraries DeaDBeeF itself depends on (the `dlopen`/`dlsym` calls resolve from libc itself, as the README documents; there is no libdl link). Static-linking these would conflict with DeaDBeeF's own GTK and is incorrect for the plugin model. No non-core deps to address.
 - [x] **Repository Readiness:** Repo is clean — README, spec, roadmap, patchnotes, CLAUDE.md, LICENSE, manifest.json, CMakeLists.txt, src/, compiled/ all present. No stale build artifacts checked in beyond the intentional `compiled/ddb_misc_cui_GTK3.so` for non-builders.
 
 ### Requires Brandon (external systems / decisions)
-- [ ] **Cross-Platform Verification:** Run the `deadbeef-plugin-builder` Docker environment locally to verify the plugin builds for x86_64 and i686. Manifest is in place; this is a `docker run` away when ready.
+- [ ] **Cross-Platform Verification:** Run the `deadbeef-plugin-builder` Docker environment locally to verify the plugin builds for x86_64 (the builder offers no i686; the earlier "x86_64 and i686" wording was wrong). Manifest is in place; this is a `docker run` away when ready.
 - [ ] **Submission PR:** Open a PR against `DeaDBeeF-Player/deadbeef-plugin-builder` adding the manifest. Requires GitHub credentials and your own description.
   *(DECIDED 2026-09-12 (Brandon): GO once the first-touch fixes land (the dead bdkl/ URL in manifest.json and main.c) and the builder-Docker verify runs; the PR itself needs your credentials and description.)*
 - [ ] **v2.0.0 Tagging:** A v2.0 release implies a major-feature milestone; v1.3.4 is the current state. Defer until a feature warrants it (or rebrand "stable + plugin-list ready" as v2.0 if you prefer that framing).
@@ -153,7 +152,7 @@ Measured baseline (6,367-track library, fresh launch with cui in layout but no G
 ## New findings 2026-09-12 (six-lens audit Wave 21 + the night research blitz; rewritten in place after the blitz verified it)
 
 Detail: the workspace audit repo's FULL-AUDIT-2026-09-12.md (Wave 21,
-~/.gitrepos/audit/) and this repo's RESEARCH-deadbeef-internals-2026-09-13.md
+the local audit workspace) and this repo's RESEARCH-deadbeef-internals-2026-09-13.md
 (the 2026-09-12 night synthesis of five research agents; the authoritative
 reference for the 09-13 fix lane). Where the original audit wording and the
 report disagree, the report wins; the corrections are already applied below.
@@ -187,7 +186,7 @@ report disagree, the report wins; the corrections are already applied below.
       + main.c + the .so rebuild) + the crash fix + issue reply + the
       Docker verify (x86_64 only; the builder offers no i686), in that
       order.
-- [ ] **ADDED 2026-09-13 (Brandon): the issue-#1 reply is gated on FULL
+- [x] **ADDED 2026-09-13 (Brandon): the issue-#1 reply is gated on FULL
       testing of the fix, not just the push.** Before replying, ALL of
       the following must pass: (a) the mock-vtable tripwire test + the
       full suite green locally; (b) CI green on the release commit;
@@ -199,6 +198,10 @@ report disagree, the report wins; the corrections are already applied below.
       is only drafted until (a)-(d) are done. This supersedes the
       research report's step order, which had the smoke test after the
       reply.
+      (DONE 2026-09-13: all four gates passed on the v1.3.4 release
+      commit; the reply posted with the diagnosis and the release link;
+      issue #1 closed as completed. Recorded in the PROGRESS note
+      below.)
 - [ ] **Lockstep enforcement is CI-blind (the local half is fine):** the
       pre-commit hook is live here (core.hooksPath = .githooks), but CI
       never checks compiled/. Add a git-level CI gate (a commit touching
@@ -224,12 +227,19 @@ report disagree, the report wins; the corrections are already applied below.
       with the diagnosis and the v1.3.4 link after the live smoke
       passed all four reply gates, and closed as completed on the
       release; the cpp-topic and wiki calls remain.)
-- [ ] **Queued for v1.3.5 (decided, report section 5):** shutting_down
+- [x] **Queued for v1.3.5 (decided, report section 5):** shutting_down
       via g_atomic wrappers; hidden-marker identity for the viewer
       playlist (a user playlist sharing the name currently gets wiped at
       quit); two-step-guard uniformity; the PLUG_TEST_COMPAT api probe
       as a first-class pattern. Search album-field: deferred (charter
       holds).
+      (SHIPPED in the v1.3.5 queue, 2026-09-15: atomics in 5e943f0;
+      marker identity in 02f0afa with the data-loss fix recorded in
+      CLAUDE.md §6.14 and locked by the /cui/viewer/* tests; guard
+      uniformity in bb80417 making §6.3 true; PLUG_TEST_COMPAT was
+      already documented as the first-class pattern in §10.12 during
+      v1.3.4 and no current call site needs a probe. Album field stays
+      deferred.)
 
 - [x] **Plugin-update rule (Brandon, 2026-09-13): build + attach on every
       tagged release.** Land with v1.3.4: a tag-triggered workflow job
@@ -255,15 +265,39 @@ report disagree, the report wins; the corrections are already applied below.
       (DONE 2026-09-15: --notes-from-tag added to the release job; v1.3.4's
       empty title backfilled to "v1.3.4" via gh release edit, body and asset
       untouched. Brandon confirmed both, Q1/Q3.)
-- [ ] MED — Blank panes on playlist-font change: CONFIGCHANGED rebuilds all stores but update_tree_data early-returns on the modification-index cache (cui_widget.c:1191-1209, cui_data.c:355-357) — the v1.3.4 bug family, missed in the CONFIGCHANGED path. Set last_ml_modification_idx = -1 before the refill.
-- [ ] MED — Library events and search keystrokes silently steal the current playlist: store clears fire the unblocked selection-changed handler → deferred_column_changed_cb unconditionally plt_set_curr(Library Viewer) + clear-and-copy 10 ms after every event/keystroke, no user click (the exact behavior the v1.2.4 fix removed). Block the handlers around the clears or disarm the timeout in update_tree_data.
-- [ ] MED — roadmap.md:76's ticked plt_find_by_name box is false (zero call sites anywhere; the pickaxe hits are DWARF strings in rebuilt .so blobs). Untick and reword "investigated, no change", or actually switch find_viewer_playlist.
-- [ ] MED — §6.3's "Defenses, all required" claim is falsified: deferred_column_changed_cb skips the g_list_find guard; restore_vscroll_idle skips the shutting_down check (saved only by cui_destroy's cancellation). Fix the doc or add the missing halves.
+- [x] MED — Blank panes on playlist-font change: CONFIGCHANGED rebuilds all stores but update_tree_data early-returns on the modification-index cache (cui_widget.c:1191-1209, cui_data.c:355-357) — the v1.3.4 bug family, missed in the CONFIGCHANGED path. Set last_ml_modification_idx = -1 before the refill.
+      (SHIPPED v1.3.5 queue, commit 3cab3fe: the reset rides cui_handle_config_change,
+      with the invalidation contract locked by /cui/update/modification_index_invalidation.)
+- [x] MED — Library events and search keystrokes silently steal the current playlist: store clears fire the unblocked selection-changed handler → deferred_column_changed_cb unconditionally plt_set_curr(Library Viewer) + clear-and-copy 10 ms after every event/keystroke, no user click (the exact behavior the v1.2.4 fix removed). Block the handlers around the clears or disarm the timeout in update_tree_data.
+      (SHIPPED v1.3.5 queue, commit 74942ba: the handler is blocked across the clear
+      inside populate_list_multi, covering every call site; locked by
+      /cui/populate/no_selection_steal. Suite now also runs full on a desktop again:
+      g_test_init's fatal-warnings aborted at gtk_init_check on themes with a CSS
+      parse warning.)
+- [x] MED — roadmap.md:76's ticked plt_find_by_name box is false (zero call sites anywhere; the pickaxe hits are DWARF strings in rebuilt .so blobs). Untick and reword "investigated, no change", or actually switch find_viewer_playlist.
+      (RESOLVED 2026-09-15: the Phase 7 box is reworded to investigated-no-change;
+      switching is moot now that viewer lookup is marker-based, which
+      plt_find_by_name's title-only search cannot express.)
+- [x] MED — §6.3's "Defenses, all required" claim is falsified: deferred_column_changed_cb skips the g_list_find guard; restore_vscroll_idle skips the shutting_down check (saved only by cui_destroy's cancellation). Fix the doc or add the missing halves.
+      (RESOLVED 2026-09-15, commit bb80417: the missing halves were ADDED — the
+      queued guard-uniformity item — so all four named callbacks check
+      shutting_down then g_list_find before touching anything, and §6.3's
+      claim is true as written. Timeout-id clears moved after the guards.)
 - [ ] MED — design.md (workflow-canonical per CLAUDE.md §9) is stale on the v1.3.4 changes: still says cui.so, its Mandatory Update Workflow omits the compiled/ lockstep step, its carrier list omits three. Honesty pass or demote the §9 wording.
-- [ ] MED — roadmap.md:190-201 issue-gate box unticked though all gates passed and the issue closed (tick per house pattern); roadmap.md:126 Phase 10 still promises i686 (the corrected scope is x86_64-only).
+- [x] MED — roadmap.md:190-201 issue-gate box unticked though all gates passed and the issue closed (tick per house pattern); roadmap.md:126 Phase 10 still promises i686 (the corrected scope is x86_64-only).
+      (RESOLVED 2026-09-15: the issue-#1 gate box ticked with its shipped note;
+      the Phase 10 box now promises x86_64 only.)
 - [ ] MED — .githooks/pre-commit:35 still compares against build/cui.so (renamed in 10219e1): the allow-path is dead and byte-identical src commits (comment-only edits) are falsely blocked. One-path edit; then land the R10 lockstep CI gate (still open by decision).
-- [ ] MED — Comment/contract batch: ml_listener_cb needs the threading-contract header comment; the modification-index paired-invariant comment at both ends; the [All] sort-pin do-not-simplify note; the scriptableItem_t mirror warning (highest memory-corruption potential uncommented); deferred_column_changed_cb's cancellation-only rationale.
-- [ ] LOW — Threading/robustness: unlocked pl_item_copy walks in the menu/drag paths; popup GtkMenu leaks per right-click; g_atomic_int_compare_and_exchange needs GLib 2.74+ vs the documented glibc-2.34 floor; strcasestr without _GNU_SOURCE; get_selected_facet_names can split UTF-8 into the playlist title.
+- [x] MED — Comment/contract batch: ml_listener_cb needs the threading-contract header comment; the modification-index paired-invariant comment at both ends; the [All] sort-pin do-not-simplify note; the scriptableItem_t mirror warning (highest memory-corruption potential uncommented); deferred_column_changed_cb's cancellation-only rationale.
+      (SHIPPED v1.3.5 queue, commit 75d6dc4: all five, sitting at the exact
+      lines someone would edit; the last one became a uniform-guard note when
+      bb80417 added the missing halves.)
+- [x] LOW — Threading/robustness: unlocked pl_item_copy walks in the menu/drag paths; popup GtkMenu leaks per right-click; g_atomic_int_compare_and_exchange needs GLib 2.74+ vs the documented glibc-2.34 floor; strcasestr without _GNU_SOURCE; get_selected_facet_names can split UTF-8 into the playlist title.
+      (SHIPPED v1.3.5 queue, commit 5e943f0: pl_lock wraps on the menu/drag
+      walks; ref_sink + deactivate-destroy on the popup menu; CAS replaced
+      with get/set so no GLib 2.74 floor is added; _GNU_SOURCE defined;
+      UTF-8-safe title clamp. shutting_down atomics rode the same batch;
+      the marker identity is the queued-v1.3.5 box below, commit 02f0afa.)
 - [ ] LOW — Polish: the empty if-block; duplicated ap_name strncpy; four same-shape tree walks; version_minor=4 renders "1.4" beside descr 1.3.4 (record the convention or re-encode); dead sys/time.h; stale line cites (CLAUDE.md ×4, cui_data.c:24); ROADMAP duplicate box; roadmap libdl claim; "compiance" typo; the tab-strip drag-drop upstream FIXME leak (handoff).
 - [ ] LOW — Hygiene: stale beta branch (merged, no origin twin); manifest.json/.example byte-identical (restore placeholder, document, or drop); nested .deadbeef//.cui clones vs the workspace-level clone (canonical location + git-clean -xd hazard note); workspace-internal paths in the public RESEARCH file + roadmap.md:156 (genericize); no logo.svg (mark or record); no issue template (bug.yml with the fields issue #1 proved load-bearing); ci.yml permissions + SHA pins; dead .gitignore entries.
 - [ ] Feature candidates logged (FINAL-REPORT L4; complete-posture respected): sort persistence per column (finishes shipped Phase 3; zero default change); in-widget empty-state hint (timed to the plugin-list submission); MAX_COLUMNS lift or spec softening (spec already promises arbitrary); pane-width persistence via our own exapi keyvalues (the DdbSplitter pointer was mechanism-wrong). Confirmed stays-parked: search album field, gtkScriptable editor, Album Art View, GTK4 port (the blocker list is the plan).

@@ -7,9 +7,9 @@ Operator's manual for AI agents (and humans) working in this repo. **This file o
 | Topic | Lines |
 |---|---|
 | §3 `.deadbeef/` — vendored DeaDBeeF source: the map you need + how to use it | 57-171 |
-| §7 Configuration model (legacy global `cui.*` vs per-instance keyvalues, source-config sync) | 350-377 |
-| §8 Title formatting & the scriptable preset | 378-397 |
-| §11 The Gemini Flash incident (why this file exists) | 459-474 |
+| §7 Configuration model (legacy global `cui.*` vs per-instance keyvalues, source-config sync) | 361-388 |
+| §8 Title formatting & the scriptable preset | 389-408 |
+| §11 The Gemini Flash incident (why this file exists) | 484-499 |
 
 ---
 
@@ -27,7 +27,7 @@ What it actually does at runtime:
 
 The plugin **never owns its own track-list view** — it always pumps results into a DeaDBeeF playlist and lets the standard playlist widget render them. This is intentional (see §10.4).
 
-Plugin metadata lives in `src/main.c:102-117`. The build version, the `w_reg_widget` title string, README badge, and `spec.md` Version line must all match.
+Plugin metadata lives in `src/main.c:112-127`. The build version, the `w_reg_widget` title string, the stderr registration log line, the `.plugin.descr` version, the README badge, and the `spec.md` Version line must all match.
 
 ---
 
@@ -37,11 +37,11 @@ Five files. Treat each module's responsibility as fixed unless you're explicitly
 
 | File | Lines | Responsibility |
 |---|---|---|
-| `src/main.c` | ~110 | Plugin entry points (`cui_start`, `cui_stop`, `cui_message`), the `DB_misc_t` plugin definition, the `Search Facets` action, global symbol exports. **Do not** put UI or medialib logic here. |
-| `src/cui_globals.h` | ~85 | The `cui_widget_t` struct, GTK4 compat macros, `MAX_COLUMNS=5`, `CUI_SOURCE_PATH="cui"`, `CUI_DEBUG()` env-gated logging, all `extern` globals. Header included by every TU. |
-| `src/cui_widget.c` / `.h` | ~1160 | GTK layer: `cui_create_widget`, `rebuild_columns`, key handlers, context menu (`on_tree_button_press`), drag-out source, config dialog, the medialib listener callbacks (`ml_listener_cb` → `g_idle_add` → `ml_event_idle_cb` → debounced `deferred_lib_update_cb`), serialize/deserialize for `ddb_gtkui_widget_extended_api_t`. |
-| `src/cui_data.c` / `.h` | ~460 | Tree → list pipeline: `update_tree_data`, `aggregate_recursive_multi`, `populate_list_multi`, `count_tracks_recursive` (memoized via `track_counts_cache`), `add_tracks_recursive_multi`, `track_matches_search` (uses `strcasestr`; do not regress this back to `g_utf8_strdown`), `get_or_create_viewer_playlist`. The `[All (...)]` row is synthesised here. |
-| `src/cui_scriptable.c` / `.h` | ~110 | A **manually-mirrored** copy of the private `scriptableItem_t` layout from `.deadbeef/shared/scriptable/scriptable.c`. We allocate/populate it ourselves and hand it to `medialib_plugin->create_item_tree`. See §6.2 for why this exists. |
+| `src/main.c` | ~130 | Plugin entry points (`cui_start`, `cui_stop`, `cui_message`), the `DB_misc_t` plugin definition, the `Search Facets` action, global symbol exports. **Do not** put UI or medialib logic here. |
+| `src/cui_globals.h` | ~100 | The `cui_widget_t` struct, GTK4 compat macros, `MAX_COLUMNS=5`, `CUI_SOURCE_PATH="cui"`, `CUI_DEBUG()` env-gated logging, all `extern` globals. Header included by every TU. |
+| `src/cui_widget.c` / `.h` | ~1300 | GTK layer: `cui_create_widget`, `rebuild_columns`, key handlers, context menu (`on_tree_button_press`), drag-out source, config dialog, the medialib listener callbacks (`ml_listener_cb` → `g_idle_add` → `ml_event_idle_cb` → debounced `deferred_lib_update_cb`), serialize/deserialize for `ddb_gtkui_widget_extended_api_t`. |
+| `src/cui_data.c` / `.h` | ~580 | Tree → list pipeline: `update_tree_data`, `aggregate_recursive_multi`, `populate_list_multi`, `count_tracks_recursive` (memoized via `track_counts_cache`), `add_tracks_recursive_multi`, `track_matches_search` (uses `strcasestr`; do not regress this back to `g_utf8_strdown`), `get_or_create_viewer_playlist`. The `[All (...)]` row is synthesised here. |
+| `src/cui_scriptable.c` / `.h` | ~110 / 43 | A **manually-mirrored** copy of the private `scriptableItem_t` layout from `.deadbeef/shared/scriptable/scriptable.c`. We allocate/populate it ourselves and hand it to `medialib_plugin->create_item_tree`. See §6.2 for why this exists. |
 
 **Splitting rules:**
 - New widget/UI code → `cui_widget.c`.
@@ -255,7 +255,7 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-Covered: `skip_prefix`, scriptable preset construction (default / compaction / `split`), `track_matches_search`, `count_tracks_recursive` incl. the count+1/cached-1 zero-memoization, `aggregate_recursive_multi` (the "Various Artists" cross-tree collision), `get_or_create_viewer_playlist` name selection (§7.2), and the `[All]`-pinned-to-top sort invariant (§6.13). Tests needing a real GTK tree widget (`GtkListStore` sorting) call `gtk_init_check` and `g_test_skip` when headless, so the suite is green in CI and full on a desktop. Run it under ASan/UBSan before a release (`-DCMAKE_C_FLAGS="-fsanitize=address,undefined -g"`); the scriptable alloc/free paths are validated that way. What the suite can't reach without a live widget: the full `cui_destroy` teardown and anything behind a `GtkTreeView`; verify those with valgrind on a running DeaDBeeF.
+Covered: `skip_prefix`, scriptable preset construction (default / compaction / `split`), `track_matches_search`, `count_tracks_recursive` incl. the count+1/cached-1 zero-memoization, `aggregate_recursive_multi` (the "Various Artists" cross-tree collision), `get_or_create_viewer_playlist` name selection (§7.2), the `_cui_viewer` marker identity incl. the shutdown-clear collision guard (§6.14), the never-save-layout tripwire (§4), the `[All]`-pinned-to-top sort invariant (§6.13), the no-selection-steal populate guard (v1.3.5), and the modification-index invalidation contract (v1.3.5). Tests needing a real GTK tree widget (`GtkListStore` sorting) call `gtk_init_check` and `g_test_skip` when headless, so the suite is green in CI and full on a desktop. Run it under ASan/UBSan before a release (`-DCMAKE_C_FLAGS="-fsanitize=address,undefined -g"`); the scriptable alloc/free paths are validated that way. What the suite can't reach without a live widget: the full `cui_destroy` teardown and anything behind a `GtkTreeView`; verify those with valgrind on a running DeaDBeeF.
 
 ---
 
@@ -271,7 +271,7 @@ The shared-source dlsym shortcut (`gtkui_medialib_get_source`) bypasses this —
 
 ### 6.2 The `scriptableItem_t` mirror is hand-maintained
 
-DeaDBeeF doesn't export `scriptableItemAlloc` etc. to plugins, so we can't use the public scriptable API. We declare the struct ourselves in `cui_scriptable.h:6-22` and **the layout must byte-match** `.deadbeef/shared/scriptable/scriptable.c`. Verified at the time of writing; if you bump the `.deadbeef/` clone, re-verify before merging:
+DeaDBeeF doesn't export `scriptableItemAlloc` etc. to plugins, so we can't use the public scriptable API. We declare the struct ourselves in `cui_scriptable.h:18-34` and **the layout must byte-match** `.deadbeef/shared/scriptable/scriptable.c`. Verified at the time of writing; if you bump the `.deadbeef/` clone, re-verify before merging:
 
 ```bash
 diff <(grep -A30 'struct scriptableItem_s' .deadbeef/shared/scriptable/scriptable.c) src/cui_scriptable.h
@@ -307,7 +307,7 @@ When you add any new async work touching a `cui_widget_t *`, add the same two-st
 
 ### 6.6 `update_tree_data` rebuilds atomically
 
-`update_tree_data` (cui_data.c:337) is the choke point. It:
+`update_tree_data` (cui_data.c:421) is the choke point. It:
 1. Saves current per-column selection texts into `saved_sels[]`.
 2. Frees the cached tree and the track-counts cache.
 3. Re-creates the tree from the scriptable preset.
@@ -317,11 +317,11 @@ When you add any new async work touching a `cui_widget_t *`, add the same two-st
 7. Schedules a vscroll restore on the idle loop (so it runs after GTK's own scroll-position recompute).
 8. Stores `current_idx` in `cw->last_ml_modification_idx` to short-circuit redundant calls.
 
-The modification-index check at the top is what prevents infinite loops with the listener. **Do not** remove the assignment at the end (`cw->last_ml_modification_idx = current_idx`, cui_data.c:483) — there was a bug where the check ran but the assignment didn't, causing every call to do a full rebuild (fixed in v1.2.0). The cache-skip behavior is correct only if both halves are present.
+The modification-index check at the top is what prevents infinite loops with the listener. **Do not** remove the assignment at the end (`cw->last_ml_modification_idx = current_idx`, cui_data.c:578) — there was a bug where the check ran but the assignment didn't, causing every call to do a full rebuild (fixed in v1.2.0). The cache-skip behavior is correct only if both halves are present.
 
 ### 6.7 Search invalidates the modification cache
 
-When `search_text` changes, `update_tree_data` resets `last_ml_modification_idx = -1` (cui_data.c:350). This forces a full rebuild because the rebuild path is *also* where the search predicate (`track_matches_search`) gets applied — counts and visibility depend on the current search string.
+When `search_text` changes, `update_tree_data` resets `last_ml_modification_idx = -1` (cui_data.c:434). This forces a full rebuild because the rebuild path is *also* where the search predicate (`track_matches_search`) gets applied — counts and visibility depend on the current search string.
 
 ### 6.8 The track-count cache is valid under search, but only because §6.7 always resets it
 
@@ -333,11 +333,11 @@ As of v1.2.5, `count_tracks_recursive` uses `cw->track_counts_cache` regardless 
 
 ### 6.10 The pluralization rule has a deliberate exception
 
-cui_data.c:291-293: `"Album Artist"` collapses to `"Artist"` for the `[All]` label so it reads `[All (123 Artists)]` instead of `[All (123 Album Artists)]`. Don't generalize this — it's a single, deliberate special case for the most common column header.
+cui_data.c:367-371: `"Album Artist"` collapses to `"Artist"` for the `[All]` label so it reads `[All (123 Artists)]` instead of `[All (123 Album Artists)]`. Don't generalize this — it's a single, deliberate special case for the most common column header.
 
 ### 6.11 Don't add `pl_lock` around tree traversal; tree text needs no lock
 
-`pl_lock` is not a deadlock hazard here: upstream creates it recursive (`PTHREAD_MUTEX_RECURSIVE`), and `populate_playlist_from_cui` already nests it. (This section previously claimed `pl_lock` is non-reentrant; that's false, so don't re-propagate it.) The real reason `aggregate_recursive_multi` and `populate_list_multi` don't lock is that they only read tree text, which medialib already considers immutable for the caller. `track_matches_search` takes `pl_lock` internally for its own playlist reads, and that is the only locking the traversal paths need.
+`pl_lock` is not a deadlock hazard here: upstream creates it recursive (`PTHREAD_MUTEX_RECURSIVE`), and `populate_playlist_from_cui` already nests it. (This section previously claimed `pl_lock` is non-reentrant; that's false, so don't re-propagate it.) The real reason `aggregate_recursive_multi` and `populate_list_multi` don't lock is that they only read tree text, which medialib already considers immutable for the caller. `track_matches_search` takes `pl_lock` internally for its own playlist reads, and that is the only locking the aggregation/selection paths need. (The v1.3.5 queue added explicit `pl_lock` wraps on the menu/drag copy walks, which read track metadata — see `build_menu_playlist` and `collect_tracks_for_drag` in `cui_widget.c`.)
 
 ### 6.12 Track copies, not references, into the viewer playlist
 
@@ -364,11 +364,11 @@ There are two layers, and migration between them is **read-once, write-never**:
 
 ### 7.1 Legacy global config (`cui.col1_format`, etc.)
 
-Pre-1.2.2 the plugin used flat `conf_get_str/set_str` with global keys. New widgets created today will read these as defaults if no per-instance config exists yet (`cui_create_widget` in `cui_widget.c:1104`). Once read, those values never get written back to global keys — they migrate into the per-instance keyvalue store the next time the layout is saved.
+Pre-1.2.2 the plugin used flat `conf_get_str/set_str` with global keys. New widgets created today will read these as defaults if no per-instance config exists yet (`cui_create_widget` in `cui_widget.c:1153`). Once read, those values never get written back to global keys — they migrate into the per-instance keyvalue store the next time the layout is saved.
 
 ### 7.2 Per-instance keyvalues (current)
 
-Persisted via `ddb_gtkui_widget_extended_api_t`. Keys: `col1_title`..`col5_title`, `col1_format`..`col5_format`, `split_tags`, `ignore_prefix`, `autoplaylist_name`. Serialization in `cui_serialize_to_keyvalues` (cui_widget.c:890), deserialization in `cui_deserialize_from_keyvalues` (cui_widget.c:924). The `found_any` guard ensures we only clobber defaults when the saved layout actually contains real column data.
+Persisted via `ddb_gtkui_widget_extended_api_t`. Keys: `col1_title`..`col5_title`, `col1_format`..`col5_format`, `split_tags`, `ignore_prefix`, `autoplaylist_name`. Serialization in `cui_serialize_to_keyvalues` (cui_widget.c:930), deserialization in `cui_deserialize_from_keyvalues` (cui_widget.c:964). The `found_any` guard ensures we only clobber defaults when the saved layout actually contains real column data.
 
 When you add a new option:
 1. Field on `cui_widget_t` in `cui_globals.h`.
@@ -382,7 +382,7 @@ When you add a new option:
 
 ### 7.3 Source-config sync
 
-`sync_source_config` (cui_widget.c:148) copies `medialib.deadbeef.paths` to `medialib.cui.paths` and enables our source. It only runs on the fallback (own-source) path, not when we share GTKUI's source. Run once at source-creation time only — it's not a continuous mirror.
+`sync_source_config` (cui_widget.c:159) copies `medialib.deadbeef.paths` to `medialib.cui.paths` and enables our source. It only runs on the fallback (own-source) path, not when we share GTKUI's source. Run once at source-creation time only — it's not a continuous mirror.
 
 ---
 
@@ -408,10 +408,10 @@ root (SCRIPTABLE_FLAG_IS_LIST, name="Facets")
 
 ## 9. Update workflow (condensed from `design.md`)
 
-`design.md` is still the canonical source for the textual workflow. The bullet-point version, in priority order:
+`design.md` carries the same workflow in prose (superseded banner included); CLAUDE.md is the authority when the two disagree. The bullet-point version, in priority order:
 
 1. **`patchnotes.md`** — append a new section for any user-visible change, bug fix, or refactor. Be specific: what changed, why, which files. Pre-existing entries are reverse-chronological with the current version on top.
-2. **Version bump** — only when the user says we're cutting a release. Touch `src/main.c` (`.plugin.version_minor`, `.plugin.descr`, the `w_reg_widget` title string), `README.md` (badge + the registration version reference), `spec.md` (Version line). Semantic versioning.
+2. **Version bump** — only when the user says we're cutting a release. Touch `src/main.c` (`.plugin.version_minor`, `.plugin.descr`, the `w_reg_widget` title string, the stderr registration log line), `README.md` (badge + the registration version reference), `spec.md` (Version line). Semantic versioning. The `version_major`/`version_minor` ints encode the release LINE (1.3.x = major 1, minor 3), matching DeaDBeeF core's own major.minor encoding; the patch digit lives only in the string carriers. (DECIDED 2026-09-15, Brandon.)
 3. **`roadmap.md`** — flip `[ ]` to `[x]` for completed items. Add new entries to the appropriate phase, or to "Deferred (v2.0+)" if they're scope-creep.
 4. **`README.md` / `spec.md`** — only on architectural changes (new dependency, new GTK version, new top-level feature surface). Don't churn for cosmetic fixes.
 5. **This file (`CLAUDE.md`)** — when an invariant changes, when the source map shifts, or when a new API touch-point is introduced. Sections 2, 4, and 6 are the most likely to need updates.
@@ -453,7 +453,7 @@ The debounce (`changed_timeout_id`, 10 ms in `on_column_changed`) protects again
 
 ### 10.6 Don't pass `NULL` to `g_utf8_collate` or `strcasestr`
 
-`sort_func` early-outs if either name is NULL (cui_data.c:75). `track_matches_search` checks `title || artist` before calling. New comparison code must do the same.
+`sort_func` early-outs if either name is NULL (cui_data.c:67). `track_matches_search` checks `title || artist` before calling. New comparison code must do the same.
 
 ### 10.7 Don't use `gtk_widget_destroy` on the main `cw->base.widget`
 
@@ -504,10 +504,10 @@ The user's standing instruction: **stable and clean over clever**. Match style, 
 | Add a new column option | §7, `cui_serialize_to_keyvalues` / `cui_deserialize_from_keyvalues` in `cui_widget.c`, `cui_scriptable.c` |
 | Touch the medialib listener path | §6.3, §6.4, `ml_listener_cb` and its `add_listener` registration in `cui_widget.c`, `.deadbeef/plugins/medialib/medialib.c` listener emission |
 | Change the scriptable preset shape | §6.2, §8, `.deadbeef/plugins/medialib/scriptable_tfquery.c`, `.deadbeef/shared/scriptable/scriptable.c` |
-| Modify shutdown sequence | §6.3, `cui_destroy` in `cui_widget.c`, `main.c:54-66` |
+| Modify shutdown sequence | §6.3, `cui_destroy` in `cui_widget.c:866`, `main.c:17-40` and `:63-76` |
 | Add a context-menu item | the context-menu builder around `gtk_menu_popup_at_pointer` in `cui_widget.c`, `.deadbeef/plugins/gtkui/plmenu.c` for reuse opportunities |
-| Add a new keyboard shortcut | `main.c:68-95` (action), `cui_widget.c:172-190` (per-widget keypress), `.deadbeef/plugins/gtkui/hotkeys.c` |
-| Optimize counting/aggregation | §6.6, §6.8, `cui_data.c:22-52` and `:198-295` |
+| Add a new keyboard shortcut | `main.c:78-101` (action), `cui_widget.c:206-238` (per-widget keypress), `.deadbeef/plugins/gtkui/hotkeys.c` |
+| Optimize counting/aggregation | §6.6, §6.8, `cui_data.c:27-57` and `:284-320` |
 | Bump the GTKUI API level we require | gtkui_api.h, ensure `DDB_GTKUI_API_LEVEL` guards on every newer-than-baseline call |
 | Cut a release | §9 (esp. step 2 version bump); `compiled/` is already current per §5.4 |
 
