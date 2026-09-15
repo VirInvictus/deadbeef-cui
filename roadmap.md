@@ -219,14 +219,14 @@ report disagree, the report wins; the corrections are already applied below.
       CLAUDE.md §4 records the deleted call, §6.11 is corrected, and
       §10.10-10.12 cover the GTK4 gaps, the upstream serialize leak, and
       the PLUG_TEST_COMPAT probe; the website fix rode commit 19132f7.)
-- [ ] **GitHub:** triage issue #1 (the report is high quality); tag
+- [x] **GitHub:** triage issue #1 (the report is high quality); tag
       policy DECIDED 2026-09-12: v1.3.4 onward only, no catch-up tags
       for the four untagged releases; drop the cpp topic (pure C11);
       wiki optionally off.
-      (PROGRESS 2026-09-13: issue #1 triaged, labeled bug, answered
-      with the diagnosis and the v1.3.4 link after the live smoke
-      passed all four reply gates, and closed as completed on the
-      release; the cpp-topic and wiki calls remain.)
+      (DONE 2026-09-15: the remaining two calls landed with Brandon's
+      approval - the cpp topic is dropped (pure C11) and the empty wiki
+      is disabled. Issue #1 triaged, answered, and closed on 2026-09-13
+      per the earlier progress note.)
 - [x] **Queued for v1.3.5 (decided, report section 5):** shutting_down
       via g_atomic wrappers; hidden-marker identity for the viewer
       playlist (a user playlist sharing the name currently gets wiped at
@@ -283,11 +283,19 @@ report disagree, the report wins; the corrections are already applied below.
       queued guard-uniformity item), so all four named callbacks check
       shutting_down then g_list_find before touching anything, and §6.3's
       claim is true as written. Timeout-id clears moved after the guards.)
-- [ ] MED — design.md (workflow-canonical per CLAUDE.md §9) is stale on the v1.3.4 changes: still says cui.so, its Mandatory Update Workflow omits the compiled/ lockstep step, its carrier list omits three. Honesty pass or demote the §9 wording.
+- [x] MED — design.md (workflow-canonical per CLAUDE.md §9) is stale on the v1.3.4 changes: still says cui.so, its Mandatory Update Workflow omits the compiled/ lockstep step, its carrier list omits three. Honesty pass or demote the §9 wording.
+      (DONE 2026-09-15, commit bff3e7d: superseded banner added, the real .so
+      name restored, the lockstep step added as workflow item F, the carrier
+      list completed, and CLAUDE.md §9 demoted to "CLAUDE.md is the
+      authority".)
 - [x] MED — roadmap.md:190-201 issue-gate box unticked though all gates passed and the issue closed (tick per house pattern); roadmap.md:126 Phase 10 still promises i686 (the corrected scope is x86_64-only).
       (RESOLVED 2026-09-15: the issue-#1 gate box ticked with its shipped note;
       the Phase 10 box now promises x86_64 only.)
-- [ ] MED — .githooks/pre-commit:35 still compares against build/cui.so (renamed in 10219e1): the allow-path is dead and byte-identical src commits (comment-only edits) are falsely blocked. One-path edit; then land the R10 lockstep CI gate (still open by decision).
+- [x] MED — .githooks/pre-commit:35 still compares against build/cui.so (renamed in 10219e1): the allow-path is dead and byte-identical src commits (comment-only edits) are falsely blocked. One-path edit; then land the R10 lockstep CI gate (still open by decision).
+      (DONE 2026-09-15: hook allow-path fixed in ee98268, exercised for real by
+      the comment batch on top of it; the R10 git-level CI gate landed in
+      04a16be with a comment-only escape matching the hook's allow-path, green
+      in CI.)
 - [x] MED — Comment/contract batch: ml_listener_cb needs the threading-contract header comment; the modification-index paired-invariant comment at both ends; the [All] sort-pin do-not-simplify note; the scriptableItem_t mirror warning (highest memory-corruption potential uncommented); deferred_column_changed_cb's cancellation-only rationale.
       (SHIPPED v1.3.5 queue, commit 75d6dc4: all five, sitting at the exact
       lines someone would edit; the last one became a uniform-guard note when
@@ -298,9 +306,45 @@ report disagree, the report wins; the corrections are already applied below.
       with get/set so no GLib 2.74 floor is added; _GNU_SOURCE defined;
       UTF-8-safe title clamp. shutting_down atomics rode the same batch;
       the marker identity is the queued-v1.3.5 box below, commit 02f0afa.)
-- [ ] LOW — Polish: the empty if-block; duplicated ap_name strncpy; four same-shape tree walks; version_minor=4 renders "1.4" beside descr 1.3.4 (record the convention or re-encode); dead sys/time.h; stale line cites (CLAUDE.md ×4, cui_data.c:24); ROADMAP duplicate box; roadmap libdl claim; "compiance" typo; the tab-strip drag-drop upstream FIXME leak (handoff).
-- [ ] LOW — Hygiene: stale beta branch (merged, no origin twin); manifest.json/.example byte-identical (restore placeholder, document, or drop); nested .deadbeef//.cui clones vs the workspace-level clone (canonical location + git-clean -xd hazard note); workspace-internal paths in the public RESEARCH file + roadmap.md:156 (genericize); no logo.svg (mark or record); no issue template (bug.yml with the fields issue #1 proved load-bearing); ci.yml permissions + SHA pins; dead .gitignore entries.
-- [ ] Feature candidates logged (FINAL-REPORT L4; complete-posture respected): sort persistence per column (finishes shipped Phase 3; zero default change); in-widget empty-state hint (timed to the plugin-list submission); MAX_COLUMNS lift or spec softening (spec already promises arbitrary); pane-width persistence via our own exapi keyvalues (the DdbSplitter pointer was mechanism-wrong). Confirmed stays-parked: search album field, gtkScriptable editor, Album Art View, GTK4 port (the blocker list is the plan).
-- [ ] Prose pass: 68 live em-dashes (CLAUDE.md 52, README 9, roadmap 5, spec 1); the README marketing stratum ("seamlessly", "combining the power of", "bridges this gap", "gold standard… legendary"); README:13/:37 duplication; spec "robust" echo of a v0.5.0-alpha patchnote sentence.
+- [x] LOW — Polish: the empty if-block; duplicated ap_name strncpy; four same-shape tree walks; version_minor=4 renders "1.4" beside descr 1.3.4 (record the convention or re-encode); dead sys/time.h; stale line cites (CLAUDE.md ×4, cui_data.c:24); ROADMAP duplicate box; roadmap libdl claim; "compiance" typo; the tab-strip drag-drop upstream FIXME leak (handoff).
+      (DONE 2026-09-15: empty if-shell and draft comments in 9416682; the
+      viewer-name triplication collapsed into a viewer_name helper (9416682);
+      the version encoding switched to the minor-line convention, DECIDED
+      2026-09-15, v1.3.5 ships version_minor=3 so the display reads "1.3";
+      sys/time.h in a42327b; the line-cite refresh, duplicate box, libdl
+      claim, and typo in bff3e7d; the drag-target comment now records the
+      upstream tab-strip FIXME leak (9416682). Reviewed, staying as-is: the
+      four same-shape tree walks differ in output and filtering; unifying
+      them is refactor-risk without a bug under complete-posture.)
+- [x] LOW — Hygiene: stale beta branch (merged, no origin twin); manifest.json/.example byte-identical (restore placeholder, document, or drop); nested .deadbeef//.cui clones vs the workspace-level clone (canonical location + git-clean -xd hazard note); workspace-internal paths in the public RESEARCH file + roadmap.md:156 (genericize); no logo.svg (mark or record); no issue template (bug.yml with the fields issue #1 proved load-bearing); ci.yml permissions + SHA pins; dead .gitignore entries.
+      (DONE 2026-09-15: beta deleted, the pair documented, and the
+      nested-clones-are-canonical decision + git clean -xd hazard recorded in
+      CLAUDE.md §3.3 (a42327b, all Brandon-approved); RESEARCH header fixed
+      and both workspace-internal paths genericized (bff3e7d); logo-not-wanted
+      recorded in §3.3; bug.yml + config.yml created and the ci.yml read-only
+      permissions block added (c150b12); the dead .gitignore entries replaced
+      by the real compile_commands.json name (a42327b). The three stock
+      GitHub Actions stay un-SHA-pinned on purpose: first-party actions,
+      reviewed as they drift.)
+- [x] Feature candidates logged (FINAL-REPORT L4; complete-posture respected): sort persistence per column (finishes shipped Phase 3; zero default change); in-widget empty-state hint (timed to the plugin-list submission); MAX_COLUMNS lift or spec softening (spec already promises arbitrary); pane-width persistence via our own exapi keyvalues (the DdbSplitter pointer was mechanism-wrong). Confirmed stays-parked: search album field, gtkScriptable editor, Album Art View, GTK4 port (the blocker list is the plan).
+      (DONE 2026-09-15: sort persistence shipped in d85c963 and the
+      empty-state hint in 940d360 (Brandon chose v1.3.5 over waiting for the
+      submission re-gate). MAX_COLUMNS lift and pane-width persistence stay
+      PARKED, recorded here as the reopen candidates; the rest stay parked as
+      before.)
+- [x] Prose pass: 68 live em-dashes (CLAUDE.md 52, README 9, roadmap 5, spec 1); the README marketing stratum ("seamlessly", "combining the power of", "bridges this gap", "gold standard… legendary"); README:13/:37 duplication; spec "robust" echo of a v0.5.0-alpha patchnote sentence.
+      (DONE 2026-09-15, commit 4aae8ae: all recast with real punctuation; the
+      audit block's own severity markers keep the audit's verbatim formatting.)
+
+### Release v1.3.5 (2026-09-15)
+
+The final-blitz release: the release.yml notes flag (the one HIGH), the
+stale-cache/callback bug pair, the hidden-marker viewer identity (the data-loss
+fix), the queued v1.3.5 hygiene (shutting_down atomics, guard uniformity,
+strcasestr/_GNU_SOURCE, GLib-2.74 CAS removal), the comment/contract batch, the
+lockstep CI gate + hook fix, per-column sort persistence, the empty-state hint,
+the docs-truth and prose passes, and the hygiene/removal set. Full notes in
+patchnotes.md; the submission-PR builder-Docker verify remains the one open
+gate (Brandon's session).
 
 **CONFIRMED-prior (final-audit verification):** the queued v1.3.5 items (shutting_down atomics, viewer-name identity, guard uniformity, PLUG_TEST_COMPAT) unchanged; lockstep CI-blind open by decision; strcasestr/_GNU_SOURCE. SUPERSEDED (verified fixed with tripwire): the CRITICAL NULL-val call and the HIGH blank-panes-after-dialog; dead bdkl/ URLs; the 1.10.x-tested claim; the stale roadmap header. Audit-side: the sheet's build-output paths are pre-rename (build/ddb_misc_cui_GTK3.so now). Slop-reader verdict: two prose strata: the current forensic voice is human-grade; the residue is 68 live em-dashes, the README marketing paragraphs, and the pre-v1.2.4 patchnotes stratum (records policy, author's call).

@@ -1,5 +1,72 @@
 # deadbeef-cui — Patch Notes
 
+## v1.3.5
+
+---
+
+### Bug fixes
+
+**A user playlist named "Library Viewer" is no longer wiped on every quit.**
+The viewer playlist was identified by title alone, so a playlist of your own
+that happened to share the viewer's name was adopted as the filter mirror:
+overwritten on every selection and emptied at shutdown. The plugin now marks
+the playlists it creates with a hidden `_cui_viewer` marker. Population
+prefers marked playlists and adopts pre-1.3.5 viewers found by title,
+stamping the marker so the migration happens on first use; the shutdown
+clear matches by marker only. Renaming the viewer in the Configure Facets
+dialog orphans the old playlist rather than clearing it. Files:
+`src/cui_data.c`, `src/cui_widget.c`.
+
+**Library events and search keystrokes no longer steal the current
+playlist.** Internal store rebuilds fired the tree selection's "changed"
+handler with rows still selected, arming a 10 ms debounce whose callback
+switched to the viewer playlist and rebuilt it with no user click. The
+handler is now blocked across programmatic rebuilds. File: `src/cui_data.c`.
+
+**Blank facet panes after changing the playlist font.** The
+`DB_EV_CONFIGCHANGED` refresh rebuilt the column widgets but the refill was
+then skipped by the modification-index cache, leaving every pane empty until
+the next library change or keystroke. Same defect family as the v1.3.4
+dialog-OK fix; both paths now invalidate the cache before refilling. File:
+`src/cui_widget.c`.
+
+**Shutdown and thread-safety hardening.** The `shutting_down` flag is read
+and written through atomic wrappers everywhere (it is touched from the
+medialib listener thread, the player mainloop, and the GTK main thread).
+Every idle and timeout callback now runs the same two-step guard (shutdown
+check, then widget-liveness check) before touching widget state. The
+context-menu and drag-out track copies hold `pl_lock` across their walks.
+The right-click menu is destroyed when dismissed instead of leaking per
+right-click. Source builds define `_GNU_SOURCE` so `strcasestr` no longer
+depends on glibc's feature-test leak (musl and strict builds compile), and
+the CONFIGCHANGED coalescing flag no longer requires GLib 2.74+. Files:
+`src/main.c`, `src/cui_widget.c`, `src/cui_data.c`.
+
+### Features
+
+**Per-column sort persistence.** The sort mode and order picked with a
+column header (name or count, ascending or descending) survive font changes
+and quit/relaunch, stored per widget as `colN_sort`. Defaults are unchanged:
+columns still start sorted by name, ascending. File: `src/cui_widget.c`.
+
+**In-widget status line for the silently-blank states.** With the medialib
+plugin disabled, the source unavailable, the library still scanning, or no
+music folders configured, the browser says so in a transient status line
+instead of rendering a silently blank layout. It hides itself once real rows
+appear. File: `src/cui_widget.c`.
+
+### Packaging
+
+**Release automation and repo hygiene.** The tag-triggered release workflow
+creates the GitHub Release with `--notes-from-tag`, so the release body is
+the verbatim tag message; v1.3.4's empty release title was backfilled out of
+band. CI gained a git-level lockstep gate (a commit touching `src/` or
+`CMakeLists.txt` must touch `compiled/ddb_misc_cui_GTK3.so`), a read-only
+permissions block, and the repo a bug-report template carrying the fields
+issue #1 proved load-bearing. The dead `cpp` topic was dropped (this is pure
+C11), the empty wiki is disabled, and the release binary builds cleanly
+under ASan/UBSan. Files: `.github/`, `.githooks/pre-commit`.
+
 ## v1.3.4
 
 ---

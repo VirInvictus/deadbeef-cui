@@ -581,6 +581,9 @@ static void test_empty_state_hint(void) {
     if (!g_gtk_ok) { g_test_skip("no display for GtkLabel"); return; }
     cui_widget_t *cw = fresh_widget();
     cw->hint_label = gtk_label_new(NULL);
+    // Never parented here (rebuild_columns normally sinks it into the vbox),
+    // so take and drop our own ref around the test.
+    g_object_ref_sink(cw->hint_label);
     gtk_widget_set_no_show_all(cw->hint_label, TRUE);
 
     // (1) medialib plugin absent.
@@ -619,6 +622,7 @@ static void test_empty_state_hint(void) {
     cw->cached_tree = NULL;
     ml_source = NULL;
     gtk_widget_destroy(cw->hint_label);
+    g_object_unref(cw->hint_label);
     mock_node_free(empty);
     mock_node_free(full);
     g_free(cw);
@@ -669,11 +673,14 @@ static void test_sort_persistence_roundtrip(void) {
     g_assert_cmpint(cw2->sort_ids[2], ==, 0);
     g_assert_cmpint(cw2->sort_orders[2], ==, 0);
 
+    // deserialize g_strup'd the format value onto cw2.
+    for (int i = 0; i < MAX_COLUMNS; i++) { g_free(cw2->titles[i]); g_free(cw2->formats[i]); }
+    g_free(cw2);
+
     g_free(cw->titles[0]);
     g_free(cw->formats[0]);
     g_free(cw->autoplaylist_name);
     g_free(cw);
-    g_free(cw2);
 }
 
 int main(int argc, char **argv) {
