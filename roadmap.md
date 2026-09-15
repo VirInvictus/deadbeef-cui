@@ -336,15 +336,28 @@ report disagree, the report wins; the corrections are already applied below.
       (DONE 2026-09-15, commit 4aae8ae: all recast with real punctuation; the
       audit block's own severity markers keep the audit's verbatim formatting.)
 
-### Release v1.3.5 (2026-09-15)
+### Release v1.3.5 (2026-09-15, SHIPPED)
 
-The final-blitz release: the release.yml notes flag (the one HIGH), the
+Tag v1.3.5 cut at e2f4efa (CI green, verbatim patchnotes tag body), Release
+live with the verbatim entry as body and the CI-built .so attached. The live
+1.10.3 smoke on a real 10.7k-track library caught one real regression BEFORE
+the tag: the new menu-leak teardown destroyed menus mid-activation, breaking
+every right-click item; fixed in e2f4efa with a deferred teardown and a
+tripwire test (commit e2f4efa, on the tag). Smoke covered: registration,
+startup populate, menu open/activate, defaults-OK with forced pane refresh,
+selection cascade with viewer populate, clean shutdown. The release job's
+first run failed on a gh limitation (--notes-from-tag + --repo unsupported;
+fixed in 91767e8) and the title needed --title (c642c77); the Release was
+created by hand with the CI-built artifact per the plugin-update rule's
+fallback. The submission-PR builder-Docker verify remains the one open gate
+(Brandon's session).
+
+The final-blitz release content: the release.yml notes flag (the one HIGH), the
 stale-cache/callback bug pair, the hidden-marker viewer identity (the data-loss
 fix), the queued v1.3.5 hygiene (shutting_down atomics, guard uniformity,
 strcasestr/_GNU_SOURCE, GLib-2.74 CAS removal), the comment/contract batch, the
 lockstep CI gate + hook fix, per-column sort persistence, the empty-state hint,
 the docs-truth and prose passes, and the hygiene/removal set. Full notes in
-patchnotes.md; the submission-PR builder-Docker verify remains the one open
-gate (Brandon's session).
+patchnotes.md.
 
 **CONFIRMED-prior (final-audit verification):** the queued v1.3.5 items (shutting_down atomics, viewer-name identity, guard uniformity, PLUG_TEST_COMPAT) unchanged; lockstep CI-blind open by decision; strcasestr/_GNU_SOURCE. SUPERSEDED (verified fixed with tripwire): the CRITICAL NULL-val call and the HIGH blank-panes-after-dialog; dead bdkl/ URLs; the 1.10.x-tested claim; the stale roadmap header. Audit-side: the sheet's build-output paths are pre-rename (build/ddb_misc_cui_GTK3.so now). Slop-reader verdict: two prose strata: the current forensic voice is human-grade; the residue is 68 live em-dashes, the README marketing paragraphs, and the pre-v1.2.4 patchnotes stratum (records policy, author's call).
