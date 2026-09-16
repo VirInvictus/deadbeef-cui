@@ -165,7 +165,12 @@ static ddb_playlist_t *find_viewer_playlist_impl(cui_widget_t *cw, int marker_on
         deadbeef_api->pl_unlock();
 
         if (marked) {
-            deadbeef_api->plt_unref(fallback);
+            // fallback is usually NULL here (the marker check runs first, so
+            // a marked viewer is returned before any title fallback exists).
+            // plt_unref has no NULL guard upstream and would segfault.
+            if (fallback) {
+                deadbeef_api->plt_unref(fallback);
+            }
             return plt;
         }
         if (!marker_only && !fallback) {

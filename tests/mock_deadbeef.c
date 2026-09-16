@@ -122,7 +122,15 @@ static void mt_plt_replace_meta(ddb_playlist_t *plt, const char *key, const char
     if (strcmp(key, CUI_VIEWER_MARKER) == 0) snprintf(p->marker, sizeof(p->marker), "%s", value ? value : "");
 }
 
-static void mt_plt_unref(ddb_playlist_t *plt) { (void)plt; }
+static void mt_plt_unref(ddb_playlist_t *plt) {
+    // The real plt_unref derefs plt->refc with no NULL guard (upstream
+    // playlist.c): a NULL here segfaults in production. This blind spot hid
+    // the v1.3.5 marked-fallback unref bug from every viewer test, so the
+    // mock refuses it loudly instead of swallowing it.
+    if (!plt) {
+        g_error("mock: plt_unref(NULL) — the real API would segfault");
+    }
+}
 
 static ddb_gtkui_widget_t *mt_w_get_rootwidget(void) {
     return mock_gtkui_root;

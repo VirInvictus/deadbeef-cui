@@ -330,6 +330,34 @@ static void test_viewer_legacy_stamped(void) {
     g_free(cw);
 }
 
+// ---- fix: marker-first lookup with no title fallback must not unref NULL ---
+//
+// find_viewer_playlist_impl unref'd its fallback pointer unconditionally when
+// it found a marker-matched playlist, but the fallback only exists if an
+// earlier playlist matched by title. A marked viewer reached first (the normal
+// case once a viewer has been stamped and saved) hit plt_unref(NULL): the real
+// API derefs with no guard, so the first double-click after v1.3.5 stamped a
+// viewer segfaulted DeaDBeeF before playback. The mock now refuses
+// plt_unref(NULL) like the real API, and this test walks the exact path.
+
+static void test_viewer_marker_first_no_fallback(void) {
+    cui_widget_t *cw = fresh_widget();
+    cw->autoplaylist_name = g_strdup("Library Viewer");
+    mock_reset();
+    // The stamped viewer is the very first playlist: the marked branch is
+    // reached with fallback == NULL.
+    int ours_idx = deadbeef_api->plt_add(0, "Renamed by user");
+    deadbeef_api->plt_replace_meta(deadbeef_api->plt_get_for_idx(ours_idx),
+                                   CUI_VIEWER_MARKER, "Library Viewer");
+
+    ddb_playlist_t *plt = get_or_create_viewer_playlist(cw);
+    g_assert_true(plt == deadbeef_api->plt_get_for_idx(ours_idx));
+    g_assert_cmpint(mock_plt_add_called, ==, 1);  // nothing new created
+
+    g_free(cw->autoplaylist_name);
+    g_free(cw);
+}
+
 // ---- issue #1: the plugin never calls w_save_layout_to_conf_key ------------
 //
 // The Configure Facets OK handler used to call
@@ -753,6 +781,7 @@ int main(int argc, char **argv) {
     g_test_add_func("/cui/viewer/collision_not_cleared", test_viewer_collision_not_cleared);
     g_test_add_func("/cui/viewer/marker_first_matching", test_viewer_marker_first_matching);
     g_test_add_func("/cui/viewer/legacy_stamped", test_viewer_legacy_stamped);
+    g_test_add_func("/cui/viewer/marker_first_no_fallback", test_viewer_marker_first_no_fallback);
     g_test_add_func("/cui/config/save_layout", test_config_never_saves_layout);
     g_test_add_func("/cui/sort/all_row", test_sort_all_row);
     g_test_add_func("/cui/populate/no_selection_steal", test_populate_does_not_steal_selection);
