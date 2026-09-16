@@ -1,4 +1,19 @@
-# deadbeef-cui — Patch Notes
+## v1.3.6
+
+---
+
+### Bug fixes
+
+**Fixed a crash on the first facet double-click after v1.3.5.** The
+viewer-playlist marker lookup released its by-title fallback handle even when
+no fallback had been found, which is the normal case once a viewer has been
+marked: the marked playlist is returned before any title match exists. The
+real `plt_unref` dereferences the playlist's refcount with no NULL guard, so
+the first double-click (or any action that refreshes the viewer playlist)
+segfaulted the player before playback started. The handle is now released
+only when it exists. The test mock's `plt_unref` now refuses NULL exactly
+like the real API, and `/cui/viewer/marker_first_no_fallback` walks the
+exact crash path. File: `src/cui_data.c`.
 
 ## v1.3.5
 

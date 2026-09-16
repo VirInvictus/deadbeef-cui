@@ -336,6 +336,17 @@ report disagree, the report wins; the corrections are already applied below.
       (DONE 2026-09-15, commit 4aae8ae: all recast with real punctuation; the
       audit block's own severity markers keep the audit's verbatim formatting.)
 
+### Release v1.3.6 (2026-09-16, SHIPPED)
+
+Post-blitz crash fix, caught by Brandon's own double-click on the live
+machine: the v1.3.5 marker lookup unref'd its title-fallback handle when it
+was NULL (the normal case once a viewer is stamped), and the real plt_unref
+has no NULL guard, so the first play after v1.3.5 segfaulted before playback.
+Guarded in b4d834f; the mock's plt_unref now refuses NULL like the real API
+(closing the mock blind spot that hid it), and
+/cui/viewer/marker_first_no_fallback walks the exact path. Live-verified
+playing again before tagging.
+
 ### Release v1.3.5 (2026-09-15, SHIPPED)
 
 Tag v1.3.5 cut at e2f4efa (CI green, verbatim patchnotes tag body), Release
