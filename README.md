@@ -101,6 +101,34 @@ Enter **Design Mode** in DeaDBeeF to add the **Facet Browser (CUI)** widget to y
 
 Launch DeaDBeeF from a terminal with `deadbeef --gui GTK3 -d 2>&1 | grep cui`: you should see `deadbeef-cui: Facet Browser v1.3.7 registered successfully.` on startup. If the line is missing, the plugin failed to load (check the rest of the log for unresolved symbols or missing libraries).
 
+## Tips & recipes
+
+Columns are whatever you make them: each facet is a title-formatting
+expression, up to five deep, configured per widget via right-click >
+Configure Facets. Some layouts that work well (all verified on a
+10,000+ track library):
+
+| Recipe | Columns | Why |
+|---|---|---|
+| The classic | Genre > Album Artist > Album | The default. Narrow by genre, then artist, then album. |
+| Compilation-safe | Album Artist > Genre > Album | Putting `$if2(%album artist%,%artist%)` first keeps various-artists releases in one place instead of fragmenting per track artist. |
+| Chronological | Year > Album Artist > Album | Walk a decade, see an artist's albums in order. |
+| Library audit | Genre > Album Artist > Album > Year > Codec | Five columns: the fourth and fifth are real filters, so selecting Year `0000` (unknown year) shows exactly which codecs those files use. Handy for spotting stragglers before a re-encode. |
+| Multi-genre tags | any layout + "Split Multivalue Tags" on | A track tagged `Rock; Progressive` appears under both facets instead of one literal `Rock; Progressive` row. |
+
+Notes that apply to every layout:
+
+- **Multi-select works at any level** (Ctrl+Click to add, Shift+Click for a
+  range): selecting two genres aggregates every artist and album beneath
+  both, with counts summed per track (a track in both genres is counted
+  once at the artist level).
+- **Header clicks** sort any column by name or count, ascending or
+  descending; your choice persists per column across restarts.
+- **Multiple Facet Browser widgets** can coexist in the layout, each with
+  its own columns and its own viewer playlist name.
+- The playlists you build here are ordinary DeaDBeeF playlists: send them
+  to a new playlist (right-click) and they outlive the browser.
+
 ## Acknowledgments
 
 Inspired by **[foobar2000](https://www.foobar2000.org/)** and its **[Columns UI](https://yuo.be/columns-ui)** and **[Facets](https://www.foobar2000.org/components/view/foo_facets)** components.

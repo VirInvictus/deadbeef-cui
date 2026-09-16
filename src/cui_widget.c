@@ -29,14 +29,18 @@ void cui_widget_stop(void) {
 // with the async GTK widget teardown, which crashed on every close.
 void cui_clear_viewer_playlists(void) {
     if (!deadbeef_api) return;
+    gint64 t0 = g_get_monotonic_time();
     for (GList *l = all_cui_widgets; l; l = l->next) {
         cui_widget_t *cw = (cui_widget_t *)l->data;
         ddb_playlist_t *viewer = find_marked_viewer_playlist(cw);
         if (viewer) {
+            CUI_DEBUG("quit clear: %d tracks",
+                      deadbeef_api->plt_get_item_count(viewer, PL_MAIN));
             deadbeef_api->plt_clear(viewer);
             deadbeef_api->plt_unref(viewer);
         }
     }
+    CUI_DEBUG("quit clear done in %.1f ms", (g_get_monotonic_time() - t0) / 1000.0);
 }
 
 // Visual default: when a column ends a population/cascade with nothing

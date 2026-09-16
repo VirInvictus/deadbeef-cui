@@ -122,9 +122,18 @@ Measured baseline (6,367-track library, fresh launch with cui in layout but no G
 - [x] **Repository Readiness:** Repo is clean: README, spec, roadmap, patchnotes, CLAUDE.md, LICENSE, manifest.json, CMakeLists.txt, src/, compiled/ all present. No stale build artifacts checked in beyond the intentional `compiled/ddb_misc_cui_GTK3.so` for non-builders.
 
 ### Requires Brandon (external systems / decisions)
-- [ ] **Cross-Platform Verification:** Run the `deadbeef-plugin-builder` Docker environment locally to verify the plugin builds for x86_64 (the builder offers no i686; the earlier "x86_64 and i686" wording was wrong). Manifest is in place; this is a `docker run` away when ready.
-- [ ] **Submission PR:** Open a PR against `DeaDBeeF-Player/deadbeef-plugin-builder` adding the manifest. Requires GitHub credentials and your own description.
-  *(DECIDED 2026-09-12 (Brandon): GO once the first-touch fixes land (the dead bdkl/ URL in manifest.json and main.c) and the builder-Docker verify runs; the PR itself needs your credentials and description.)*
+- [x] **Cross-Platform Verification / Submission PR:** DECLINED 2026-09-16
+      (Brandon): the plugin-builder verify requires running Docker on the
+      desktop machine, which he is fundamentally against (Docker is for
+      servers, not his workstation: "don't put that on me"). The plugin-list
+      submission is therefore OFF; the manifest stays in the repo for anyone
+      who wants to build it themselves. Reopen conditions: an official build
+      path without local Docker, or a change of heart.
+- [x] **Five-facet verification + recipes:** 2026-09-16, live-tested at all
+      five columns (5-pane render, four-deep cascade, per-level [All] rows,
+      multi-select aggregation 386+33=419 across two genres, unknown-year
+      "0000" edge data, dialog round-trip back to 3 columns). Recipes
+      documented in the README "Tips & recipes" section.
 - [ ] **v2.0.0 Tagging:** A v2.0 release implies a major-feature milestone; v1.3.4 is the current state. Defer until a feature warrants it (or rebrand "stable + plugin-list ready" as v2.0 if you prefer that framing).
   *(DECIDED 2026-09-12 (Brandon): defer until a feature warrants it.)*
 

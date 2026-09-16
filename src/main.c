@@ -19,6 +19,7 @@ static int cui_message(uint32_t id, uintptr_t ctx, uint32_t p1, uint32_t p2) {
     (void)p1;
     (void)p2;
     if (id == DB_EV_TERMINATE) {
+        CUI_DEBUG("DB_EV_TERMINATE received");
         g_atomic_int_set(&shutting_down, 1);
         // Clear the viewer playlists here, not in cui_destroy: this event is
         // dispatched on the player mainloop before gui->stop()/streamer_free,
@@ -62,6 +63,7 @@ int cui_start(void) {
 }
 
 int cui_stop(void) {
+    CUI_DEBUG("cui_stop entered");
     g_atomic_int_set(&shutting_down, 1);
 
     cui_widget_stop();
