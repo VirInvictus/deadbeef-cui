@@ -634,6 +634,141 @@ static void test_menu_activation_survives_teardown(void) {
     g_assert_null(weak); // destroyed AND finalized: no leaked menu shell
 }
 
+// ---- chunked viewer fill (§6.15) --------------------------------------------
+//
+// update_playlist_from_cui's async mode fills the viewer on the idle queue so
+// whole-library mirrors never freeze the UI. fresh_widget leaves
+// fill_budget_us at 0, which the fill treats as deterministic test mode: one
+// tree step per chunk, so chunk splitting is assertable. Headless: the fill
+// touches only the mock playlist/table APIs.
+
+static int drain_idle_chunks(int max) {
+    int n = 0;
+    while (n < max && g_main_context_iteration(NULL, FALSE)) {
+        n++;
+    }
+    return n;
+}
+
+// A synthetic root above `groups` facet groups of `leaves_per_group` leaves —
+// same shape update_tree_data caches (root -> facets -> tracks).
+static mock_node_t *fill_test_tree(int groups, int leaves_per_group) {
+    mock_node_t *groups_list = NULL;
+    for (int g = groups - 1; g >= 0; g--) {
+        char *label = g_strdup_printf("G%d", g);
+        mock_node_t *leaves = NULL;
+        for (int l = leaves_per_group - 1; l >= 0; l--) {
+            leaves = mock_leaf("t", "a", leaves);
+        }
+        mock_node_t *group = mock_group(label, leaves, groups_list);
+        g_free(label); // mock_group doesn't copy; the label is ours to free
+        groups_list = group;
+    }
+    return mock_group(NULL, groups_list, NULL);
+}
+
+static void test_fill_chunked_completes(void) {
+    cui_widget_t *cw = fresh_widget();
+    cw->autoplaylist_name = g_strdup("V");
+    mock_reset();
+    mock_node_t *tree = fill_test_tree(2, 5); // 2 groups x 5 leaves = 10 tracks
+    mock_set_item_tree(tree);
+    ml_source = (ddb_mediasource_source_t *)tree;
+    cw->cached_tree = (ddb_medialib_item_t *)tree;
+    cw->playlist_dirty = 1; // production sets this at widget creation
+    // The chunk's liveness guard (§6.3) requires the widget to be registered,
+    // as cui_init does in production.
+    all_cui_widgets = g_list_append(all_cui_widgets, cw);
+
+    update_playlist_from_cui(cw, FALSE);
+    g_assert_nonnull(cw->fill_stack);           // fill in flight
+    g_assert_cmpint(cw->playlist_dirty, ==, 1); // dirty until completion
+
+    // g_main_context_iteration drains ready sources until none remain, so
+    // chunk splitting itself is not observable from here (the budget break
+    // is what splits in production; budget 0 = one step per chunk). Assert
+    // the completion contract instead.
+    drain_idle_chunks(64);
+    ddb_playlist_t *plt = deadbeef_api->plt_get_for_idx(0);
+    g_assert_cmpint(deadbeef_api->plt_get_item_count(plt, PL_MAIN), ==, 10);
+    g_assert_null(cw->fill_stack);              // torn down at completion
+    g_assert_cmpint(cw->fill_idle_id, ==, 0);
+    g_assert_cmpint(cw->playlist_dirty, ==, 0);
+
+    cw->cached_tree = NULL;
+    ml_source = NULL;
+    mock_set_item_tree(NULL);
+    deadbeef_api->plt_unref(plt);
+    mock_node_free(tree);
+    g_free(cw->autoplaylist_name);
+    all_cui_widgets = g_list_remove(all_cui_widgets, cw);
+    g_free(cw);
+}
+
+static void test_fill_cancel_on_tree_free(void) {
+    // §6.15: the fill's frames point INTO cached_tree, so cancelling (as
+    // update_tree_data does before free_item_tree) while a fill is pending
+    // must leave no scheduled chunk behind: nothing may touch the freed tree.
+    cui_widget_t *cw = fresh_widget();
+    cw->autoplaylist_name = g_strdup("V");
+    mock_reset();
+    mock_node_t *tree = fill_test_tree(2, 5);
+    mock_set_item_tree(tree);
+    ml_source = (ddb_mediasource_source_t *)tree;
+    cw->cached_tree = (ddb_medialib_item_t *)tree;
+    cw->playlist_dirty = 1;
+
+    all_cui_widgets = g_list_append(all_cui_widgets, cw);
+    update_playlist_from_cui(cw, FALSE);
+    g_assert_nonnull(cw->fill_stack);
+
+    cw->cached_tree = NULL;
+    ml_source = NULL;
+    mock_set_item_tree(NULL);
+    cui_fill_cancel(cw);
+    mock_node_free(tree);
+    drain_idle_chunks(64); // nothing may fire; ASan proves no freed-node touch
+    g_assert_null(cw->fill_stack);
+    g_assert_cmpint(cw->fill_idle_id, ==, 0);
+    g_assert_cmpint(cw->playlist_dirty, ==, 1); // aborted fill stays dirty
+
+    g_free(cw->autoplaylist_name);
+    all_cui_widgets = g_list_remove(all_cui_widgets, cw);
+    g_free(cw);
+}
+
+static void test_fill_sync_supersedes(void) {
+    cui_widget_t *cw = fresh_widget();
+    cw->autoplaylist_name = g_strdup("V");
+    mock_reset();
+    mock_node_t *tree = fill_test_tree(2, 5);
+    mock_set_item_tree(tree);
+    ml_source = (ddb_mediasource_source_t *)tree;
+    cw->cached_tree = (ddb_medialib_item_t *)tree;
+    cw->playlist_dirty = 1;
+
+    all_cui_widgets = g_list_append(all_cui_widgets, cw);
+    update_playlist_from_cui(cw, FALSE);
+    // A synchronous fill (activate_row's path) supersedes the in-flight one
+    // and completes immediately.
+    update_playlist_from_cui(cw, TRUE);
+    ddb_playlist_t *plt = deadbeef_api->plt_get_for_idx(0);
+    g_assert_cmpint(deadbeef_api->plt_get_item_count(plt, PL_MAIN), ==, 10);
+    g_assert_null(cw->fill_stack);
+    g_assert_cmpint(cw->playlist_dirty, ==, 0);
+    drain_idle_chunks(64); // the abandoned chunk must not add anything
+    g_assert_cmpint(deadbeef_api->plt_get_item_count(plt, PL_MAIN), ==, 10);
+
+    cw->cached_tree = NULL;
+    ml_source = NULL;
+    mock_set_item_tree(NULL);
+    deadbeef_api->plt_unref(plt);
+    mock_node_free(tree);
+    g_free(cw->autoplaylist_name);
+    all_cui_widgets = g_list_remove(all_cui_widgets, cw);
+    g_free(cw);
+}
+
 // ---- feature: in-widget empty-state hint ------------------------------------
 //
 // The only medialib-missing diagnostic used to be a stderr line: with the
@@ -789,6 +924,9 @@ int main(int argc, char **argv) {
     g_test_add_func("/cui/sort/persistence", test_sort_persistence_roundtrip);
     g_test_add_func("/cui/hint/empty_state", test_empty_state_hint);
     g_test_add_func("/cui/menu/activation_survives_teardown", test_menu_activation_survives_teardown);
+    g_test_add_func("/cui/fill/chunked_completes", test_fill_chunked_completes);
+    g_test_add_func("/cui/fill/cancel_on_tree_free", test_fill_cancel_on_tree_free);
+    g_test_add_func("/cui/fill/sync_supersedes", test_fill_sync_supersedes);
 
     return g_test_run();
 }

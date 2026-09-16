@@ -1,3 +1,37 @@
+# deadbeef-cui — Patch Notes
+
+## v1.3.7
+
+---
+
+### Bug fixes
+
+**The whole-library facet transition no longer freezes the player.** Clicking
+`[All]` after a filtered selection mirrors the entire library into the viewer
+playlist; on a 10,000-track library that copy took over a second of complete
+UI freeze (measured at 1.15 s on 10,734 tracks). The mirror now runs in
+~75 ms chunks on the idle queue: browsing stays interactive and the playlist
+fills progressively. The fill is cancellable at every point the underlying
+tree or playlist changes, and playing from a facet (double-click, Enter) still
+builds the playlist synchronously so playback starts on a complete list.
+Files: `src/cui_data.c`, `src/cui_widget.c`.
+
+**The viewer playlist tab now works immediately after launch.** The viewer is
+emptied at quit (by design since v1.3.3) and was only populated on the first
+facet interaction, so double-clicking its tab at startup played nothing while
+every other tab played. After the first library scan the browser now mirrors
+the whole library into the viewer once (chunked, so it never blocks), making
+the tab playable from the start. This consciously reverses the v1.2.4
+startup-deferral. Files: `src/cui_widget.c`, `src/cui_globals.h`.
+
+### Testing
+
+**Chunked-fill regression tests.** Three new headless tests lock the fill
+contract: completion (all tracks inserted, state torn down, dirty flag
+cleared), cancellation when the cached tree is freed mid-fill, and a
+synchronous fill superseding an in-flight one. The playlist-table mock gained
+insert/count/copy semantics (and refuses `plt_unref(NULL)`, as of v1.3.6).
+
 ## v1.3.6
 
 ---

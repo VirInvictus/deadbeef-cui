@@ -261,7 +261,7 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-Covered: `skip_prefix`, scriptable preset construction (default / compaction / `split`), `track_matches_search`, `count_tracks_recursive` incl. the count+1/cached-1 zero-memoization, `aggregate_recursive_multi` (the "Various Artists" cross-tree collision), `get_or_create_viewer_playlist` name selection (§7.2), the `_cui_viewer` marker identity incl. the shutdown-clear collision guard (§6.14), the never-save-layout tripwire (§4), the `[All]`-pinned-to-top sort invariant (§6.13), the no-selection-steal populate guard (v1.3.5), and the modification-index invalidation contract (v1.3.5). Tests needing a real GTK tree widget (`GtkListStore` sorting) call `gtk_init_check` and `g_test_skip` when headless, so the suite is green in CI and full on a desktop. Run it under ASan/UBSan before a release (`-DCMAKE_C_FLAGS="-fsanitize=address,undefined -g"`); the scriptable alloc/free paths are validated that way. The playlist-table mock refuses plt_unref(NULL) exactly like the real API (which derefs refc unguarded), so a NULL handle in a viewer lookup dies in the suite instead of in a player. What the suite can't reach without a live widget: the full `cui_destroy` teardown and anything behind a `GtkTreeView`; verify those with valgrind on a running DeaDBeeF.
+Covered: `skip_prefix`, scriptable preset construction (default / compaction / `split`), `track_matches_search`, `count_tracks_recursive` incl. the count+1/cached-1 zero-memoization, `aggregate_recursive_multi` (the "Various Artists" cross-tree collision), `get_or_create_viewer_playlist` name selection (§7.2), the `_cui_viewer` marker identity incl. the shutdown-clear collision guard (§6.14), the never-save-layout tripwire (§4), the `[All]`-pinned-to-top sort invariant (§6.13), the no-selection-steal populate guard (v1.3.5), the modification-index invalidation contract (v1.3.5), and the chunked viewer fill (completion, cancel-on-tree-free, sync supersedes; v1.3.7). Tests needing a real GTK tree widget (`GtkListStore` sorting) call `gtk_init_check` and `g_test_skip` when headless, so the suite is green in CI and full on a desktop. Run it under ASan/UBSan before a release (`-DCMAKE_C_FLAGS="-fsanitize=address,undefined -g"`); the scriptable alloc/free paths are validated that way. The playlist-table mock refuses plt_unref(NULL) exactly like the real API (which derefs refc unguarded), so a NULL handle in a viewer lookup dies in the suite instead of in a player. What the suite can't reach without a live widget: the full `cui_destroy` teardown and anything behind a `GtkTreeView`; verify those with valgrind on a running DeaDBeeF.
 
 ---
 
@@ -361,6 +361,17 @@ Every viewer playlist the plugin creates gets a hidden playlist meta `CUI_VIEWER
 - `find_marked_viewer_playlist` (marker-only) is what the shutdown clear (`cui_clear_viewer_playlists`) uses. **Never route the clear through the name fallback**: pre-v1.3.5 matching by title alone emptied any user playlist that happened to be named "Library Viewer" on every quit: the data-loss bug this marker exists to prevent.
 
 Renaming the viewer in the config dialog orphans the old marked playlist (it stops matching and stops being cleared); that is accepted. Locked in by the `/cui/viewer/*` tests (create stamps, collision survives the clear, marker beats title, legacy gets stamped).
+
+### 6.15 The chunked viewer fill: cancellation points are load-bearing
+
+`update_playlist_from_cui(cw, 0)` mirrors the filtered library into the viewer on the idle queue in ~75 ms chunks (v1.3.7): a whole-library mirror is ~1 s of `pl_item_copy`, and doing it synchronously froze the UI on every `[All]` transition (measured live). The fill's DFS frames hold pointers INTO `cw->cached_tree`, and its cursor refs tracks — so every one of these MUST call `cui_fill_cancel(cw)` first:
+
+- every synchronous `populate_playlist_from_cui` (it cancels at its top: a sync walk must never interleave with in-flight inserts);
+- every `cached_tree` free/replace in `update_tree_data` (freed nodes = use-after-free);
+- `cui_destroy`;
+- any new fill (it cancels, then bumps `fill_generation`).
+
+The chunk itself re-checks `shutting_down` and `g_list_find(all_cui_widgets, cw)` every tick — the §6.3 uniform guard. `playlist_dirty` clears ONLY at fill completion, so an aborted fill always leaves the dirty flag set and the next activation rebuilds synchronously. `activate_row` deliberately uses the SYNC path: `DB_EV_PLAY_NUM` needs the playlist complete before it fires. A launch pre-fill (decided 2026-09-16, reversing the v1.2.4 deferral on purpose) fills the viewer once after the first scan so the playlist tab works before any facet interaction. Locked in by the `/cui/fill/*` tests (completion, cancel-on-tree-free, sync supersedes).
 
 ---
 

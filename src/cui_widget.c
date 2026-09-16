@@ -90,23 +90,15 @@ void update_selection_hash(GtkTreeSelection *selection, GHashTable **hash_ptr) {
     }
 }
 
-static gboolean deferred_column_changed_cb(gpointer data) {
-    // Uniform two-step guard (CLAUDE.md §6.3): check shutting_down, then
-    // verify the widget is still registered, before any dereference. This
-    // callback also has a second safety net its siblings share: it runs from
-    // a g_timeout_add whose id lives on cw, and cui_destroy cancels
-    // changed_timeout_id before freeing anything. (activate_row calls it
-    // directly too, but only from live-widget signal handlers.)
-    cui_widget_t *cw = (cui_widget_t *)data;
-    if (g_atomic_int_get(&shutting_down)) return G_SOURCE_REMOVE;
-    if (!g_list_find(all_cui_widgets, cw)) return G_SOURCE_REMOVE;
-
-    cw->changed_timeout_id = 0;
-
+// The selection-cascade body, shared by the debounce timer (async fill:
+// browsing stays interactive while the viewer mirrors) and activate_row's
+// flush (sync fill: playback needs the playlist complete before PLAY_NUM).
+static void cui_cascade(cui_widget_t *cw, int sync_fill) {
+    gint64 t0 = g_get_monotonic_time();
     int start_col = cw->changed_col_idx;
     cw->changed_col_idx = -1;
 
-    if (start_col == -1) return G_SOURCE_REMOVE;
+    if (start_col == -1) return;
 
     for (int col_idx = start_col; col_idx < cw->num_columns; col_idx++) {
         GtkTreeSelection *selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->trees[col_idx]));
@@ -129,7 +121,25 @@ static gboolean deferred_column_changed_cb(gpointer data) {
         auto_select_all_if_empty(cw, col_idx);
     }
 
-    update_playlist_from_cui(cw);
+    update_playlist_from_cui(cw, sync_fill);
+    CUI_DEBUG("cascade from col %d done in %.1f ms (fill %s)",
+              start_col, (g_get_monotonic_time() - t0) / 1000.0,
+              sync_fill ? "sync" : "chunked");
+}
+
+static gboolean deferred_column_changed_cb(gpointer data) {
+    // Uniform two-step guard (CLAUDE.md §6.3): check shutting_down, then
+    // verify the widget is still registered, before any dereference. This
+    // callback also has a second safety net its siblings share: it runs from
+    // a g_timeout_add whose id lives on cw, and cui_destroy cancels
+    // changed_timeout_id before freeing anything.
+    cui_widget_t *cw = (cui_widget_t *)data;
+    if (g_atomic_int_get(&shutting_down)) return G_SOURCE_REMOVE;
+    if (!g_list_find(all_cui_widgets, cw)) return G_SOURCE_REMOVE;
+
+    cw->changed_timeout_id = 0;
+
+    cui_cascade(cw, FALSE);
     return G_SOURCE_REMOVE;
 }
 
@@ -243,9 +253,9 @@ static void activate_row(cui_widget_t *cw) {
     if (cw->changed_timeout_id) {
         g_source_remove(cw->changed_timeout_id);
         cw->changed_timeout_id = 0;
-        deferred_column_changed_cb(cw);
+        cui_cascade(cw, TRUE);
     } else if (cw->playlist_dirty) {
-        update_playlist_from_cui(cw);
+        update_playlist_from_cui(cw, TRUE);
     } else {
         ddb_playlist_t *plt = get_or_create_viewer_playlist(cw);
         if (plt) {
@@ -942,6 +952,9 @@ static void cui_destroy(ddb_gtkui_widget_t *w) {
         g_source_remove(cw->lib_update_timeout_id);
         cw->lib_update_timeout_id = 0;
     }
+    // The fill's frames point into cached_tree and its cursor refs tracks:
+    // tear it down before anything it touches is freed (§6.15).
+    cui_fill_cancel(cw);
 
     all_cui_widgets = g_list_remove(all_cui_widgets, cw);
 
@@ -1239,6 +1252,7 @@ ddb_gtkui_widget_t *cui_create_widget(void) {
     cui_widget_t *cw = calloc(1, sizeof(cui_widget_t));
     cw->changed_col_idx = -1;
     cw->playlist_dirty = 1;
+    cw->fill_budget_us = 75000;
     ddb_gtkui_widget_t *w = &cw->base;
     w->type = "cui";
 
@@ -1306,6 +1320,14 @@ gboolean deferred_lib_update_cb(gpointer data) {
         update_tree_data(cw);
     }
     cui_update_hint(cw);
+
+    // Launch pre-fill: once the library is first available, mirror the whole
+    // (unfiltered) library into the viewer so its playlist tab works before
+    // any facet interaction. Chunked, so the cost never blocks the UI.
+    if (!cw->prefill_done && cw->initial_sync_done && medialib_plugin && ml_source) {
+        cw->prefill_done = 1;
+        update_playlist_from_cui(cw, FALSE);
+    }
     return G_SOURCE_REMOVE;
 }
 

@@ -247,6 +247,11 @@ ddb_playlist_t *get_or_create_viewer_playlist(cui_widget_t *cw) {
 void populate_playlist_from_cui(cui_widget_t *cw, ddb_playlist_t *plt, int clear_first) {
     if (!cw->cached_tree || !deadbeef_api || !medialib_plugin) return;
 
+    // A synchronous populate supersedes any in-flight chunked fill (its
+    // frames would interleave inserts with this walk).
+    cui_fill_cancel(cw);
+
+    gint64 t0 = g_get_monotonic_time();
     deadbeef_api->pl_lock();
     if (clear_first) {
         deadbeef_api->plt_clear(plt);
@@ -272,19 +277,163 @@ void populate_playlist_from_cui(cui_widget_t *cw, ddb_playlist_t *plt, int clear
 
     deadbeef_api->plt_modified(plt);
     deadbeef_api->pl_unlock();
+    CUI_DEBUG("populate_playlist_from_cui: %d tracks in %.1f ms",
+              deadbeef_api->plt_get_item_count(plt, PL_MAIN),
+              (g_get_monotonic_time() - t0) / 1000.0);
     deadbeef_api->sendmessage(DB_EV_PLAYLISTCHANGED, 0, 0, 0);
 }
 
-void update_playlist_from_cui(cui_widget_t *cw) {
-    CUI_DEBUG("update_playlist_from_cui called");
+// ---- chunked viewer fill (CLAUDE.md §6.15) ---------------------------------
+//
+// update_playlist_from_cui's async mode mirrors the filtered library into the
+// viewer playlist on the idle queue, fill_budget_us of work per tick, so a
+// whole-library mirror (~1 s of copy on a 10k library) never freezes the UI.
+//
+// Cancellation points, ALL required:
+//   - cui_fill_cancel at the top of every synchronous populate (supersede),
+//     at every cached_tree free in update_tree_data (frames point INTO the
+//     tree), in cui_destroy, and before starting any new fill;
+//   - the chunk itself re-checks shutting_down and widget liveness each tick;
+//   - playlist_dirty clears only at fill COMPLETION, so an aborted fill
+//     leaves the dirty flag set and the next activation rebuilds.
+
+typedef struct {
+    const ddb_medialib_item_t *node;   // parent whose children we iterate
+    const ddb_medialib_item_t *child;  // next child to process
+    int level;                         // level of those children
+} cui_fill_frame_t;
+
+static void cui_fill_frame_free(gpointer p) {
+    free(p);
+}
+
+// Tear down any in-flight fill. Safe to call when nothing is running.
+void cui_fill_cancel(cui_widget_t *cw) {
+    if (cw->fill_idle_id) {
+        g_source_remove(cw->fill_idle_id);
+        cw->fill_idle_id = 0;
+    }
+    if (cw->fill_stack) {
+        g_ptr_array_unref(cw->fill_stack);
+        cw->fill_stack = NULL;
+    }
+    if (cw->fill_after) {
+        deadbeef_api->pl_item_unref(cw->fill_after);
+        cw->fill_after = NULL;
+    }
+    if (cw->fill_plt) {
+        deadbeef_api->plt_unref(cw->fill_plt);
+        cw->fill_plt = NULL;
+    }
+    cw->fill_generation++;
+}
+
+static gboolean cui_fill_chunk(gpointer data) {
+    cui_widget_t *cw = (cui_widget_t *)data;
+    if (g_atomic_int_get(&shutting_down) || !g_list_find(all_cui_widgets, cw)
+        || !cw->fill_stack) {
+        cui_fill_cancel(cw);
+        return G_SOURCE_REMOVE;
+    }
+
+    GPtrArray *stack = cw->fill_stack;
+    gint64 deadline = g_get_monotonic_time() + cw->fill_budget_us;
+
+    deadbeef_api->pl_lock();
+    while (stack->len > 0) {
+        cui_fill_frame_t *top = g_ptr_array_index(stack, stack->len - 1);
+        if (!top->child) {
+            // parent exhausted
+            g_ptr_array_remove_index(stack, stack->len - 1);
+            continue;
+        }
+        const ddb_medialib_item_t *node = top->child;
+        top->child = medialib_plugin->tree_item_get_next(node);
+
+        // Selection filter, mirroring add_tracks_recursive_multi: a filtered
+        // node's whole subtree is pruned.
+        if (top->level >= 1 && top->level <= cw->num_columns && cw->sel_texts[top->level - 1]) {
+            const char *text = medialib_plugin->tree_item_get_text(node);
+            if (!text || !g_hash_table_contains(cw->sel_texts[top->level - 1], text)) {
+                if (cw->fill_budget_us == 0) break;
+                continue;
+            }
+        }
+
+        DB_playItem_t *track = medialib_plugin->tree_item_get_track(node);
+        if (track && track_matches_search(track, cw->search_text)) {
+            DB_playItem_t *track_new = deadbeef_api->pl_item_alloc();
+            deadbeef_api->pl_item_copy(track_new, track);
+            DB_playItem_t *inserted = deadbeef_api->plt_insert_item(cw->fill_plt, cw->fill_after, track_new);
+            if (cw->fill_after) {
+                deadbeef_api->pl_item_unref(cw->fill_after);
+            }
+            cw->fill_after = inserted;
+            deadbeef_api->pl_item_ref(cw->fill_after);
+            deadbeef_api->pl_item_unref(track_new);
+            cw->fill_inserted++;
+        }
+
+        const ddb_medialib_item_t *children = medialib_plugin->tree_item_get_children(node);
+        if (children) {
+            cui_fill_frame_t *f = g_new(cui_fill_frame_t, 1);
+            f->node = node;
+            f->child = children;
+            f->level = top->level + 1;
+            g_ptr_array_add(stack, f);
+        }
+
+        // fill_budget_us == 0 is the deterministic test mode: one tree step
+        // per chunk.
+        if (cw->fill_budget_us == 0 || g_get_monotonic_time() >= deadline) break;
+    }
+    deadbeef_api->pl_unlock();
+
+    if (stack->len > 0) {
+        return G_SOURCE_CONTINUE;
+    }
+
+    CUI_DEBUG("chunked fill complete: %d tracks", cw->fill_inserted);
+    deadbeef_api->plt_modified(cw->fill_plt);
+    deadbeef_api->sendmessage(DB_EV_PLAYLISTCHANGED, 0, 0, 0);
+    cui_fill_cancel(cw);
+    cw->playlist_dirty = 0;
+    return G_SOURCE_REMOVE;
+}
+
+void update_playlist_from_cui(cui_widget_t *cw, int synchronous) {
+    CUI_DEBUG("update_playlist_from_cui (sync=%d)", synchronous);
+    gint64 t0 = g_get_monotonic_time();
     ddb_playlist_t *plt = get_or_create_viewer_playlist(cw);
     if (!plt) return;
     deadbeef_api->plt_set_curr(plt);
 
-    populate_playlist_from_cui(cw, plt, 1);
-    cw->playlist_dirty = 0;
+    if (synchronous || !cw->cached_tree) {
+        populate_playlist_from_cui(cw, plt, 1);
+        cw->playlist_dirty = 0;
+        deadbeef_api->plt_unref(plt);
+        CUI_DEBUG("update_playlist_from_cui done in %.1f ms",
+                  (g_get_monotonic_time() - t0) / 1000.0);
+        return;
+    }
 
-    deadbeef_api->plt_unref(plt);
+    // Chunked: clear now, then walk the tree on the idle queue. plt (ref'd
+    // above) becomes the fill's target for the fill's lifetime.
+    cui_fill_cancel(cw);
+    deadbeef_api->plt_clear(plt);
+
+    cw->fill_plt = plt;
+    cw->fill_after = NULL;
+    cw->fill_inserted = 0;
+    cw->fill_stack = g_ptr_array_new_with_free_func(cui_fill_frame_free);
+    cui_fill_frame_t *root = g_new(cui_fill_frame_t, 1);
+    root->node = cw->cached_tree;
+    root->child = medialib_plugin->tree_item_get_children(cw->cached_tree);
+    root->level = 1;
+    g_ptr_array_add(cw->fill_stack, root);
+
+    cw->fill_idle_id = g_idle_add(cui_fill_chunk, cw);
+    CUI_DEBUG("chunked fill started (gen %d)", cw->fill_generation);
 }
 
 void aggregate_recursive_multi(const ddb_medialib_item_t *node,
@@ -469,6 +618,8 @@ void update_tree_data(cui_widget_t *cw) {
     }
 
     if (cw->cached_tree) {
+        // The fill's frames point into this tree; cancel before freeing (§6.15).
+        cui_fill_cancel(cw);
         medialib_plugin->free_item_tree(ml_source, cw->cached_tree);
         cw->cached_tree = NULL;
     }
@@ -561,10 +712,12 @@ void update_tree_data(cui_widget_t *cw) {
     // populated_through marker is what distinguishes "really empty" from
     // "previously filled with stale [All (0 X)] from an empty-tree first build" —
     // checking gtk_tree_model_get_iter_first alone would falsely skip the latter.
-    // We deliberately do not fire update_playlist_from_cui here; the pre-v1.2.4
-    // behavior copied the entire library into the viewer playlist on first init,
-    // which was slow and surprising. Selection-driven playlist population still
-    // happens through on_column_changed when the user clicks a row.
+    // We deliberately do not fire update_playlist_from_cui here on every
+    // rebuild; the one exception is the launch pre-fill (deferred_lib_update_cb,
+    // after the first scan — decided 2026-09-16, consciously reversing the
+    // v1.2.4 deferral so the viewer playlist tab works before any facet
+    // interaction). Selection-driven population still happens through
+    // on_column_changed when the user clicks a row.
     for (int i = populated_through + 1; i < cw->num_columns; i++) {
         populate_list_multi(cw->stores[i], i + 1, cw, i);
     }

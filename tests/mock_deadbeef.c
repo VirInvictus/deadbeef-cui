@@ -24,10 +24,25 @@ int  mock_plt_add_called;
 // plt_get_for_idx returns pointers into this table, so tests can compare
 // handles for identity and assert per-playlist effects.
 #define MOCK_MAX_PLTS 16
+#define MOCK_MAX_ITEMS 64
+
+// A copied play item. The first two fields mirror mock_track_t's layout so
+// pl_item_copy can read from either a tree leaf or another copy.
+typedef struct mock_playitem {
+    const char *title;
+    const char *artist;
+    int refc;
+    char *own_title;   // heap copies owned by this item (NULL until copied)
+    char *own_artist;
+} mock_playitem_t;
+
 typedef struct {
     char title[256];
     char marker[128];   // value of the CUI_VIEWER_MARKER meta ('' = unset)
     int cleared;        // set by mt_plt_clear
+    // inserted play items (the chunked fill's output); owned here
+    mock_playitem_t *items[MOCK_MAX_ITEMS];
+    int item_count;
 } mock_playlist_t;
 static mock_playlist_t g_plts[MOCK_MAX_PLTS];
 static int g_plts_count = 0;
@@ -105,8 +120,81 @@ static int mt_plt_get_title(ddb_playlist_t *plt, char *buffer, int bufsize) {
 }
 
 static void mt_plt_clear(ddb_playlist_t *plt) {
+    mock_playlist_t *p = (mock_playlist_t *)plt;
     mock_plt_clear_called++;
-    ((mock_playlist_t *)plt)->cleared = 1;
+    p->cleared = 1;
+    for (int i = 0; i < p->item_count; i++) {
+        free(p->items[i]->own_title);
+        free(p->items[i]->own_artist);
+        free(p->items[i]);
+    }
+    p->item_count = 0;
+}
+
+static DB_playItem_t *mt_plt_insert_item(ddb_playlist_t *plt, DB_playItem_t *after, DB_playItem_t *it) {
+    mock_playlist_t *p = (mock_playlist_t *)plt;
+    int pos = p->item_count;
+    if (after) {
+        for (int i = 0; i < p->item_count; i++) {
+            if ((DB_playItem_t *)p->items[i] == after) { pos = i + 1; break; }
+        }
+    }
+    if (p->item_count < MOCK_MAX_ITEMS) {
+        memmove(&p->items[pos + 1], &p->items[pos], (p->item_count - pos) * sizeof(mock_playitem_t *));
+        p->items[pos] = (mock_playitem_t *)it;
+        p->item_count++;
+    }
+    return it;
+}
+
+static int mt_plt_get_item_count(ddb_playlist_t *plt, int iter) {
+    (void)iter;
+    return ((mock_playlist_t *)plt)->item_count;
+}
+
+static void mt_plt_modified(ddb_playlist_t *plt) { (void)plt; }
+
+static int mt_sendmessage(uint32_t id, uintptr_t ctx, uint32_t p1, uint32_t p2) {
+    (void)id; (void)ctx; (void)p1; (void)p2;
+    return 0;
+}
+
+static DB_playItem_t *mt_plt_get_last(ddb_playlist_t *plt, int iter) {
+    (void)iter;
+    mock_playlist_t *p = (mock_playlist_t *)plt;
+    if (p->item_count == 0) return NULL;
+    return (DB_playItem_t *)p->items[p->item_count - 1];
+}
+
+// pl_item copies. src is a tree leaf (mock_track_t) or another copy — both
+// share the title/artist pointer prefix.
+static DB_playItem_t *mt_pl_item_alloc(void) {
+    mock_playitem_t *it = calloc(1, sizeof(mock_playitem_t));
+    it->refc = 1;
+    return (DB_playItem_t *)it;
+}
+
+static void mt_pl_item_copy(DB_playItem_t *dst, DB_playItem_t *src) {
+    mock_playitem_t *d = (mock_playitem_t *)dst;
+    mock_track_t *s = (mock_track_t *)src;
+    free(d->own_title);
+    free(d->own_artist);
+    d->own_title = strdup(s->title ? s->title : "");
+    d->own_artist = strdup(s->artist ? s->artist : "");
+    d->title = d->own_title;
+    d->artist = d->own_artist;
+}
+
+static void mt_pl_item_ref(DB_playItem_t *it) {
+    ((mock_playitem_t *)it)->refc++;
+}
+
+static void mt_pl_item_unref(DB_playItem_t *it) {
+    mock_playitem_t *p = (mock_playitem_t *)it;
+    p->refc--;
+    // Ownership of playlist-resident items rests with the playlist array
+    // (freed by mt_plt_clear / mock_reset), so this deliberately does not
+    // free at zero.
 }
 
 static const char *mt_plt_find_meta(ddb_playlist_t *plt, const char *key) {
@@ -120,6 +208,20 @@ static void mt_plt_replace_meta(ddb_playlist_t *plt, const char *key, const char
     mock_playlist_t *p = (mock_playlist_t *)plt;
     if (!p) return;
     if (strcmp(key, CUI_VIEWER_MARKER) == 0) snprintf(p->marker, sizeof(p->marker), "%s", value ? value : "");
+}
+
+static int mt_plt_set_curr_idx = -1;
+
+static void mt_plt_set_curr(ddb_playlist_t *plt) {
+    for (int i = 0; i < g_plts_count; i++) {
+        if ((ddb_playlist_t *)&g_plts[i] == plt) { mt_plt_set_curr_idx = i; return; }
+    }
+    mt_plt_set_curr_idx = -1;
+}
+
+static ddb_playlist_t *mt_plt_get_curr(void) {
+    if (mt_plt_set_curr_idx < 0 || mt_plt_set_curr_idx >= g_plts_count) return NULL;
+    return (ddb_playlist_t *)&g_plts[mt_plt_set_curr_idx];
 }
 
 static void mt_plt_unref(ddb_playlist_t *plt) {
@@ -188,6 +290,17 @@ void mock_deadbeef_install(void) {
     g_api.plt_clear = mt_plt_clear;
     g_api.plt_find_meta = mt_plt_find_meta;
     g_api.plt_replace_meta = mt_plt_replace_meta;
+    g_api.plt_insert_item = mt_plt_insert_item;
+    g_api.plt_get_item_count = mt_plt_get_item_count;
+    g_api.plt_modified = mt_plt_modified;
+    g_api.sendmessage = mt_sendmessage;
+    g_api.plt_get_last = mt_plt_get_last;
+    g_api.pl_item_alloc = mt_pl_item_alloc;
+    g_api.pl_item_copy = mt_pl_item_copy;
+    g_api.pl_item_ref = mt_pl_item_ref;
+    g_api.pl_item_unref = mt_pl_item_unref;
+    g_api.plt_set_curr = mt_plt_set_curr;
+    g_api.plt_get_curr = mt_plt_get_curr;
     g_api.plt_unref = mt_plt_unref;
 
     g_ml.tree_item_get_text = mt_tree_item_get_text;
@@ -222,6 +335,9 @@ void mock_gtkui_set_api_version(int major, int minor) {
 
 void mock_reset(void) {
     mock_scanner_state = 0;
+    for (int i = 0; i < g_plts_count; i++) {
+        mt_plt_clear((ddb_playlist_t *)&g_plts[i]);
+    }
     g_plts_count = 0;
     mock_plt_clear_called = 0;
     mock_plt_add_called = 0;

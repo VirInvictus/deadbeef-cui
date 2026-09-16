@@ -83,11 +83,31 @@ typedef struct {
     ddb_medialib_item_t *cached_tree;
     GHashTable *track_counts_cache;
 
+    // Chunked viewer fill (update_playlist_from_cui's async mode). The fill
+    // walks cached_tree on the idle queue, ~fill_budget_us of work per tick,
+    // so whole-library mirrors don't freeze the UI. Invariants (CLAUDE.md
+    // §6.15): the frames hold pointers INTO cached_tree, so every
+    // cached_tree free/replace must cui_fill_cancel first; a new fill bumps
+    // fill_generation and the running chunk self-aborts on mismatch; only
+    // fill completion clears playlist_dirty.
+    guint fill_idle_id;
+    int fill_generation;
+    GPtrArray *fill_stack;          // of cui_fill_frame_t* (the DFS stack)
+    DB_playItem_t *fill_after;      // our ref'd insert cursor (owned)
+    ddb_playlist_t *fill_plt;       // the fill's target playlist (our ref)
+    int fill_inserted;              // tracks inserted so far (debug/telemetry)
+    int fill_budget_us;             // per-chunk work budget (tests set it to 0)
+
     int last_ml_modification_idx;
     guint changed_timeout_id;
     guint lib_update_timeout_id;
     int changed_col_idx;
     int initial_sync_done;
+    // Set after the first library build feeds the launch pre-fill (the
+    // viewer is filled with the whole library once, so its playlist tab
+    // works before any facet interaction; Brandon decision 2026-09-16,
+    // consciously reversing the v1.2.4 deferral).
+    int prefill_done;
     // Set when the viewer playlist no longer matches the current selection/
     // search/library state; cleared once update_playlist_from_cui rebuilds it.
     // Lets activate_row skip a redundant full-library rebuild on every [All]

@@ -336,6 +336,20 @@ report disagree, the report wins; the corrections are already applied below.
       (DONE 2026-09-15, commit 4aae8ae: all recast with real punctuation; the
       audit block's own severity markers keep the audit's verbatim formatting.)
 
+### Release v1.3.7 (2026-09-16, SHIPPED)
+
+Smoothness + launch-state release, both from Brandon's live reports after the
+v1.3.6 fix: the whole-library mirror (the [All] transition) ran as a single
+1.15 s main-thread freeze and is now a cancellable ~75 ms-chunked idle fill
+(measured: the [All] cascade dropped from 1150 ms to 83 ms, fill completes in
+the background); and the viewer playlist is pre-filled with the whole library
+once after the first scan (chunked), so its tab double-click works from launch
+(consciously reversing the v1.2.4 startup deferral; Brandon-decided). The
+fill's cancellation points are invariants now: CLAUDE.md §6.15. Three headless
+/cui/fill/* tests lock the contract. Also new: launch/[All] timing
+instrumentation on the CUI_DEBUG channel (the same env-gated debug log used
+for the other diagnostics).
+
 ### Release v1.3.6 (2026-09-16, SHIPPED)
 
 Post-blitz crash fix, caught by Brandon's own double-click on the live
