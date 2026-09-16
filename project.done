@@ -1,7 +1,8 @@
-deadbeef-cui: FINAL BLITZ complete (2026-09-15)
+deadbeef-cui: FINAL BLITZ complete (2026-09-15; post-close fix v1.3.6 on 2026-09-16)
 
-Shipped: v1.3.5 (tag v1.3.5 at e2f4efa; Release with the verbatim
-patchnotes body and the CI-built ddb_misc_cui_GTK3.so attached; CI green
+Shipped: v1.3.5 (tag at e2f4efa) and the post-close crash fix v1.3.6
+(tag at 6ddb6d7, b4d834f's marker-lookup NULL-unref guard; Releases
+carry the verbatim patchnotes body and the CI-built .so; CI green
 throughout). Content: the release.yml notes flag (the audit's one HIGH),
 the stale-cache/callback bug pair, the hidden-marker viewer identity
 (data-loss fix), the queued v1.3.5 hygiene (shutting_down atomics, guard

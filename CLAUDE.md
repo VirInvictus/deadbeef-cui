@@ -432,7 +432,10 @@ root (SCRIPTABLE_FLAG_IS_LIST, name="Facets")
   manual `gh release edit --title`). The workflow carries both corrections.
   A workflow re-run evaluates the file at the TAG ref, not main: fixing the
   workflow on main cannot resurrect a failed tag run; create that Release by
-  hand with the CI artifact (the plugin-update rule's fallback).
+  hand with the CI artifact (the plugin-update rule's fallback). The
+  `--verify-tag`/`--notes-from-tag` git calls also need a repository, so the
+  release job must `actions/checkout` the tag ref (learned cutting v1.3.6:
+  the artifact-only job failed with "not a git repository").
 - **Tagged releases ship the binary (2026-09-13).** From v1.3.4 onward, every release tag carries the rebuilt plugin binary as a GitHub Release asset on a green release commit. `.github/workflows/release.yml` (tag-triggered) builds the `.so` from the tag, runs ctest, and creates the Release with the CI-built binary attached; the Release body is the tag's annotation, which the house tagging procedure makes the verbatim patchnotes entry. Constraint: GitHub evaluates workflows at the pushed ref, so the automation only fires for tags cut at commits that contain `release.yml` (v1.3.4 predates it; its asset was attached manually per the plugin-update rule's fallback). For any tag the workflow misses, attach the locally built binary manually after CI is green; never skip the asset.
 
 ---
