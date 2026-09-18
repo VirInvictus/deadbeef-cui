@@ -65,11 +65,18 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      # gh's --verify-tag / --notes-from-tag shell out to git, which needs a
+      # gh's --verify-tag / notes extraction shell out to git, which needs a
       # repository: without a checkout the job fails with "not a git
-      # repository" (learned cutting v1.3.6). On a tag-triggered run this
-      # checks out the tag ref, whose annotation IS the release body.
+      # repository" (learned cutting v1.3.6). fetch-depth 0 + fetch-tags are
+      # load-bearing too (learned cutting v2.0.0): the default shallow
+      # --no-tags fetch points refs/tags/vX at the commit SHA, so the
+      # annotated tag object never arrives, git tag -l falls back to the
+      # commit message, and the patchnotes-heading guard correctly refuses
+      # to publish it.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Download plugin binary
         uses: actions/download-artifact@v4

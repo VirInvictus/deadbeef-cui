@@ -460,9 +460,14 @@ root (SCRIPTABLE_FLAG_IS_LIST, name="Facets")
   `gh release edit --notes-file`): FIXED 2026-09-18 — release.yml now
   extracts the annotation itself (`git tag -l --format='%(contents)'` into
   `--notes-file`, with a patchnotes-heading guard), effective for tags cut
-  after that commit. Keep the old ritual anyway: after every workflow-made
-  release, VERIFY the body starts with the patchnotes heading and edit if
-  not.
+  after that commit. The v2.0.0 run then caught a second lesson: the
+  release job's checkout needs `fetch-depth: 0` + `fetch-tags: true` or
+  the shallow `--no-tags` fetch points the tag ref at the commit SHA, the
+  annotation never arrives, and the guard (correctly) blocks publication;
+  that tag's Release was created by hand from the green CI artifact, the
+  documented fallback. Keep the old ritual anyway: after every
+  workflow-made release, VERIFY the body starts with the patchnotes
+  heading and edit if not.
 - **Tagged releases ship the binary (2026-09-13).** From v1.3.4 onward, every release tag carries the rebuilt plugin binary as a GitHub Release asset on a green release commit. `.github/workflows/release.yml` (tag-triggered) builds the `.so` from the tag, runs ctest, and creates the Release with the CI-built binary attached; the Release body is the tag's annotation, which the house tagging procedure makes the verbatim patchnotes entry. Constraint: GitHub evaluates workflows at the pushed ref, so the automation only fires for tags cut at commits that contain `release.yml` (v1.3.4 predates it; its asset was attached manually per the plugin-update rule's fallback). For any tag the workflow misses, attach the locally built binary manually after CI is green; never skip the asset.
 
 ---
