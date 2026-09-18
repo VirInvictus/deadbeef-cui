@@ -2,6 +2,33 @@
 #include "cui_data.h"
 #include "cui_scriptable.h"
 
+// Both logging helpers are format-checked (attributes in cui_globals.h) —
+// the macro-based CUI_DEBUG they replace had no compile-time checking. They
+// live in this TU (not main.c) so the test suite links them without main.c.
+void cui_log(uint32_t layers, const char *fmt, ...) {
+    if (!deadbeef_api || !deadbeef_api->vlog_detailed) return;
+    va_list ap;
+    va_start(ap, fmt);
+    deadbeef_api->vlog_detailed(&cui_plugin.plugin, layers, fmt, ap);
+    va_end(ap);
+}
+
+void cui_debug_log(const char *fmt, ...) {
+    // Lazy one-shot env check; a benign race if two threads initialize it
+    // concurrently (both compute the same value).
+    static int enabled = -1;
+    if (enabled < 0) {
+        enabled = getenv("DEADBEEF_CUI_DEBUG") != NULL;
+    }
+    if (!enabled) return;
+    va_list ap;
+    va_start(ap, fmt);
+    fprintf(stderr, "[deadbeef-cui debug] ");
+    vfprintf(stderr, fmt, ap);
+    fprintf(stderr, "\n");
+    va_end(ap);
+}
+
 static int global_key_connected = 0;
 static gulong mainwin_key_handler_id = 0;
 
@@ -913,7 +940,10 @@ static void cui_init(ddb_gtkui_widget_t *w) {
                 (ddb_mediasource_source_t * (*)(void))dlsym(gtkui_handle, "gtkui_medialib_get_source");
             if (get_shared_source) {
                 ml_source = get_shared_source();
-                CUI_DEBUG("Using shared medialib source from GTKUI");
+                if (ml_source) {
+                    CUI_DEBUG("Using shared medialib source from GTKUI");
+                    cui_log(DDB_LOG_LAYER_INFO, "deadbeef-cui: sharing the GTKUI medialib source.\n");
+                }
             }
             dlclose(gtkui_handle);
         }
@@ -923,6 +953,7 @@ static void cui_init(ddb_gtkui_widget_t *w) {
             ml_source = medialib_plugin->create_source(CUI_SOURCE_PATH);
             if (ml_source) {
                 owns_ml_source = 1;
+                cui_log(DDB_LOG_LAYER_INFO, "deadbeef-cui: created its own medialib source ('%s'); scanning.\n", CUI_SOURCE_PATH);
                 medialib_plugin->refresh(ml_source);
             }
         }

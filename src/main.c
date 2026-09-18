@@ -47,18 +47,41 @@ int cui_start(void) {
 
     gtkui_plugin = (ddb_gtkui_t *)deadbeef_api->plug_get_for_id(DDB_GTKUI_PLUGIN_ID);
     if (!gtkui_plugin) {
-        fprintf(stderr, "deadbeef-cui: GTK UI plugin not found!\n");
+        cui_log(DDB_LOG_LAYER_DEFAULT, "deadbeef-cui: GTK UI plugin not found; Facet Browser disabled.\n");
         return -1;
     }
 
     medialib_plugin = (DB_mediasource_t *)deadbeef_api->plug_get_for_id("medialib");
-    if (!medialib_plugin) {
-        fprintf(stderr, "deadbeef-cui: medialib plugin not found or unsupported!\n");
-    }
 
     gtkui_plugin->w_reg_widget("Facet Browser (CUI) v1.3.8", DDB_WF_SUPPORTS_EXTENDED_API, cui_create_widget, "cui", NULL);
-    fprintf(stderr, "deadbeef-cui: Facet Browser v1.3.8 registered successfully.\n");
+    cui_log(DDB_LOG_LAYER_INFO, "deadbeef-cui: Facet Browser v1.3.8 registered successfully.\n");
 
+    return 0;
+}
+
+// Runs in plug_connect_all: after every plugin loaded and started, before
+// the GUI starts and creates widgets. Diagnostics only — the dependency
+// state report lives here, while cui_start keeps the hard gtkui gate it
+// needs to register. This NEVER returns failure: our start() already ran
+// (the widget is registered), and plug_connect_all reacts to a negative
+// return by stop+dlclose+remove, which would tear down the plugin out from
+// under live GTK objects.
+static int cui_connect(void) {
+    if (gtkui_plugin) {
+        int vmajor = gtkui_plugin->gui.plugin.version_major;
+        int vminor = gtkui_plugin->gui.plugin.version_minor;
+        cui_log(DDB_LOG_LAYER_INFO, "deadbeef-cui: gtkui API %d.%d detected.\n", vmajor, vminor);
+        if (vmajor != 2) {
+            cui_log(DDB_LOG_LAYER_DEFAULT,
+                    "deadbeef-cui: unsupported gtkui API %d.%d (expected 2.x); the Facet Browser may not function.\n",
+                    vmajor, vminor);
+        }
+    }
+    if (medialib_plugin) {
+        cui_log(DDB_LOG_LAYER_INFO, "deadbeef-cui: medialib plugin detected.\n");
+    } else {
+        cui_log(DDB_LOG_LAYER_DEFAULT, "deadbeef-cui: medialib plugin not found; the Facet Browser will render empty.\n");
+    }
     return 0;
 }
 
@@ -112,10 +135,11 @@ static DB_plugin_action_t *cui_get_actions(DB_playItem_t *it) {
     return &search_action;
 }
 
-static DB_misc_t plugin = {
+DB_misc_t cui_plugin = {
     .plugin.type = DB_PLUGIN_MISC,
     .plugin.api_vmajor = 1,
     .plugin.api_vminor = 0,
+    .plugin.flags = DDB_PLUGIN_FLAG_LOGGING,
     .plugin.version_major = 1,
     .plugin.version_minor = 3,
     .plugin.id = "cui",
@@ -125,11 +149,18 @@ static DB_misc_t plugin = {
     .plugin.website = "https://github.com/VirInvictus/deadbeef-cui",
     .plugin.start = cui_start,
     .plugin.stop = cui_stop,
+    .plugin.connect = cui_connect,
     .plugin.message = cui_message,
     .plugin.get_actions = cui_get_actions,
 };
 
+// The one exported symbol: DeaDBeeF derives the entry-point name from the
+// .so filename, and C_VISIBILITY_PRESET hidden (CMakeLists.txt) keeps every
+// other global out of the dynamic symbol table.
+#if defined(__GNUC__)
+__attribute__((visibility("default")))
+#endif
 DB_plugin_t *ddb_misc_cui_GTK3_load(DB_functions_t *api) {
     deadbeef_api = api;
-    return (DB_plugin_t *)&plugin;
+    return (DB_plugin_t *)&cui_plugin;
 }

@@ -20,7 +20,12 @@ add_library(cui SHARED
 # PREFIX "" + OUTPUT_NAME: the build emits ddb_misc_cui_GTK3.so directly, the
 # filename DeaDBeeF requires (the _load entry-point symbol is derived from the
 # plugin filename) and the name the plugin-builder manifests list in "out".
-set_target_properties(cui PROPERTIES PREFIX "" OUTPUT_NAME "ddb_misc_cui_GTK3")
+# C_VISIBILITY_PRESET hidden: exactly one symbol (ddb_misc_cui_GTK3_load,
+# marked default-visibility in main.c) is exported; every internal global
+# stays out of the player's dynamic symbol space. Verified with
+# nm -D build/ddb_misc_cui_GTK3.so. Applied to the plugin target only — the
+# test executable defines its own main.c globals in the mock.
+set_target_properties(cui PROPERTIES PREFIX "" OUTPUT_NAME "ddb_misc_cui_GTK3" C_VISIBILITY_PRESET hidden)
 
 target_include_directories(cui PRIVATE ${GTK3_INCLUDE_DIRS})
 target_link_libraries(cui PRIVATE ${GTK3_LIBRARIES} ${CMAKE_DL_LIBS})

@@ -7,7 +7,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 #include <dlfcn.h>
+
+// Compile-time API floor, matching the README's documented requirement
+// (DeaDBeeF 1.9.6+). A build against older deadbeef-devel headers fails here
+// instead of producing a plugin that misbehaves at runtime.
+#if DDB_API_LEVEL < 17
+#error "deadbeef-cui requires DeaDBeeF plugin API level 17+ (DeaDBeeF 1.9.6+); the installed deadbeef-devel headers are too old."
+#endif
 
 // GTK4 forward-compat shims. KNOWN GAPS (a GTK4 build of this plugin has
 // never been made; see CLAUDE.md §10.10 and the README GTK4 note): GdkEventButton
@@ -43,12 +51,17 @@
 #define MAX_COLUMNS 5
 #define CUI_SOURCE_PATH "cui"
 
-#define CUI_DEBUG(...) do { \
-    if (getenv("DEADBEEF_CUI_DEBUG")) { \
-        fprintf(stderr, "[deadbeef-cui debug] " __VA_ARGS__); \
-        fprintf(stderr, "\n"); \
-    } \
-} while(0)
+// Player-integrated diagnostics: routed through DeaDBeeF's logger, so lines
+// land in the player's log viewer AND on stderr (upstream logger.c writes
+// every line to the console). Requires DDB_PLUGIN_FLAG_LOGGING on the plugin
+// or the player drops the message (_is_log_visible). Sparse by design —
+// load, registration, dependency, and source-acquisition events only; the
+// chatty per-event tracing stays on the env-gated CUI_DEBUG channel.
+// Layers: DDB_LOG_LAYER_DEFAULT for problems, DDB_LOG_LAYER_INFO for state.
+void cui_log(uint32_t layers, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+void cui_debug_log(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+
+#define CUI_DEBUG(...) cui_debug_log(__VA_ARGS__)
 
 // Global state declarations
 extern DB_functions_t *deadbeef_api;
@@ -58,6 +71,10 @@ extern ddb_mediasource_source_t *ml_source;
 extern int shutting_down;
 extern int owns_ml_source;
 extern int ml_modification_idx;
+
+// The plugin definition (main.c; a dummy twin lives in the test mock so the
+// logging helpers link in the suite).
+extern DB_misc_t cui_plugin;
 
 typedef struct {
     ddb_gtkui_widget_t base;

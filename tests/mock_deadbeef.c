@@ -17,6 +17,10 @@ int ml_modification_idx = 1;
 GList *all_cui_widgets;
 int config_change_pending;
 
+// Twin of main.c's plugin definition: cui_log (cui_widget.c) references
+// &cui_plugin.plugin; the mock's vlog_detailed is NULL so it is never read.
+DB_misc_t cui_plugin;
+
 char mock_last_plt_add_title[256];
 int  mock_plt_add_called;
 

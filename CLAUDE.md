@@ -37,9 +37,9 @@ Five files. Treat each module's responsibility as fixed unless you're explicitly
 
 | File | Lines | Responsibility |
 |---|---|---|
-| `src/main.c` | ~130 | Plugin entry points (`cui_start`, `cui_stop`, `cui_message`), the `DB_misc_t` plugin definition, the `Search Facets` action, global symbol exports. **Do not** put UI or medialib logic here. |
+| `src/main.c` | ~130 | Plugin entry points (`cui_start`, `cui_stop`, `cui_connect` dependency diagnostics, `cui_message`), the `DB_misc_t` plugin definition (`cui_plugin`, extern: the logging helpers take its address), the `Search Facets` action, global symbol exports. **Do not** put UI or medialib logic here. |
 | `src/cui_globals.h` | ~100 | The `cui_widget_t` struct, GTK4 compat macros, `MAX_COLUMNS=5`, `CUI_SOURCE_PATH="cui"`, `CUI_DEBUG()` env-gated logging, all `extern` globals. Header included by every TU. |
-| `src/cui_widget.c` / `.h` | ~1300 | GTK layer: `cui_create_widget`, `rebuild_columns`, key handlers, context menu (`on_tree_button_press`), drag-out source, config dialog, the medialib listener callbacks (`ml_listener_cb` → `g_idle_add` → `ml_event_idle_cb` → debounced `deferred_lib_update_cb`), serialize/deserialize for `ddb_gtkui_widget_extended_api_t`. |
+| `src/cui_widget.c` / `.h` | ~1300 | GTK layer: `cui_create_widget`, `rebuild_columns`, key handlers, context menu (`on_tree_button_press`), drag-out source, config dialog, the medialib listener callbacks (`ml_listener_cb` → `g_idle_add` → `ml_event_idle_cb` → debounced `deferred_lib_update_cb`), serialize/deserialize for `ddb_gtkui_widget_extended_api_t`, and the `cui_log`/`cui_debug_log` helpers (they live here, not main.c, so the test suite links them without main.c). |
 | `src/cui_data.c` / `.h` | ~580 | Tree → list pipeline: `update_tree_data`, `aggregate_recursive_multi`, `populate_list_multi`, `count_tracks_recursive` (memoized via `track_counts_cache`), `add_tracks_recursive_multi`, `track_matches_search` (uses `strcasestr`; do not regress this back to `g_utf8_strdown`), `get_or_create_viewer_playlist`. The `[All (...)]` row is synthesised here. |
 | `src/cui_scriptable.c` / `.h` | ~110 / 43 | A **manually-mirrored** copy of the private `scriptableItem_t` layout from `.deadbeef/shared/scriptable/scriptable.c`. We allocate/populate it ourselves and hand it to `medialib_plugin->create_item_tree`. See §6.2 for why this exists. |
 
@@ -198,6 +198,9 @@ The points where this plugin meets DeaDBeeF. Use this table as the lookup index 
 | `medialib_plugin->tree_item_get_text/_track/_next/_children` | deadbeef.h:2486-2495 | The tree is immutable for the caller's lifetime. Don't free children; `free_item_tree` walks the whole thing. |
 | `deadbeef_api->plt_*` | deadbeef.h ~970-1100 | Standard playlist API. Always wrap mutations with `pl_lock`/`pl_unlock` (we do in `populate_playlist_from_cui`). `plt_get_*` returns refcounted handles; pair with `plt_unref`. |
 | `deadbeef_api->plt_find_meta` | deadbeef.h:1029 | Viewer-marker reads (`_cui_viewer`, see §6.14). **Contract: hold `pl_lock` around the call** (deadbeef.h:1028 says so explicitly); the returned pointer is only valid while held. |
+| `deadbeef_api->vlog_detailed` | deadbeef.h:1580 | Player-integrated logging (`cui_log`, cui_widget.c). **Requires `DDB_PLUGIN_FLAG_LOGGING` on `cui_plugin`** or the player drops the message (`_is_log_visible`, upstream logger.c). Every line also reaches stderr (logger.c `console_write`), which is what keeps the README's terminal verification working. Null-check `deadbeef_api->vlog_detailed` before use (the test mock has none). |
+| `cui_plugin.connect` (`cui_connect`) | deadbeef.h:1999 | Dependency diagnostics, runs in `plug_connect_all` after all plugins started, before the GUI creates widgets. **Never return < 0**: the loader reacts with stop+dlclose+remove, and our widget is already registered by then (see §2/main.c). The hard gtkui gate stays in `cui_start`. |
+| `CMAKE_C_VISIBILITY_PRESET hidden` | CMakeLists.txt | Only `ddb_misc_cui_GTK3_load` (marked `visibility("default")` in main.c) is exported. **Verify with `nm -D --defined-only`: exactly one symbol.** Applied to the `cui` target only; the test executable defines main.c's globals in its mock. |
 | `deadbeef_api->plt_replace_meta` | deadbeef.h:1018 | Sets the `_cui_viewer` ownership marker (add-or-replace). Locks internally (upstream `pltmeta.c`), so it must be called OUTSIDE `pl_lock`. |
 | `deadbeef_api->pl_item_alloc/copy/ref/unref/insert_item` | deadbeef.h ~1130-1200 | We **copy** tracks into the viewer playlist rather than referencing the medialib's. Copies are cheap; sharing tracks across playlists has subtle interaction issues with the playqueue. |
 | `deadbeef_api->conf_get_str_fast` | deadbeef.h:1331 | **Not thread-safe.** Wrap in `conf_lock`/`conf_unlock`. We do for the bootstrap defaults read in `cui_create_widget`. |
@@ -219,7 +222,7 @@ cmake --build build
 
 Output: `build/ddb_misc_cui_GTK3.so`. The CMake target is `cui` with `OUTPUT_NAME ddb_misc_cui_GTK3` and `PREFIX ""`, so the build emits the final plugin filename directly: DeaDBeeF derives the `_load` entry-point symbol from the plugin filename, and the builder manifests list the final name in `out`.
 
-The build is `-Wall -Wextra -fPIC`, C11. There's currently **no warning policy**: be careful when adding code that the warning count doesn't grow. Don't slap `-Werror` on without a sweep first; the existing code has a few `(void)` casts but is otherwise clean.
+The build is `-Wall -Wextra -fPIC`, C11, with `C_VISIBILITY_PRESET hidden` on the plugin target: `nm -D --defined-only build/ddb_misc_cui_GTK3.so` must show exactly one symbol, the `_load` entry point (§4). There's currently **no warning policy**: be careful when adding code that the warning count doesn't grow. Don't slap `-Werror` on without a sweep first; the existing code has a few `(void)` casts but is otherwise clean. `cui_globals.h` enforces `DDB_API_LEVEL >= 17` at compile time (the README's documented DeaDBeeF 1.9.6+ floor).
 
 ### 5.2 Install
 
