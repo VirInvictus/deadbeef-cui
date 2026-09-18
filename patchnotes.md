@@ -1,5 +1,52 @@
 # deadbeef-cui — Patch Notes
 
+## v2.0.0
+
+---
+
+### Improvements
+
+**Diagnostics now flow into DeaDBeeF's own log.** The plugin sets
+`DDB_PLUGIN_FLAG_LOGGING` and reports through the player's logger, so its
+lines appear in the log viewer and on the console: registration, the
+detected gtkui API level, medialib presence, and whether the facet browser
+shares GTKUI's medialib source or created its own. Problems like a missing
+medialib plugin are now diagnosed where users actually look instead of a
+stderr that is only visible when launched from a terminal. The verbose
+per-event tracing stays on the `DEADBEEF_CUI_DEBUG` environment channel,
+unchanged, and both log helpers are compile-time format-checked. Files:
+`src/main.c`, `src/cui_widget.c`, `src/cui_globals.h`.
+
+**Exactly one symbol is exported.** The plugin binary is built with hidden
+visibility and marks only `ddb_misc_cui_GTK3_load` as exported (verified
+with `nm -D`), keeping internal globals out of the player's dynamic symbol
+space; this is the same discipline the ecosystem's best-maintained plugins
+use. A compile-time `DDB_API_LEVEL` guard now fails the build against
+deadbeef-devel headers older than the documented API 17 floor (DeaDBeeF
+1.9.6+) instead of producing a plugin that misbehaves at runtime. Files:
+`CMakeLists.txt`, `src/main.c`, `src/cui_globals.h`.
+
+**Dependency state is reported at connect time.** The plugin implements
+the `connect()` hook: after all plugins start and before the GUI builds
+its layout, it logs the gtkui API version (warning when it is not 2.x) and
+medialib availability. It deliberately never returns failure there, since
+DeaDBeeF's loader deactivates plugins whose connect fails and our widget
+is already registered by that point. File: `src/main.c`.
+
+### Testing
+
+**Live-verified end to end before release.** On the development machine
+(2026-09-18): a fresh launch shows the full log sequence including the
+shared-source acquisition line; a file added to the watched folder and
+picked up by Sync library re-mirrored the viewer playlist from 10812 to
+10813 tracks with no facet interaction and no current-playlist steal, and
+removing the file and syncing again returned the mirror to 10812; the
+26-test suite passes plain and under ASan/UBSan; `nm -D` shows exactly one
+exported symbol. This release also closed the one verification gap left
+open at v1.3.8 (the add/remove library-change cycle had never been driven
+live). The 2.0 version marks the modernization batch adopted from an audit
+of eight listed third-party plugins; behavior is otherwise unchanged.
+
 ## v1.3.8
 
 ---

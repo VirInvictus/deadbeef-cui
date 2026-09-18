@@ -1,6 +1,6 @@
 # deadbeef-cui: Application Specification
 
-**Version:** 1.3.8  
+**Version:** 2.0.0  
 **Language:** C (C11)  
 **Dependencies:** DeaDBeeF Plugin API (level 17+, i.e. DeaDBeeF 1.9.6 or newer), GTK3 (with partial GTK4 forward-compat shims; GTK3 is the only compiled target)  
 **Platform:** Linux x86_64 (pre-built binary requires glibc ≥ 2.34; source builds work on any glibc on the host system)  

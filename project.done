@@ -23,8 +23,10 @@ Reopen conditions (none agent-executable):
   Brandon's session; then the submission PR needs his credentials and
   description. The in-widget hint and this release were shaped to make
   that submission strong.
-- v2.0.0 framing: deferred until a feature warrants it (decided
-  2026-09-12, unchanged).
+- v2.0.0 SHIPPED 2026-09-18: the professionalism batch from the
+  eight-plugin ecosystem audit (player-integrated logging, single-symbol
+  export + API guard, connect() diagnostics), live-verified on the
+  development machine before release.
 - Parked features, in the audit's rank order: MAX_COLUMNS lift (or spec
   softening), pane-width persistence via exapi keyvalues, search album
   field, gtkScriptable column-config editor, Album Art View, GTK4 port
