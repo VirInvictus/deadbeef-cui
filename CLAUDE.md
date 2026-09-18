@@ -449,13 +449,17 @@ root (SCRIPTABLE_FLAG_IS_LIST, name="Facets")
   A workflow re-run evaluates the file at the TAG ref, not main: fixing the
   workflow on main cannot resurrect a failed tag run; create that Release by
   hand with the CI artifact (the plugin-update rule's fallback). The
-  `--verify-tag`/`--notes-from-tag` git calls also need a repository, so the
+  `--verify-tag`'s git calls also need a repository, so the
   release job must `actions/checkout` the tag ref (learned cutting v1.3.6:
-  the artifact-only job failed with "not a git repository"). Even then,
+  the artifact-only job failed with "not a git repository"). And
   `--notes-from-tag` took the tag's COMMIT MESSAGE, not the annotation
-  (v1.3.7's release body had to be corrected with
-  `gh release edit --notes-file` afterward): after every workflow-made
-  release, VERIFY the body starts with the patchnotes heading and edit if not.
+  (v1.3.7 AND v1.3.8 both shipped wrong bodies and needed
+  `gh release edit --notes-file`): FIXED 2026-09-18 — release.yml now
+  extracts the annotation itself (`git tag -l --format='%(contents)'` into
+  `--notes-file`, with a patchnotes-heading guard), effective for tags cut
+  after that commit. Keep the old ritual anyway: after every workflow-made
+  release, VERIFY the body starts with the patchnotes heading and edit if
+  not.
 - **Tagged releases ship the binary (2026-09-13).** From v1.3.4 onward, every release tag carries the rebuilt plugin binary as a GitHub Release asset on a green release commit. `.github/workflows/release.yml` (tag-triggered) builds the `.so` from the tag, runs ctest, and creates the Release with the CI-built binary attached; the Release body is the tag's annotation, which the house tagging procedure makes the verbatim patchnotes entry. Constraint: GitHub evaluates workflows at the pushed ref, so the automation only fires for tags cut at commits that contain `release.yml` (v1.3.4 predates it; its asset was attached manually per the plugin-update rule's fallback). For any tag the workflow misses, attach the locally built binary manually after CI is green; never skip the asset.
 
 ---

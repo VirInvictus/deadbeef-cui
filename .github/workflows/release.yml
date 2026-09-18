@@ -80,11 +80,22 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # No explicit --repo: this gh release version rejects
-          # --notes-from-tag together with --repo, and gh derives the
-          # repository from GITHUB_REPOSITORY anyway.
+          # No explicit --repo: gh derives the repository from
+          # GITHUB_REPOSITORY.
+          #
+          # Notes come from the tag annotation extracted by git, not gh's
+          # --notes-from-tag: that flag resolved the COMMIT message on this
+          # runner (observed on v1.3.7 and v1.3.8; each Release body needed
+          # a manual gh release edit afterward). The house tagging procedure
+          # makes the annotation the verbatim patchnotes entry; the heading
+          # check refuses to publish anything thinner.
+          git tag -l --format='%(contents)' "${GITHUB_REF_NAME}" > release-notes.md
+          head -1 release-notes.md | grep -q '^## v' || {
+            echo "release notes do not start with a patchnotes heading; refusing to publish" >&2
+            exit 1
+          }
           gh release create "${GITHUB_REF_NAME}" \
             --title "${GITHUB_REF_NAME}" \
             --verify-tag \
-            --notes-from-tag \
+            --notes-file release-notes.md \
             ddb_misc_cui_GTK3.so
