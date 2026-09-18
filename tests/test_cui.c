@@ -583,6 +583,11 @@ static void test_modification_index_invalidation(void) {
     g_object_unref(cw->stores[0]);
     my_scriptable_free((scriptableItem_t *)cw->my_preset);
     g_hash_table_destroy(cw->track_counts_cache);
+    // update_tree_data now arms a chunked refill at the end of every real
+    // rebuild; cancel it or the pending idle fires on freed memory during a
+    // later test's drain (the §6.3 guards compare pointers, but
+    // cui_fill_cancel dereferences cw).
+    cui_fill_cancel(cw);
     for (int i = 0; i < MAX_COLUMNS; i++) { g_free(cw->titles[i]); g_free(cw->formats[i]); }
     mock_node_free(tree);
     g_free(cw);
@@ -652,17 +657,26 @@ static int drain_idle_chunks(int max) {
 
 // A synthetic root above `groups` facet groups of `leaves_per_group` leaves —
 // same shape update_tree_data caches (root -> facets -> tracks).
+static const char *fill_group_label(int g) {
+    // Literals, not printf-built: a node's ->text must stay readable for tests
+    // that aggregate node text. The previous version g_free'd its
+    // g_strdup_printf'd labels right after building the nodes, so any later
+    // text read was a use-after-free (invisible to the fill-only tests, which
+    // never read text; caught by ASan once a rebuild test aggregated labels).
+    static const char *labels[] = { "G0", "G1", "G2", "G3", "G4", "G5", "G6", "G7" };
+    g_assert_cmpint(g, >=, 0);
+    g_assert_cmpint(g, <, (int)G_N_ELEMENTS(labels));
+    return labels[g];
+}
+
 static mock_node_t *fill_test_tree(int groups, int leaves_per_group) {
     mock_node_t *groups_list = NULL;
     for (int g = groups - 1; g >= 0; g--) {
-        char *label = g_strdup_printf("G%d", g);
         mock_node_t *leaves = NULL;
         for (int l = leaves_per_group - 1; l >= 0; l--) {
             leaves = mock_leaf("t", "a", leaves);
         }
-        mock_node_t *group = mock_group(label, leaves, groups_list);
-        g_free(label); // mock_group doesn't copy; the label is ours to free
-        groups_list = group;
+        groups_list = mock_group(fill_group_label(g), leaves, groups_list);
     }
     return mock_group(NULL, groups_list, NULL);
 }
@@ -680,7 +694,7 @@ static void test_fill_chunked_completes(void) {
     // as cui_init does in production.
     all_cui_widgets = g_list_append(all_cui_widgets, cw);
 
-    update_playlist_from_cui(cw, FALSE);
+    update_playlist_from_cui(cw, FALSE, FALSE);
     g_assert_nonnull(cw->fill_stack);           // fill in flight
     g_assert_cmpint(cw->playlist_dirty, ==, 1); // dirty until completion
 
@@ -719,7 +733,7 @@ static void test_fill_cancel_on_tree_free(void) {
     cw->playlist_dirty = 1;
 
     all_cui_widgets = g_list_append(all_cui_widgets, cw);
-    update_playlist_from_cui(cw, FALSE);
+    update_playlist_from_cui(cw, FALSE, FALSE);
     g_assert_nonnull(cw->fill_stack);
 
     cw->cached_tree = NULL;
@@ -748,10 +762,10 @@ static void test_fill_sync_supersedes(void) {
     cw->playlist_dirty = 1;
 
     all_cui_widgets = g_list_append(all_cui_widgets, cw);
-    update_playlist_from_cui(cw, FALSE);
+    update_playlist_from_cui(cw, FALSE, FALSE);
     // A synchronous fill (activate_row's path) supersedes the in-flight one
     // and completes immediately.
-    update_playlist_from_cui(cw, TRUE);
+    update_playlist_from_cui(cw, TRUE, TRUE);
     ddb_playlist_t *plt = deadbeef_api->plt_get_for_idx(0);
     g_assert_cmpint(deadbeef_api->plt_get_item_count(plt, PL_MAIN), ==, 10);
     g_assert_null(cw->fill_stack);
@@ -764,6 +778,137 @@ static void test_fill_sync_supersedes(void) {
     mock_set_item_tree(NULL);
     deadbeef_api->plt_unref(plt);
     mock_node_free(tree);
+    g_free(cw->autoplaylist_name);
+    all_cui_widgets = g_list_remove(all_cui_widgets, cw);
+    g_free(cw);
+}
+
+// ---- fix: rebuild-driven refills never steal the current playlist ---------
+//
+// update_playlist_from_cui used to plt_set_curr the viewer unconditionally.
+// Correct for interaction fills (a facet click makes the viewer the playing
+// context), wrong for programmatic ones: v1.3.7's launch pre-fill switched
+// the user's restored current playlist to the viewer on every startup. The
+// make_current parameter reserves the switch for interaction paths; the
+// rebuild-driven refill in update_tree_data passes FALSE. Headless: only
+// mock playlist state is involved.
+
+static void test_fill_no_steal_on_programmatic_refill(void) {
+    cui_widget_t *cw = fresh_widget();
+    cw->autoplaylist_name = g_strdup("V");
+    mock_reset();
+    mock_node_t *tree = fill_test_tree(1, 2);
+    mock_set_item_tree(tree);
+    ml_source = (ddb_mediasource_source_t *)tree;
+    cw->cached_tree = (ddb_medialib_item_t *)tree;
+    cw->playlist_dirty = 1;
+    all_cui_widgets = g_list_append(all_cui_widgets, cw);
+
+    // The user's own playlist is current when the programmatic refill runs.
+    deadbeef_api->plt_add(0, "User List");
+    deadbeef_api->plt_set_curr(deadbeef_api->plt_get_for_idx(0));
+    ddb_playlist_t *user = deadbeef_api->plt_get_curr();
+    mock_plt_set_curr_count = 0; // the setup call above doesn't count
+
+    update_playlist_from_cui(cw, FALSE, FALSE);
+    drain_idle_chunks(64);
+    ddb_playlist_t *viewer = deadbeef_api->plt_get_for_idx(1);
+    g_assert_cmpint(deadbeef_api->plt_get_item_count(viewer, PL_MAIN), ==, 2); // filled
+    g_assert_cmpint(mock_plt_set_curr_count, ==, 0);                           // no steal
+    g_assert_true(deadbeef_api->plt_get_curr() == user);
+
+    // The interaction shape (activate_row's dirty branch) still switches.
+    update_playlist_from_cui(cw, TRUE, TRUE);
+    g_assert_cmpint(mock_plt_set_curr_count, ==, 1);
+    g_assert_true(deadbeef_api->plt_get_curr() == viewer);
+
+    deadbeef_api->plt_unref(user);
+    deadbeef_api->plt_unref(viewer);
+    cw->cached_tree = NULL;
+    ml_source = NULL;
+    mock_set_item_tree(NULL);
+    mock_node_free(tree);
+    g_free(cw->autoplaylist_name);
+    all_cui_widgets = g_list_remove(all_cui_widgets, cw);
+    g_free(cw);
+}
+
+// ---- fix: library rebuilds refresh the viewer playlist ---------------------
+//
+// The v1.2.4 deferral left the viewer playlist unrefreshed after every rebuild
+// (library event, search keystroke): the facet panes went current while the
+// playlist tab kept mirroring old data until a facet click or relaunch,
+// flagged only by playlist_dirty. Invisible while the tab started empty, it
+// became live staleness once v1.3.7's pre-fill populated the tab at launch.
+// update_tree_data now re-mirrors the playlist at the end of every real
+// rebuild — chunked, no current-playlist steal — and the modification-index
+// cache-hit still arms nothing. GTK-gated: drives the real update_tree_data
+// path with live stores.
+
+static void test_fill_refill_after_rebuild(void) {
+    if (!g_gtk_ok) { g_test_skip("no display for GtkTreeView"); return; }
+    cui_widget_t *cw = fresh_widget();
+    cw->changed_col_idx = -1;
+    cw->titles[0] = g_strdup("Genre");
+    cw->formats[0] = g_strdup("%genre%");
+    cw->autoplaylist_name = g_strdup("V");
+    init_my_preset(cw);
+    cw->stores[0] = gtk_list_store_new(3, G_TYPE_STRING, G_TYPE_INT, G_TYPE_BOOLEAN);
+    cw->trees[0] = gtk_tree_view_new_with_model(GTK_TREE_MODEL(cw->stores[0]));
+    GtkTreeSelection *sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->trees[0]));
+    g_signal_connect(sel, "changed", G_CALLBACK(on_column_changed), cw);
+
+    mock_reset();
+    mock_node_t *tree = fill_test_tree(2, 5); // 2 groups x 5 leaves = 10 tracks
+    mock_set_item_tree(tree);
+    ml_source = (ddb_mediasource_source_t *)tree;
+    all_cui_widgets = g_list_append(all_cui_widgets, cw);
+
+    // First successful build: fills the tab (the launch pre-fill case),
+    // without stealing the current playlist.
+    update_tree_data(cw);
+    g_assert_cmpint(cw->initial_sync_done, ==, 1);
+    g_assert_nonnull(cw->fill_stack);               // refill armed by the rebuild
+    g_assert_cmpint(mock_plt_set_curr_count, ==, 0);
+    drain_idle_chunks(256);
+    ddb_playlist_t *plt = deadbeef_api->plt_get_for_idx(0);
+    g_assert_cmpint(deadbeef_api->plt_get_item_count(plt, PL_MAIN), ==, 10);
+    g_assert_null(cw->fill_stack);                  // completed and torn down
+    g_assert_cmpint(cw->playlist_dirty, ==, 0);
+
+    // Library change (index bump): the rebuild re-mirrors the tab.
+    g_atomic_int_inc(&ml_modification_idx);
+    update_tree_data(cw);
+    g_assert_nonnull(cw->fill_stack);
+    drain_idle_chunks(256);
+    g_assert_cmpint(deadbeef_api->plt_get_item_count(plt, PL_MAIN), ==, 10);
+    g_assert_cmpint(cw->playlist_dirty, ==, 0);
+    g_assert_cmpint(mock_plt_set_curr_count, ==, 0); // never stole
+
+    // A rebuild that changes nothing (modification-index cache hit) arms no
+    // refill.
+    update_tree_data(cw);
+    g_assert_null(cw->fill_stack);
+
+    g_signal_handlers_disconnect_by_func(sel, (gpointer)on_column_changed, cw);
+    if (cw->changed_timeout_id) {
+        g_source_remove(cw->changed_timeout_id);
+        cw->changed_timeout_id = 0;
+    }
+    cw->cached_tree = NULL;
+    ml_source = NULL;
+    mock_set_item_tree(NULL);
+    deadbeef_api->plt_unref(plt);
+    mock_node_free(tree);
+    g_object_unref(cw->trees[0]);
+    g_object_unref(cw->stores[0]);
+    my_scriptable_free((scriptableItem_t *)cw->my_preset);
+    g_hash_table_destroy(cw->track_counts_cache);
+    cui_fill_cancel(cw);
+    for (int i = 0; i < cw->num_columns; i++) {
+        if (cw->sel_texts[i]) g_hash_table_destroy(cw->sel_texts[i]);
+        g_free(cw->titles[i]); g_free(cw->formats[i]);
+    }
     g_free(cw->autoplaylist_name);
     all_cui_widgets = g_list_remove(all_cui_widgets, cw);
     g_free(cw);
@@ -927,6 +1072,8 @@ int main(int argc, char **argv) {
     g_test_add_func("/cui/fill/chunked_completes", test_fill_chunked_completes);
     g_test_add_func("/cui/fill/cancel_on_tree_free", test_fill_cancel_on_tree_free);
     g_test_add_func("/cui/fill/sync_supersedes", test_fill_sync_supersedes);
+    g_test_add_func("/cui/fill/refill_after_rebuild", test_fill_refill_after_rebuild);
+    g_test_add_func("/cui/fill/no_steal_on_programmatic_refill", test_fill_no_steal_on_programmatic_refill);
 
     return g_test_run();
 }

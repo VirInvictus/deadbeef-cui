@@ -103,11 +103,6 @@ typedef struct {
     guint lib_update_timeout_id;
     int changed_col_idx;
     int initial_sync_done;
-    // Set after the first library build feeds the launch pre-fill (the
-    // viewer is filled with the whole library once, so its playlist tab
-    // works before any facet interaction; Brandon decision 2026-09-16,
-    // consciously reversing the v1.2.4 deferral).
-    int prefill_done;
     // Set when the viewer playlist no longer matches the current selection/
     // search/library state; cleared once update_playlist_from_cui rebuilds it.
     // Lets activate_row skip a redundant full-library rebuild on every [All]

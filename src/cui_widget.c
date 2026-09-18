@@ -125,7 +125,7 @@ static void cui_cascade(cui_widget_t *cw, int sync_fill) {
         auto_select_all_if_empty(cw, col_idx);
     }
 
-    update_playlist_from_cui(cw, sync_fill);
+    update_playlist_from_cui(cw, sync_fill, TRUE);
     CUI_DEBUG("cascade from col %d done in %.1f ms (fill %s)",
               start_col, (g_get_monotonic_time() - t0) / 1000.0,
               sync_fill ? "sync" : "chunked");
@@ -259,7 +259,7 @@ static void activate_row(cui_widget_t *cw) {
         cw->changed_timeout_id = 0;
         cui_cascade(cw, TRUE);
     } else if (cw->playlist_dirty) {
-        update_playlist_from_cui(cw, TRUE);
+        update_playlist_from_cui(cw, TRUE, TRUE);
     } else {
         ddb_playlist_t *plt = get_or_create_viewer_playlist(cw);
         if (plt) {
@@ -1324,14 +1324,10 @@ gboolean deferred_lib_update_cb(gpointer data) {
         update_tree_data(cw);
     }
     cui_update_hint(cw);
-
-    // Launch pre-fill: once the library is first available, mirror the whole
-    // (unfiltered) library into the viewer so its playlist tab works before
-    // any facet interaction. Chunked, so the cost never blocks the UI.
-    if (!cw->prefill_done && cw->initial_sync_done && medialib_plugin && ml_source) {
-        cw->prefill_done = 1;
-        update_playlist_from_cui(cw, FALSE);
-    }
+    // The viewer refill — launch pre-fill included — lives at the end of
+    // update_tree_data: every real rebuild re-mirrors the playlist whenever
+    // the rebuild left it dirty, chunked and without stealing the current
+    // playlist.
     return G_SOURCE_REMOVE;
 }
 

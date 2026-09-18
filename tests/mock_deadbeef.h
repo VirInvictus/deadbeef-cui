@@ -42,6 +42,10 @@ void mock_reset(void);
 extern char mock_last_plt_add_title[256];
 extern int  mock_plt_add_called;
 extern int  mock_plt_clear_called;
+// How many times plt_set_curr has been called since mock_reset: the
+// rebuild-driven viewer refill must never make the viewer current (the
+// no-steal rule), while interaction fills (activation) must.
+extern int  mock_plt_set_curr_count;
 // Whether mt_plt_clear emptied the playlist at table index idx.
 int mock_plt_was_cleared(int idx);
 

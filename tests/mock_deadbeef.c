@@ -211,8 +211,10 @@ static void mt_plt_replace_meta(ddb_playlist_t *plt, const char *key, const char
 }
 
 static int mt_plt_set_curr_idx = -1;
+int mock_plt_set_curr_count = 0;
 
 static void mt_plt_set_curr(ddb_playlist_t *plt) {
+    mock_plt_set_curr_count++;
     for (int i = 0; i < g_plts_count; i++) {
         if ((ddb_playlist_t *)&g_plts[i] == plt) { mt_plt_set_curr_idx = i; return; }
     }
@@ -342,6 +344,7 @@ void mock_reset(void) {
     mock_plt_clear_called = 0;
     mock_plt_add_called = 0;
     mock_last_plt_add_title[0] = '\0';
+    mock_plt_set_curr_count = 0;
     mock_w_save_layout_called = 0;
     mock_w_save_layout_last_key[0] = '\0';
     mock_w_save_layout_last_val = NULL;

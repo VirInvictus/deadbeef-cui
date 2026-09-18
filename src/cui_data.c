@@ -401,12 +401,19 @@ static gboolean cui_fill_chunk(gpointer data) {
     return G_SOURCE_REMOVE;
 }
 
-void update_playlist_from_cui(cui_widget_t *cw, int synchronous) {
-    CUI_DEBUG("update_playlist_from_cui (sync=%d)", synchronous);
+void update_playlist_from_cui(cui_widget_t *cw, int synchronous, int make_current) {
+    CUI_DEBUG("update_playlist_from_cui (sync=%d, curr=%d)", synchronous, make_current);
     gint64 t0 = g_get_monotonic_time();
     ddb_playlist_t *plt = get_or_create_viewer_playlist(cw);
     if (!plt) return;
-    deadbeef_api->plt_set_curr(plt);
+    // Making the viewer current is reserved for interaction-driven fills
+    // (facet selection, activation). Programmatic refills — the rebuild-driven
+    // mirror at the end of update_tree_data — must never steal the user's
+    // current playlist; v1.3.7's launch pre-fill did exactly that and switched
+    // the restored current playlist on every startup.
+    if (make_current) {
+        deadbeef_api->plt_set_curr(plt);
+    }
 
     if (synchronous || !cw->cached_tree) {
         populate_playlist_from_cui(cw, plt, 1);
@@ -712,12 +719,6 @@ void update_tree_data(cui_widget_t *cw) {
     // populated_through marker is what distinguishes "really empty" from
     // "previously filled with stale [All (0 X)] from an empty-tree first build" —
     // checking gtk_tree_model_get_iter_first alone would falsely skip the latter.
-    // We deliberately do not fire update_playlist_from_cui here on every
-    // rebuild; the one exception is the launch pre-fill (deferred_lib_update_cb,
-    // after the first scan — decided 2026-09-16, consciously reversing the
-    // v1.2.4 deferral so the viewer playlist tab works before any facet
-    // interaction). Selection-driven population still happens through
-    // on_column_changed when the user clicks a row.
     for (int i = populated_through + 1; i < cw->num_columns; i++) {
         populate_list_multi(cw->stores[i], i + 1, cw, i);
     }
@@ -735,4 +736,20 @@ void update_tree_data(cui_widget_t *cw) {
     // next call can skip. Removing this line turns every call into a full
     // rebuild; that regression shipped once as v1.2.0.
     cw->last_ml_modification_idx = current_idx;
+
+    // Rebuild-driven viewer refill: a real rebuild means the library, search,
+    // or column config changed under the playlist mirror, so re-mirror it now
+    // — chunked (never blocks) and without stealing the current playlist.
+    // This reverses the v1.2.4 deferral, whose rationale (a ~1 s synchronous
+    // whole-library copy per library event) died with the chunked fill in
+    // v1.3.7; after the deferral, the populated tab held stale data until a
+    // facet click or relaunch. It also subsumes v1.3.7's one-shot launch
+    // pre-fill: playlist_dirty starts set at widget creation, so the first
+    // successful build still fills the tab at launch. Gated on
+    // initial_sync_done so the empty first build while the source is still
+    // loading doesn't churn the playlist; a library that later empties still
+    // refills (to empty) because the flag, once set, never clears.
+    if (cw->playlist_dirty && cw->initial_sync_done && cw->cached_tree) {
+        update_playlist_from_cui(cw, FALSE, FALSE);
+    }
 }
