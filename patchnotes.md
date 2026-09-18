@@ -1,5 +1,46 @@
 # deadbeef-cui — Patch Notes
 
+## v1.3.8
+
+---
+
+### Bug fixes
+
+**The viewer playlist no longer holds stale library data.** Since the v1.3.7
+launch pre-fill populated the Library Viewer playlist at startup, the tab kept
+mirroring old data after every library update: Sync library refreshed the
+facet panes, but the playlist was only flagged dirty and never refilled until
+a facet click or a full relaunch (the v1.2.4 deferral, whose freeze-based
+rationale the v1.3.7 chunked fill had already removed). Every real rebuild now
+re-mirrors the playlist at the end of `update_tree_data`, chunked and
+cancellable, so panes and tab always agree; the first successful build doubles
+as the launch pre-fill (the one-shot `prefill_done` flag is gone). Facet
+filters re-mirror their filtered set, search keystrokes included. Files:
+`src/cui_data.c`, `src/cui_widget.c`, `src/cui_globals.h`.
+
+**The current playlist is no longer stolen at launch.**
+`update_playlist_from_cui` switched DeaDBeeF's current playlist to the viewer
+unconditionally, so the v1.3.7 launch pre-fill overrode the playlist restored
+from the previous session on every startup. The switch is now gated on a
+`make_current` parameter: interaction fills (facet selection, activation)
+still make the viewer current before playback, programmatic refills never
+touch it. Same discipline as the v1.3.5 no-selection-steal fix. File:
+`src/cui_data.c`.
+
+### Testing
+
+**Rebuild-refill regression tests, plus a latent test-helper fix.** Two new
+tests: `/cui/fill/refill_after_rebuild` drives the real `update_tree_data`
+path (first build fills the tab, a library-change rebuild re-mirrors it, a
+modification-index cache hit arms nothing, the current playlist is never
+stolen) and `/cui/fill/no_steal_on_programmatic_refill` locks the
+`make_current` contract both ways; the mock now counts `plt_set_curr` calls.
+The ASan run also exposed a latent use-after-free in the v1.3.7
+`fill_test_tree` helper (it freed its printf-built group labels while the
+nodes still pointed at them, readable only by tests that aggregate node
+text); the labels are literals now. 26 tests, plain and ASan/UBSan green.
+Files: `tests/test_cui.c`, `tests/mock_deadbeef.c`, `tests/mock_deadbeef.h`.
+
 ## v1.3.7
 
 ---

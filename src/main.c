@@ -56,8 +56,8 @@ int cui_start(void) {
         fprintf(stderr, "deadbeef-cui: medialib plugin not found or unsupported!\n");
     }
 
-    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v1.3.7", DDB_WF_SUPPORTS_EXTENDED_API, cui_create_widget, "cui", NULL);
-    fprintf(stderr, "deadbeef-cui: Facet Browser v1.3.7 registered successfully.\n");
+    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v1.3.8", DDB_WF_SUPPORTS_EXTENDED_API, cui_create_widget, "cui", NULL);
+    fprintf(stderr, "deadbeef-cui: Facet Browser v1.3.8 registered successfully.\n");
 
     return 0;
 }
@@ -120,7 +120,7 @@ static DB_misc_t plugin = {
     .plugin.version_minor = 3,
     .plugin.id = "cui",
     .plugin.name = "Columns UI for DeaDBeeF",
-    .plugin.descr = "A faceted library browser for DeaDBeeF. Version 1.3.7",
+    .plugin.descr = "A faceted library browser for DeaDBeeF. Version 1.3.8",
     .plugin.copyright = "MIT License",
     .plugin.website = "https://github.com/VirInvictus/deadbeef-cui",
     .plugin.start = cui_start,

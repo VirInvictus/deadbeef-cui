@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-1.3.7-blue" alt="Version: 1.3.7">
+  <img src="https://img.shields.io/badge/Version-1.3.8-blue" alt="Version: 1.3.8">
   <img src="https://img.shields.io/badge/Language-C-blue" alt="Language: C">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
 </p>
@@ -10,7 +10,7 @@
 
 A faceted library browser plugin for the [DeaDBeeF](https://deadbeef.sourceforge.io/) music player on Linux. It brings a Columns UI / Facets style multi-filter layout to DeaDBeeF, optimized for users who navigate large collections via metadata rather than static playlists.
 
-> **Note:** This is considered completed software. It is effectively feature complete; bug fixes will be addressed as they come, but no new features are planned. It is developed and tested on the primary development environment: **Fedora Linux 44 (Workstation Edition)**, kernel `7.0.10-201.fc44.x86_64`, running **DeaDBeeF 1.10.3** with **GTK 3.24.52**. The plugin is **v1.3.7**, written in C11 against DeaDBeeF Plugin API level 17 or newer (DeaDBeeF 1.9.6+; the installed `deadbeef-devel` here provides level 19), and built with GCC 16 via CMake 4.3. A prebuilt `compiled/ddb_misc_cui_GTK3.so` is kept in sync with the source for users who do not want to build. GTK4 forward-compat shims exist, but GTK3 is the only build target that has ever been compiled; see the GTK4 note under Hard limitations.
+> **Note:** This is considered completed software. It is effectively feature complete; bug fixes will be addressed as they come, but no new features are planned. It is developed and tested on the primary development environment: **Fedora Linux 44 (Workstation Edition)**, kernel `7.0.10-201.fc44.x86_64`, running **DeaDBeeF 1.10.3** with **GTK 3.24.52**. The plugin is **v1.3.8**, written in C11 against DeaDBeeF Plugin API level 17 or newer (DeaDBeeF 1.9.6+; the installed `deadbeef-devel` here provides level 19), and built with GCC 16 via CMake 4.3. A prebuilt `compiled/ddb_misc_cui_GTK3.so` is kept in sync with the source for users who do not want to build. GTK4 forward-compat shims exist, but GTK3 is the only build target that has ever been compiled; see the GTK4 note under Hard limitations.
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/0ceaa853-cc2d-4cf8-9dc6-243d0dddfe9d" alt="DeaDBeeF CUI Plugin Screenshot" style="max-width: 100%; border-radius: 8px;">
@@ -99,7 +99,7 @@ Enter **Design Mode** in DeaDBeeF to add the **Facet Browser (CUI)** widget to y
 
 ### Verifying your build
 
-Launch DeaDBeeF from a terminal with `deadbeef --gui GTK3 -d 2>&1 | grep cui`: you should see `deadbeef-cui: Facet Browser v1.3.7 registered successfully.` on startup. If the line is missing, the plugin failed to load (check the rest of the log for unresolved symbols or missing libraries).
+Launch DeaDBeeF from a terminal with `deadbeef --gui GTK3 -d 2>&1 | grep cui`: you should see `deadbeef-cui: Facet Browser v1.3.8 registered successfully.` on startup. If the line is missing, the plugin failed to load (check the rest of the log for unresolved symbols or missing libraries).
 
 ## Tips & recipes
 
