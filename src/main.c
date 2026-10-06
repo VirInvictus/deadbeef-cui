@@ -53,8 +53,8 @@ int cui_start(void) {
 
     medialib_plugin = (DB_mediasource_t *)deadbeef_api->plug_get_for_id("medialib");
 
-    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v2.0.0", DDB_WF_SUPPORTS_EXTENDED_API, cui_create_widget, "cui", NULL);
-    cui_log(DDB_LOG_LAYER_INFO, "deadbeef-cui: Facet Browser v2.0.0 registered successfully.\n");
+    gtkui_plugin->w_reg_widget("Facet Browser (CUI) v2.0.1", DDB_WF_SUPPORTS_EXTENDED_API, cui_create_widget, "cui", NULL);
+    cui_log(DDB_LOG_LAYER_INFO, "deadbeef-cui: Facet Browser v2.0.1 registered successfully.\n");
 
     return 0;
 }
@@ -144,7 +144,7 @@ DB_misc_t cui_plugin = {
     .plugin.version_minor = 0,
     .plugin.id = "cui",
     .plugin.name = "Columns UI for DeaDBeeF",
-    .plugin.descr = "A faceted library browser for DeaDBeeF. Version 2.0.0",
+    .plugin.descr = "A faceted library browser for DeaDBeeF. Version 2.0.1",
     .plugin.copyright = "MIT License",
     .plugin.website = "https://github.com/VirInvictus/deadbeef-cui",
     .plugin.start = cui_start,

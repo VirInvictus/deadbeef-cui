@@ -1,5 +1,47 @@
 # deadbeef-cui — Patch Notes
 
+## v2.0.1
+
+---
+
+### Bug fixes
+
+**Facet activation now plays from the viewer playlist under shuffle.**
+Double-clicking a facet while playing in another playlist switched the
+Facet Browser's viewer tab but kept shuffling out of the playlist that was
+already playing: the shuffled playback orders sent `DB_EV_PLAY_RANDOM`, and
+DeaDBeeF draws that random track from the streamer's own playlist anchor,
+which the plugin's make-viewer-current call never moves (only `DB_EV_PLAY_NUM`
+and `DB_EV_PLAY_CURRENT` re-anchor it, which is why linear order was never
+affected). Activation now picks a random index within the viewer playlist
+itself, with the player's own don't-repeat-the-playing-track guard, and plays
+it through `DB_EV_PLAY_NUM`: the first pick and every later auto-shuffle stay
+in the faceted list, and playback follows the facet you clicked without
+needing to switch tabs by hand first. Activating an empty facet now leaves
+playback alone instead of stopping it (playing an empty list is what stopped
+it before). One accepted side effect, identical to every other "play this
+now" gesture in any DeaDBeeF UI: starting playback this way clears the play
+queue. The playback-start logic moved into a dedicated `cui_start_viewer_playback`
+function so the contract is unit-testable. Files: `src/cui_widget.c`,
+`src/cui_widget.h`.
+
+### Testing
+
+**Activation routing locked by four new tests; live-verified.** The fake
+DeaDBeeF API gained message and cursor capture, a small conf store for
+`playback.order`, `pl_get_idx_of` over the current playlist, and a
+test-settable streaming track. New tests: `/cui/activate/shuffle_from_viewer`
+(the pick stays inside the viewer and never repeats the playing track, over
+100 draws), `/cui/activate/shuffle_other_playlist_anchor` (the reported bug:
+streaming context in another playlist, pick still comes from the viewer),
+`/cui/activate/shuffle_empty_leaves_playback` (no message on an empty
+viewer), and `/cui/activate/linear_play_num_zero` (the unchanged linear
+contract). 30 tests, green plain and under ASan/UBSan. Live-verified on the
+development machine (2026-10-06): playing in another playlist under shuffle,
+double-clicking a facet starts playback in the viewer playlist and shuffle
+stays there. Files: `tests/test_cui.c`, `tests/mock_deadbeef.c`,
+`tests/mock_deadbeef.h`.
+
 ## v2.0.0
 
 ---
