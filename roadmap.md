@@ -134,8 +134,11 @@ Measured baseline (6,367-track library, fresh launch with cui in layout but no G
       multi-select aggregation 386+33=419 across two genres, unknown-year
       "0000" edge data, dialog round-trip back to 3 columns). Recipes
       documented in the README "Tips & recipes" section.
-- [ ] **v2.0.0 Tagging:** A v2.0 release implies a major-feature milestone; v1.3.4 is the current state. Defer until a feature warrants it (or rebrand "stable + plugin-list ready" as v2.0 if you prefer that framing).
+- [x] **v2.0.0 Tagging:** A v2.0 release implies a major-feature milestone; v1.3.4 is the current state. Defer until a feature warrants it (or rebrand "stable + plugin-list ready" as v2.0 if you prefer that framing).
   *(DECIDED 2026-09-12 (Brandon): defer until a feature warrants it.)*
+  *(SHIPPED as v2.0.0, 2026-09-18: the modernization batch adopted from the
+      eight-plugin ecosystem audit landed as the feature that warranted the
+      major. Recorded in patchnotes.md and project.done.)*
 
 ---
 
@@ -191,10 +194,13 @@ report disagree, the report wins; the corrections are already applied below.
       (cui_widget.c:1033; report section 4, H1).
       (SHIPPED v1.3.4, same commit: last_ml_modification_idx = -1 before
       update_tree_data in the OK handler.)
-- [ ] **The submission-PR GO is re-gated:** dead-URL fixes (manifest.json
+- [x] **The submission-PR GO is re-gated:** dead-URL fixes (manifest.json
       + main.c + the .so rebuild) + the crash fix + issue reply + the
       Docker verify (x86_64 only; the builder offers no i686), in that
       order.
+      (MOOT 2026-09-15: the plugin-builder submission was DECLINED and is
+      recorded as closed above; every constituent gate had already passed
+      by 2026-09-13. Reopen conditions live with the Docker decision.)
 - [x] **ADDED 2026-09-13 (Brandon): the issue-#1 reply is gated on FULL
       testing of the fix, not just the push.** Before replying, ALL of
       the following must pass: (a) the mock-vtable tripwire test + the
@@ -211,11 +217,14 @@ report disagree, the report wins; the corrections are already applied below.
       commit; the reply posted with the diagnosis and the release link;
       issue #1 closed as completed. Recorded in the PROGRESS note
       below.)
-- [ ] **Lockstep enforcement is CI-blind (the local half is fine):** the
+- [x] **Lockstep enforcement is CI-blind (the local half is fine):** the
       pre-commit hook is live here (core.hooksPath = .githooks), but CI
       never checks compiled/. Add a git-level CI gate (a commit touching
       src/ or CMakeLists.txt must touch compiled/ddb_misc_cui_GTK3.so);
       no byte-compare against the floating fedora:latest container.
+      (DONE: the gate is live in .github/workflows/ci.yml, landed in
+      04a16be; a src//CMakeLists change without a compiled/ touch fails
+      CI. Caught stale here 2026-10-06 by the pre-v2.0.1 release audit.)
 - [x] **Docs:** README's "1.10.x thoroughly tested" is falsified by issue
       #1 (state the verified floor after the fix: DeaDBeeF 1.9.6+ for
       source builds, core API level 17, exapi since 1.9.0); main.c's
