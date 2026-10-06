@@ -96,6 +96,15 @@ jobs:
           # a manual gh release edit afterward). The house tagging procedure
           # makes the annotation the verbatim patchnotes entry; the heading
           # check refuses to publish anything thinner.
+          #
+          # checkout@v4 clobbers the tag even after a full fetch (learned
+          # cutting v2.0.1): for a tag-triggered run it always re-fetches
+          # the resolved COMMIT SHA into refs/tags/vX ("t [tag update]"
+          # in the checkout log), rewriting the annotated tag object into a
+          # lightweight ref, so %(contents) yields the commit message and
+          # the guard refuses. Re-fetch the real tag object with --force
+          # (the local ref points at the commit, so force is required).
+          git fetch --force origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
           git tag -l --format='%(contents)' "${GITHUB_REF_NAME}" > release-notes.md
           head -1 release-notes.md | grep -q '^## v' || {
             echo "release notes do not start with a patchnotes heading; refusing to publish" >&2

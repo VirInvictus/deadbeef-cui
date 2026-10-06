@@ -472,7 +472,16 @@ root (SCRIPTABLE_FLAG_IS_LIST, name="Facets")
   that tag's Release was created by hand from the green CI artifact, the
   documented fallback. Keep the old ritual anyway: after every
   workflow-made release, VERIFY the body starts with the patchnotes
-  heading and edit if not.
+  heading and edit if not. The v2.0.1 run then caught a third layer:
+  even with `fetch-depth: 0` + `fetch-tags: true`, checkout@v4's
+  tag-triggered second fetch force-overwrites `refs/tags/vX` with the
+  resolved COMMIT SHA (checkout log line `t [tag update]`), so the
+  annotation arrives and is destroyed in the same job; `%(contents)`
+  yields the commit message and the guard refuses. release.yml now
+  re-fetches the tag object with `git fetch --force
+  "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"` inside
+  the release job, effective for tags cut after that commit; v2.0.1's
+  Release was created by hand from the green artifact (the fallback).
 - **Tagged releases ship the binary (2026-09-13).** From v1.3.4 onward, every release tag carries the rebuilt plugin binary as a GitHub Release asset on a green release commit. `.github/workflows/release.yml` (tag-triggered) builds the `.so` from the tag, runs ctest, and creates the Release with the CI-built binary attached; the Release body is the tag's annotation, which the house tagging procedure makes the verbatim patchnotes entry. Constraint: GitHub evaluates workflows at the pushed ref, so the automation only fires for tags cut at commits that contain `release.yml` (v1.3.4 predates it; its asset was attached manually per the plugin-update rule's fallback). For any tag the workflow misses, attach the locally built binary manually after CI is green; never skip the asset.
 
 ---
