@@ -13,7 +13,7 @@ A faceted library browser plugin for the [DeaDBeeF](https://deadbeef.sourceforge
 > **Note:** This is considered completed software. It is effectively feature complete; bug fixes will be addressed as they come, but no new features are planned. It is developed and tested on the primary development environment: **Fedora Linux 44 (Workstation Edition)**, kernel `7.0.10-201.fc44.x86_64`, running **DeaDBeeF 1.10.3** with **GTK 3.24.52**. The plugin is **v2.0.1**, written in C11 against DeaDBeeF Plugin API level 17 or newer (DeaDBeeF 1.9.6+; the installed `deadbeef-devel` here provides level 19), and built with GCC 16 via CMake 4.3. A prebuilt `compiled/ddb_misc_cui_GTK3.so` is kept in sync with the source for users who do not want to build. GTK4 forward-compat shims exist, but GTK3 is the only build target that has ever been compiled; see the GTK4 note under Hard limitations.
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/0ceaa853-cc2d-4cf8-9dc6-243d0dddfe9d" alt="DeaDBeeF CUI Plugin Screenshot" style="max-width: 100%; border-radius: 8px;">
+  <img src="https://github.com/user-attachments/assets/9b647ac6-5aba-41ee-a8ca-a56f33f19736" alt="DeaDBeeF CUI Plugin Screenshot" style="max-width: 100%; border-radius: 8px;">
 </p>
 
 ## Why this exists
