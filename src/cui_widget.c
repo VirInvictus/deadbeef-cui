@@ -267,7 +267,7 @@ static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer use
 }
 
 // Make the viewer playlist current and in sync with the column selections,
-// then start playback. Three sync cases:
+// then start playback (cui_start_viewer_playback). Three sync cases:
 //  - A debounced selection change is still pending (fast double-click landed
 //    before the 10 ms timer fired): flush it synchronously so playback sees
 //    the freshly built list, not the previous one.
@@ -277,7 +277,7 @@ static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer use
 //  - Already in sync (e.g. double-clicking an already-selected [All] row,
 //    which is not a selection change so no rebuild is needed): just make sure
 //    the viewer is the current playlist, since the user may have switched
-//    tabs, before DB_EV_PLAY_NUM targets index 0.
+//    tabs, before playback targets it.
 // The dirty-flag short-circuit matters because [All] activations would
 // otherwise re-copy the whole matching set into the playlist on every click.
 static void activate_row(cui_widget_t *cw) {
@@ -295,17 +295,51 @@ static void activate_row(cui_widget_t *cw) {
         }
     }
 
+    cui_start_viewer_playback();
+}
+
+// Start playback in the viewer playlist, which the caller has made current.
+// Shuffled orders (playback.order 1-3) deliberately do NOT send
+// DB_EV_PLAY_RANDOM: upstream draws the random track from the streamer's own
+// playlist anchor (.deadbeef/src/streamer.c get_random_track reads
+// streamer_playlist), and that anchor only follows wherever playback last
+// started — plt_set_curr moves the UI's current playlist but never it. While
+// playing in another playlist, activation therefore kept shuffling out of
+// that playlist even though the viewer tab was showing. DB_EV_PLAY_NUM goes
+// through play_index, which reads plt_get_curr() and re-anchors the streamer
+// to the viewer, so both the first pick and every later auto-shuffle stay
+// here. Exposed for the test suite; activate_row is its only caller.
+void cui_start_viewer_playback(void) {
     ddb_playlist_t *plt = deadbeef_api->plt_get_curr();
-    if (plt) {
-        int order = deadbeef_api->conf_get_int("playback.order", 0);
-        if (order == 1 || order == 2 || order == 3) {
-            deadbeef_api->sendmessage(DB_EV_PLAY_RANDOM, 0, 0, 0);
-        } else {
-            deadbeef_api->plt_set_cursor(plt, 0, PL_MAIN);
-            deadbeef_api->sendmessage(DB_EV_PLAY_NUM, 0, 0, 0);
-        }
-        deadbeef_api->plt_unref(plt);
+    if (!plt) {
+        return;
     }
+    int order = deadbeef_api->conf_get_int("playback.order", 0);
+    if (order == 1 || order == 2 || order == 3) {
+        int count = deadbeef_api->plt_get_item_count(plt, PL_MAIN);
+        if (count > 0) {
+            // Core's repeat guard (get_random_track): never re-pick the
+            // streaming track when it is in this playlist. The +1 shift
+            // makes "not equal to curr" hold by construction.
+            int idx = (int)g_random_int_range(0, count);
+            DB_playItem_t *streaming = deadbeef_api->streamer_get_streaming_track();
+            if (streaming) {
+                int curr = deadbeef_api->pl_get_idx_of(streaming);
+                deadbeef_api->pl_item_unref(streaming);
+                if (idx == curr) {
+                    idx = (idx + 1) % count;
+                }
+            }
+            deadbeef_api->sendmessage(DB_EV_PLAY_NUM, 0, idx, 0);
+        }
+        // count == 0: nothing here to play; leave whatever the user was
+        // playing alone rather than stopping it (an empty list would make
+        // play_index stop playback).
+    } else {
+        deadbeef_api->plt_set_cursor(plt, 0, PL_MAIN);
+        deadbeef_api->sendmessage(DB_EV_PLAY_NUM, 0, 0, 0);
+    }
+    deadbeef_api->plt_unref(plt);
 }
 
 // Fires for keyboard activation (Enter) and the GTK4 path. GTK3 mouse double-

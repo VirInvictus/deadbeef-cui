@@ -914,6 +914,108 @@ static void test_fill_refill_after_rebuild(void) {
     g_free(cw);
 }
 
+// ---- fix: activation plays the viewer playlist, not the streamer's anchor --
+//
+// Shuffled orders (playback.order 1-3) used to send DB_EV_PLAY_RANDOM on
+// facet activation. Upstream draws that random track from the streamer's own
+// playlist anchor (.deadbeef/src/streamer.c get_random_track reads
+// streamer_playlist), which plt_set_curr never moves: while playing in
+// another playlist, double-clicking a facet switched the viewer tab but kept
+// shuffling out of the old playlist (live report, diagnosed 2026-10-06).
+// cui_start_viewer_playback now picks a random index in the viewer itself and
+// sends DB_EV_PLAY_NUM, whose play_index path reads plt_get_curr() and
+// re-anchors the streamer to the viewer. Headless: only mock playlist state
+// and message capture are involved.
+
+// Insert count tracks (titles T0..T{n-1}) into the playlist at table index
+// plt_idx. pl_item_copy strdups the meta, so stack-built tracks are fine.
+static void seed_playlist_items(int plt_idx, int count) {
+    ddb_playlist_t *plt = deadbeef_api->plt_get_for_idx(plt_idx);
+    g_assert_nonnull(plt);
+    for (int i = 0; i < count; i++) {
+        char title[16];
+        g_snprintf(title, sizeof(title), "T%d", i);
+        mock_track_t t = { .title = title, .artist = "Artist" };
+        DB_playItem_t *it = deadbeef_api->pl_item_alloc();
+        deadbeef_api->pl_item_copy(it, (DB_playItem_t *)&t);
+        deadbeef_api->plt_insert_item(plt, NULL, it);
+    }
+    deadbeef_api->plt_unref(plt);
+}
+
+static void test_activate_shuffle_from_viewer(void) {
+    mock_reset();
+    g_assert_cmpint(deadbeef_api->plt_add(0, "Library Viewer"), ==, 0);
+    seed_playlist_items(0, 4);
+    deadbeef_api->plt_set_curr(deadbeef_api->plt_get_for_idx(0));
+    mock_conf_set_int("playback.order", 1);
+    // Playing track lives in this playlist at index 1: the pick must avoid it.
+    mock_streaming_track = mock_plt_item(0, 1);
+
+    for (int i = 0; i < 100; i++) {
+        cui_start_viewer_playback();
+        g_assert_cmpint(mock_msg_count, ==, i + 1);
+        g_assert_cmpuint(mock_last_msg_id, ==, DB_EV_PLAY_NUM);
+        g_assert_cmpint(mock_last_msg_p1, >=, 0);
+        g_assert_cmpint(mock_last_msg_p1, <, 4);
+        g_assert_cmpint(mock_last_msg_p1, !=, 1); // repeat guard, by construction
+    }
+}
+
+static void test_activate_shuffle_other_playlist_anchor(void) {
+    // The reported bug: playing in Five Star, double-clicking a facet made
+    // the viewer tab current. DB_EV_PLAY_RANDOM would have drawn from the
+    // streamer's anchor (Five Star); the pick must come from the viewer list.
+    mock_reset();
+    g_assert_cmpint(deadbeef_api->plt_add(0, "Five Star"), ==, 0);
+    g_assert_cmpint(deadbeef_api->plt_add(0, "Library Viewer"), ==, 1);
+    seed_playlist_items(0, 2);
+    seed_playlist_items(1, 4);
+    deadbeef_api->plt_set_curr(deadbeef_api->plt_get_for_idx(1));
+    mock_conf_set_int("playback.order", 3);
+    mock_streaming_track = mock_plt_item(0, 0); // streaming from Five Star
+
+    cui_start_viewer_playback();
+    g_assert_cmpint(mock_msg_count, ==, 1);
+    g_assert_cmpuint(mock_last_msg_id, ==, DB_EV_PLAY_NUM); // never PLAY_RANDOM
+    g_assert_cmpint(mock_last_msg_p1, >=, 0);
+    g_assert_cmpint(mock_last_msg_p1, <, 4);                // an index into the viewer
+}
+
+static void test_activate_shuffle_empty_leaves_playback(void) {
+    // An empty viewer has nothing to play; activation must neither yank
+    // playback out of the other playlist nor stop it (play_index on an empty
+    // list stops playback, so the shuffle branch sends nothing at all).
+    mock_reset();
+    g_assert_cmpint(deadbeef_api->plt_add(0, "Five Star"), ==, 0);
+    g_assert_cmpint(deadbeef_api->plt_add(0, "Library Viewer"), ==, 1);
+    seed_playlist_items(0, 2);
+    deadbeef_api->plt_set_curr(deadbeef_api->plt_get_for_idx(1));
+    mock_conf_set_int("playback.order", 2);
+    mock_streaming_track = mock_plt_item(0, 0);
+
+    cui_start_viewer_playback();
+    g_assert_cmpint(mock_msg_count, ==, 0);
+}
+
+static void test_activate_linear_play_num_zero(void) {
+    // Linear order keeps the long-standing contract: cursor 0 on the viewer,
+    // then DB_EV_PLAY_NUM 0 (which re-anchors the streamer here too).
+    mock_reset();
+    g_assert_cmpint(deadbeef_api->plt_add(0, "Library Viewer"), ==, 0);
+    seed_playlist_items(0, 4);
+    ddb_playlist_t *viewer = deadbeef_api->plt_get_for_idx(0);
+    deadbeef_api->plt_set_curr(viewer);
+    // conf store left empty: playback.order defaults to 0 (linear).
+
+    cui_start_viewer_playback();
+    g_assert_cmpint(mock_msg_count, ==, 1);
+    g_assert_cmpuint(mock_last_msg_id, ==, DB_EV_PLAY_NUM);
+    g_assert_cmpint(mock_last_msg_p1, ==, 0);
+    g_assert_true(mock_last_cursor_plt == viewer);
+    g_assert_cmpint(mock_last_cursor, ==, 0);
+}
+
 // ---- feature: in-widget empty-state hint ------------------------------------
 //
 // The only medialib-missing diagnostic used to be a stderr line: with the
@@ -1074,6 +1176,10 @@ int main(int argc, char **argv) {
     g_test_add_func("/cui/fill/sync_supersedes", test_fill_sync_supersedes);
     g_test_add_func("/cui/fill/refill_after_rebuild", test_fill_refill_after_rebuild);
     g_test_add_func("/cui/fill/no_steal_on_programmatic_refill", test_fill_no_steal_on_programmatic_refill);
+    g_test_add_func("/cui/activate/shuffle_from_viewer", test_activate_shuffle_from_viewer);
+    g_test_add_func("/cui/activate/shuffle_other_playlist_anchor", test_activate_shuffle_other_playlist_anchor);
+    g_test_add_func("/cui/activate/shuffle_empty_leaves_playback", test_activate_shuffle_empty_leaves_playback);
+    g_test_add_func("/cui/activate/linear_play_num_zero", test_activate_linear_play_num_zero);
 
     return g_test_run();
 }

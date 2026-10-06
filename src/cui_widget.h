@@ -28,4 +28,9 @@ gboolean ml_event_idle_cb(gpointer data);
 gboolean cui_handle_config_change(gpointer user_data);
 void ml_listener_cb(ddb_mediasource_event_type_t event, void *user_data);
 
+// Start playback in the current playlist (the viewer, after activate_row
+// makes it current). Exposed for the test suite; see cui_widget.c for why
+// shuffled orders must go through DB_EV_PLAY_NUM, not DB_EV_PLAY_RANDOM.
+void cui_start_viewer_playback(void);
+
 #endif // CUI_WIDGET_H

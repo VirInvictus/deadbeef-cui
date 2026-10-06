@@ -53,9 +53,54 @@ static int g_plts_count = 0;
 
 int mock_plt_clear_called = 0;
 
+// --- sendmessage / playback capture (the /cui/activate/* tests) ---
+uint32_t mock_last_msg_id;
+uint32_t mock_last_msg_p1;
+int mock_msg_count;
+
+// Tiny conf store: tests seed it with mock_conf_set_int; unseeded keys fall
+// back to the requested default (production conf_get_int semantics).
+#define MOCK_MAX_CONF 8
+typedef struct { char key[32]; int value; } mock_conf_t;
+static mock_conf_t g_conf[MOCK_MAX_CONF];
+static int g_conf_count = 0;
+
+void mock_conf_set_int(const char *key, int value) {
+    for (int i = 0; i < g_conf_count; i++) {
+        if (strcmp(g_conf[i].key, key) == 0) { g_conf[i].value = value; return; }
+    }
+    if (g_conf_count < MOCK_MAX_CONF) {
+        snprintf(g_conf[g_conf_count].key, sizeof(g_conf[0].key), "%s", key);
+        g_conf[g_conf_count].value = value;
+        g_conf_count++;
+    }
+}
+
+static int mt_conf_get_int(const char *key, int def) {
+    for (int i = 0; i < g_conf_count; i++) {
+        if (strcmp(g_conf[i].key, key) == 0) return g_conf[i].value;
+    }
+    return def;
+}
+
+ddb_playlist_t *mock_last_cursor_plt;
+int mock_last_cursor;
+
+// Test-settable streaming track (what streamer_get_streaming_track hands
+// back). Must point at a playlist-resident item (a mock_playitem_t): the
+// getter refs it and cui_start_viewer_playback unrefs the return, which
+// decrements refc through the mock_playitem_t layout.
+DB_playItem_t *mock_streaming_track;
+
 int mock_plt_was_cleared(int idx) {
     if (idx < 0 || idx >= g_plts_count) return 0;
     return g_plts[idx].cleared;
+}
+
+DB_playItem_t *mock_plt_item(int plt_idx, int idx) {
+    if (plt_idx < 0 || plt_idx >= g_plts_count) return NULL;
+    if (idx < 0 || idx >= g_plts[plt_idx].item_count) return NULL;
+    return (DB_playItem_t *)g_plts[plt_idx].items[idx];
 }
 
 // --- gtkui vtable fake (the issue-#1 tripwire) ---
@@ -159,8 +204,23 @@ static int mt_plt_get_item_count(ddb_playlist_t *plt, int iter) {
 static void mt_plt_modified(ddb_playlist_t *plt) { (void)plt; }
 
 static int mt_sendmessage(uint32_t id, uintptr_t ctx, uint32_t p1, uint32_t p2) {
-    (void)id; (void)ctx; (void)p1; (void)p2;
+    (void)ctx; (void)p2;
+    mock_last_msg_id = id;
+    mock_last_msg_p1 = p1;
+    mock_msg_count++;
     return 0;
+}
+
+static void mt_plt_set_cursor(ddb_playlist_t *plt, int iter, int cursor) {
+    (void)iter;
+    mock_last_cursor_plt = plt;
+    mock_last_cursor = cursor;
+}
+
+static DB_playItem_t *mt_streamer_get_streaming_track(void) {
+    if (!mock_streaming_track) return NULL;
+    ((mock_playitem_t *)mock_streaming_track)->refc++;
+    return mock_streaming_track;
 }
 
 static DB_playItem_t *mt_plt_get_last(ddb_playlist_t *plt, int iter) {
@@ -228,6 +288,17 @@ static void mt_plt_set_curr(ddb_playlist_t *plt) {
 static ddb_playlist_t *mt_plt_get_curr(void) {
     if (mt_plt_set_curr_idx < 0 || mt_plt_set_curr_idx >= g_plts_count) return NULL;
     return (ddb_playlist_t *)&g_plts[mt_plt_set_curr_idx];
+}
+
+// Reads the CURRENT playlist (mt_plt_set_curr_idx), matching upstream
+// pl_get_idx_of, which indexes into whichever playlist is current.
+static int mt_pl_get_idx_of(DB_playItem_t *it) {
+    if (mt_plt_set_curr_idx < 0 || mt_plt_set_curr_idx >= g_plts_count) return -1;
+    mock_playlist_t *p = &g_plts[mt_plt_set_curr_idx];
+    for (int i = 0; i < p->item_count; i++) {
+        if ((DB_playItem_t *)p->items[i] == it) return i;
+    }
+    return -1;
 }
 
 static void mt_plt_unref(ddb_playlist_t *plt) {
@@ -308,6 +379,10 @@ void mock_deadbeef_install(void) {
     g_api.plt_set_curr = mt_plt_set_curr;
     g_api.plt_get_curr = mt_plt_get_curr;
     g_api.plt_unref = mt_plt_unref;
+    g_api.conf_get_int = mt_conf_get_int;
+    g_api.plt_set_cursor = mt_plt_set_cursor;
+    g_api.pl_get_idx_of = mt_pl_get_idx_of;
+    g_api.streamer_get_streaming_track = mt_streamer_get_streaming_track;
 
     g_ml.tree_item_get_text = mt_tree_item_get_text;
     g_ml.tree_item_get_track = mt_tree_item_get_track;
@@ -352,6 +427,13 @@ void mock_reset(void) {
     mock_w_save_layout_called = 0;
     mock_w_save_layout_last_key[0] = '\0';
     mock_w_save_layout_last_val = NULL;
+    mock_last_msg_id = 0;
+    mock_last_msg_p1 = 0;
+    mock_msg_count = 0;
+    mock_last_cursor_plt = NULL;
+    mock_last_cursor = 0;
+    mock_streaming_track = NULL;
+    g_conf_count = 0;
 }
 
 mock_node_t *mock_group(const char *text, mock_node_t *children, mock_node_t *next) {

@@ -48,6 +48,25 @@ extern int  mock_plt_clear_called;
 extern int  mock_plt_set_curr_count;
 // Whether mt_plt_clear emptied the playlist at table index idx.
 int mock_plt_was_cleared(int idx);
+// Direct read access to a playlist-resident item (no refs; the table owns
+// its items). NULL when either index is out of range.
+DB_playItem_t *mock_plt_item(int plt_idx, int idx);
+
+// --- sendmessage / playback capture (the /cui/activate/* tests) ---
+// Last message captured by the fake sendmessage, and how many were sent.
+extern uint32_t mock_last_msg_id;
+extern uint32_t mock_last_msg_p1;
+extern int      mock_msg_count;
+// Last plt_set_cursor arguments.
+extern ddb_playlist_t *mock_last_cursor_plt;
+extern int mock_last_cursor;
+// Test-settable streaming track handed back by streamer_get_streaming_track
+// (refs like the real one). Must be a playlist-resident item, never a bare
+// mock_track_t: the ref/unref goes through the mock_playitem_t layout.
+extern DB_playItem_t *mock_streaming_track;
+// Seed the fake conf store read by conf_get_int ("playback.order" et al);
+// unseeded keys fall back to the requested default.
+void mock_conf_set_int(const char *key, int value);
 
 // --- gtkui vtable fake (the issue-#1 tripwire) ---
 // gtkui_plugin is populated with a fake vtable whose published API version is
