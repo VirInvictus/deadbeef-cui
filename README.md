@@ -1,3 +1,5 @@
+> **Status: complete and stable.** Bug reports welcome; feature development is closed.
+
 <p align="center">
   <img src="https://img.shields.io/badge/Version-2.0.1-blue" alt="Version: 2.0.1">
   <img src="https://img.shields.io/badge/Language-C-blue" alt="Language: C">
