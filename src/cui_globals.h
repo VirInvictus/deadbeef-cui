@@ -51,6 +51,22 @@
 #define MAX_COLUMNS 5
 #define CUI_SOURCE_PATH "cui"
 
+// Facet modes (v2.2.0): two named column-set workflows per instance, toggled
+// from the right-click menu. The live titles/formats/sorts arrays are always
+// the CURRENT mode's state; the other mode's state lives in the alt_ arrays
+// and both persist in the per-instance keyvalues (colN_* = current mode,
+// altmode.colN_* = the other). Mode defaults and templates come from
+// cui-modes.ini (see cui_modes.c).
+#define CUI_MODE_PLAY 0
+#define CUI_MODE_INTAKE 1
+
+// Reserved column-format token: a column whose format is exactly this expands
+// at preset build into a recency-bucket expression over :MEDIALIB_SCAN_TIME
+// (cui_scriptable.c cui_build_recent_expression). DeaDBeeF's tf has no clock
+// and no %added% field, so the plugin injects the cutoffs; the token keeps the
+// stored format stable across rebuilds and serializations.
+#define CUI_RECENT_TOKEN "@cui/recent@"
+
 // Player-integrated diagnostics: routed through DeaDBeeF's logger, so lines
 // land in the player's log viewer AND on stderr (upstream logger.c writes
 // every line to the console). Requires DDB_PLUGIN_FLAG_LOGGING on the plugin
@@ -94,7 +110,24 @@ typedef struct {
     int ignore_prefix;
     int split_tags;
     char *autoplaylist_name;
+    // Current facet mode and the INACTIVE mode's column state. The live
+    // titles/formats/sort_* arrays above are always the current mode; the
+    // exchange at mode-switch time swaps them with these (g_strdup'ed copies,
+    // never shared pointers). Serialized as mode + altmode.colN_*.
+    int mode;
+    char *alt_titles[MAX_COLUMNS];
+    char *alt_formats[MAX_COLUMNS];
+    int alt_sort_ids[MAX_COLUMNS];
+    int alt_sort_orders[MAX_COLUMNS];
+    // "New (Nd)" recency bucket size for the @cui/recent@ column (days).
+    // Serialized per instance; clamped 1..365.
+    int recent_days;
     ddb_scriptable_item_t *my_preset;
+    // Set by init_my_preset when any column expanded CUI_RECENT_TOKEN, with
+    // the build time; update_tree_data re-runs init_my_preset (and forces a
+    // rebuild) once the cutoffs are an hour stale, so day boundaries roll.
+    int preset_has_recent;
+    gint64 preset_built_at;
 
     int listener_id;
     ddb_medialib_item_t *cached_tree;

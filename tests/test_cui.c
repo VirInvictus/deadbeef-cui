@@ -8,6 +8,7 @@
 #include "cui_globals.h"
 #include "cui_data.h"
 #include "cui_widget.h"
+#include "cui_modes.h"
 #include "cui_scriptable.h"
 #include "mock_deadbeef.h"
 
@@ -40,6 +41,17 @@ static scriptableItem_t *nth_child(scriptableItem_t *it, int n) {
 // scriptable code, which g_free()s titles/formats during compaction, is happy.
 static cui_widget_t *fresh_widget(void) {
     return g_new0(cui_widget_t, 1);
+}
+
+// Free every heap column-string member a test may have populated (both modes).
+static void free_widget_columns(cui_widget_t *cw) {
+    for (int i = 0; i < MAX_COLUMNS; i++) {
+        g_free(cw->titles[i]);
+        g_free(cw->formats[i]);
+        g_free(cw->alt_titles[i]);
+        g_free(cw->alt_formats[i]);
+    }
+    g_free(cw->autoplaylist_name);
 }
 
 // ---- skip_prefix -----------------------------------------------------------
@@ -193,6 +205,204 @@ static void test_rating_text_key(void) {
     g_assert_cmpint(rating_text_key("★★★★★★"), ==, -1);
     g_assert_cmpint(rating_text_key("★★x"), ==, -1);
     g_assert_cmpint(rating_text_key("★★ Jazz"), ==, -1);
+}
+
+// ---- modes & templates (v2.2.0) ---------------------------------------------
+
+static void test_recent_expression(void) {
+    char expr[512];
+    gint64 now = 1800000000; // arbitrary fixed instant; the cutoffs follow it
+
+    cui_build_recent_expression(1, now, expr, sizeof(expr));
+    g_assert_cmpstr(expr, ==,
+                    "$ifgreater(%:MEDIALIB_SCAN_TIME%,1799913600,New 1d,"
+                    "$ifgreater(%:MEDIALIB_SCAN_TIME%,1797408000,Recent 30d,Library))");
+
+    // The days pref moves only the New cutoff; the 30d band is fixed.
+    cui_build_recent_expression(7, now, expr, sizeof(expr));
+    g_assert_cmpstr(expr, ==,
+                    "$ifgreater(%:MEDIALIB_SCAN_TIME%,1799395200,New 7d,"
+                    "$ifgreater(%:MEDIALIB_SCAN_TIME%,1797408000,Recent 30d,Library))");
+
+    // Out-of-range days clamp (1..365), never leak raw values.
+    cui_build_recent_expression(0, now, expr, sizeof(expr));
+    g_assert_null(strstr(expr, "New 0d"));
+    g_assert_nonnull(strstr(expr, "New 1d"));
+    cui_build_recent_expression(1000, now, expr, sizeof(expr));
+    g_assert_null(strstr(expr, "New 1000d"));
+    g_assert_nonnull(strstr(expr, "New 365d"));
+
+    // BRACKET GUARD: tf's argument parser closes an argument at the first ')'
+    // with no nesting awareness, and medialib concatenates every level's
+    // expression into one grouping string — a literal paren in a label
+    // truncates the function and collapses the whole facet tree (caught live
+    // 2026-10-22). The only parens allowed are each $func's own, so no space
+    // or double paren may ever appear.
+    for (int d = 1; d <= 365; d += 41) {
+        cui_build_recent_expression(d, now, expr, sizeof(expr));
+        g_assert_null(strstr(expr, " ("));
+        g_assert_null(strstr(expr, "()"));
+        g_assert_null(strstr(expr, "]"));
+        g_assert_null(strstr(expr, "["));
+    }
+}
+
+static void test_recent_text_key(void) {
+    g_assert_cmpint(recent_text_key("New 1d"), ==, 0);
+    g_assert_cmpint(recent_text_key("New 7d"), ==, 0);
+    g_assert_cmpint(recent_text_key("Recent 30d"), ==, 1);
+    g_assert_cmpint(recent_text_key("Library"), ==, 2);
+    // Prefix must include the trailing space: other facet text stays
+    // non-bucket.
+    g_assert_cmpint(recent_text_key("Newer"), ==, -1);
+    g_assert_cmpint(recent_text_key("Libraries"), ==, -1);
+    g_assert_cmpint(recent_text_key("Jazz"), ==, -1);
+    g_assert_cmpint(recent_text_key(""), ==, -1);
+    g_assert_cmpint(recent_text_key(NULL), ==, -1);
+}
+
+static void test_mode_exchange(void) {
+    cui_widget_t *cw = fresh_widget();
+    cw->titles[0] = g_strdup("Live");
+    cw->formats[0] = g_strdup("%genre%");
+    cw->sort_ids[0] = 1;
+    cw->sort_orders[0] = 1;
+    cw->alt_titles[0] = g_strdup("Alt");
+    cw->alt_formats[0] = g_strdup("%album%");
+    cw->alt_sort_ids[0] = 0;
+
+    cui_modes_exchange_alt(cw);
+
+    // Live and alt swapped wholesale, sorts included; ownership moved with
+    // the pointers (ASan validates there is no double free at cleanup).
+    g_assert_cmpstr(cw->titles[0], ==, "Alt");
+    g_assert_cmpstr(cw->formats[0], ==, "%album%");
+    g_assert_cmpint(cw->sort_ids[0], ==, 0);
+    g_assert_cmpstr(cw->alt_titles[0], ==, "Live");
+    g_assert_cmpstr(cw->alt_formats[0], ==, "%genre%");
+    g_assert_cmpint(cw->alt_sort_ids[0], ==, 1);
+
+    cui_modes_free_columns(cw->titles, cw->formats);
+    cui_modes_free_columns(cw->alt_titles, cw->alt_formats);
+    g_free(cw);
+}
+
+static void test_modes_keyfile(void) {
+    // The shipped default file, in memory: modes parse, templates enumerate.
+    GKeyFile *kf = g_key_file_new();
+    cui_modes_build_default_keyfile(kf);
+
+    char *titles[MAX_COLUMNS], *formats[MAX_COLUMNS];
+    cui_modes_parse_group_columns(kf, "mode:play", titles, formats);
+    g_assert_cmpstr(titles[0], ==, "Rating");
+    g_assert_cmpstr(formats[0], ==, "%rating%");
+    g_assert_null(titles[4]); // play mode leaves the fifth slot empty
+    cui_modes_free_columns(titles, formats);
+
+    cui_modes_parse_group_columns(kf, "mode:intake", titles, formats);
+    g_assert_cmpstr(titles[0], ==, "Added");
+    g_assert_cmpstr(formats[0], ==, CUI_RECENT_TOKEN);
+    g_assert_cmpstr(formats[1], ==, "%codec%");
+    g_assert_nonnull(formats[4]); // intake fills all five slots
+    cui_modes_free_columns(titles, formats);
+
+    // The compiled fallback agrees with the shipped intake defaults.
+    char *bt[MAX_COLUMNS], *bf[MAX_COLUMNS];
+    cui_modes_builtin_columns(CUI_MODE_INTAKE, bt, bf);
+    g_assert_cmpstr(bf[0], ==, CUI_RECENT_TOKEN);
+    g_assert_cmpstr(bf[1], ==, "%codec%");
+    cui_modes_free_columns(bt, bf);
+
+    GPtrArray *tpl = g_ptr_array_new_with_free_func(g_free);
+    cui_modes_collect_templates(kf, tpl);
+    g_assert_cmpuint(tpl->len, ==, 6); // Standard play + Decades, Initials, Quality, Tag Gaps, Year
+    g_assert_cmpstr(g_ptr_array_index(tpl, 0), ==, "Standard play");
+    g_ptr_array_unref(tpl);
+    g_key_file_unref(kf);
+
+    // A lone half-slot (title without format) is dropped, like the dialog.
+    GKeyFile *partial = g_key_file_new();
+    g_key_file_set_string(partial, "mode:play", "title1", "Only Title");
+    char *pt[MAX_COLUMNS], *pf[MAX_COLUMNS];
+    cui_modes_parse_group_columns(partial, "mode:play", pt, pf);
+    g_assert_null(pt[0]);
+    g_assert_null(pf[0]);
+    g_key_file_unref(partial);
+}
+
+static void test_mode_serialize_roundtrip(void) {
+    cui_widget_t *cw = fresh_widget();
+    cw->mode = CUI_MODE_INTAKE;
+    cw->recent_days = 3;
+    cw->titles[0] = g_strdup("Added");
+    cw->formats[0] = g_strdup(CUI_RECENT_TOKEN);
+    cw->titles[1] = g_strdup("Codec");
+    cw->formats[1] = g_strdup("%codec%");
+    cw->sort_ids[1] = 1;
+    cw->sort_orders[1] = 1;
+    cw->alt_titles[0] = g_strdup("Rating");
+    cw->alt_formats[0] = g_strdup("%rating%");
+    cw->alt_sort_orders[0] = 1;
+
+    const char **kv = cui_serialize_to_keyvalues((ddb_gtkui_widget_t *)cw);
+    const char *mode_v = NULL, *days_v = NULL, *c1f = NULL, *c2s = NULL, *a1f = NULL, *a1s = NULL;
+    for (int i = 0; kv[i]; i += 2) {
+        if (strcmp(kv[i], "mode") == 0) mode_v = kv[i + 1];
+        else if (strcmp(kv[i], "recent_days") == 0) days_v = kv[i + 1];
+        else if (strcmp(kv[i], "col1_format") == 0) c1f = kv[i + 1];
+        else if (strcmp(kv[i], "col2_sort") == 0) c2s = kv[i + 1];
+        else if (strcmp(kv[i], "altmode.col1_format") == 0) a1f = kv[i + 1];
+        else if (strcmp(kv[i], "altmode.col1_sort") == 0) a1s = kv[i + 1];
+    }
+    g_assert_cmpstr(mode_v, ==, "1");
+    g_assert_cmpstr(days_v, ==, "3");
+    g_assert_cmpstr(c1f, ==, CUI_RECENT_TOKEN);
+    g_assert_cmpstr(c2s, ==, "1:1");
+    g_assert_cmpstr(a1f, ==, "%rating%");
+    g_assert_cmpstr(a1s, ==, "0:1");
+    cui_free_serialized_keyvalues((ddb_gtkui_widget_t *)cw, kv);
+
+    // Deserialize into a fresh widget: mode, days, both column sets, sorts.
+    const char **kv2 = cui_serialize_to_keyvalues((ddb_gtkui_widget_t *)cw);
+    cui_widget_t *cw2 = fresh_widget();
+    cui_deserialize_from_keyvalues((ddb_gtkui_widget_t *)cw2, kv2);
+    g_assert_cmpint(cw2->mode, ==, CUI_MODE_INTAKE);
+    g_assert_cmpint(cw2->recent_days, ==, 3);
+    g_assert_cmpstr(cw2->formats[0], ==, CUI_RECENT_TOKEN);
+    g_assert_cmpstr(cw2->titles[1], ==, "Codec");
+    g_assert_cmpint(cw2->sort_ids[1], ==, 1);
+    g_assert_cmpstr(cw2->alt_formats[0], ==, "%rating%");
+    g_assert_cmpint(cw2->alt_sort_orders[0], ==, 1);
+    cui_free_serialized_keyvalues((ddb_gtkui_widget_t *)cw, kv2);
+    free_widget_columns(cw);
+    free_widget_columns(cw2);
+    g_free(cw);
+    g_free(cw2);
+
+    // Legacy layout (no mode key, no altmode.*): mode 0, alt absent, so the
+    // first switch seeds it from cui-modes.ini / built-ins.
+    const char *legacy[] = {
+        "col1_title", "Genre", "col1_format", "%genre%", "col1_sort", "0:0",
+        "split_tags", "1", "ignore_prefix", "0", "autoplaylist_name", "Library Viewer",
+        NULL
+    };
+    cui_widget_t *cw3 = fresh_widget();
+    cw3->recent_days = 1; // create_widget's default; deserialize only validates
+    cui_deserialize_from_keyvalues((ddb_gtkui_widget_t *)cw3, legacy);
+    g_assert_cmpint(cw3->mode, ==, CUI_MODE_PLAY);
+    g_assert_cmpstr(cw3->formats[0], ==, "%genre%");
+    g_assert_false(cui_modes_columns_present(cw3->alt_titles, cw3->alt_formats));
+
+    // Malformed mode / recent_days values are rejected, defaults stand.
+    const char *badmode[] = {
+        "col1_format", "%genre%", "mode", "7", "recent_days", "99999",
+        NULL
+    };
+    cui_deserialize_from_keyvalues((ddb_gtkui_widget_t *)cw3, badmode);
+    g_assert_cmpint(cw3->mode, ==, CUI_MODE_PLAY);
+    g_assert_cmpint(cw3->recent_days, ==, 1);
+    free_widget_columns(cw3);
+    g_free(cw3);
 }
 
 // ---- search matching -------------------------------------------------------
@@ -703,6 +913,127 @@ static void test_modification_index_invalidation(void) {
     cui_fill_cancel(cw);
     for (int i = 0; i < MAX_COLUMNS; i++) { g_free(cw->titles[i]); g_free(cw->formats[i]); }
     mock_node_free(tree);
+    g_free(cw);
+}
+
+// ---- mode switch: the rebuild must reach the fresh stores -------------------
+//
+// cui_set_mode swaps the column sets and runs the dialog-OK rebuild dance.
+// The regression to lock: without the -1 invalidation update_tree_data
+// short-circuits on the modification-index cache and every pane stays blank
+// after the switch (the v1.3.4 bug shape, now on the mode-switch path).
+
+static void test_mode_switch_rebuild(void) {
+    if (!g_gtk_ok) { g_test_skip("no display for GtkTreeView"); return; }
+    cui_widget_t *cw = fresh_widget();
+    cw->changed_col_idx = -1;
+    cw->titles[0] = g_strdup("Genre");
+    cw->formats[0] = g_strdup("%genre%");
+    // Pre-seeded alt set: the switch must NOT fall back to reading the
+    // user's real cui-modes.ini (tests never touch that file).
+    cw->alt_titles[0] = g_strdup("Added");
+    cw->alt_formats[0] = g_strdup(CUI_RECENT_TOKEN);
+    init_my_preset(cw);
+    g_assert_cmpint(cw->num_columns, ==, 1);
+
+    // A real container for rebuild_columns to (re)fill, sunk because nothing
+    // else owns it in the test.
+    cw->base.widget = gtk_event_box_new();
+    g_object_ref_sink(cw->base.widget);
+
+    // Manual first-column widgets so the first build works without a full
+    // rebuild_columns; sunk because they are not inside base.widget.
+    cw->stores[0] = gtk_list_store_new(3, G_TYPE_STRING, G_TYPE_INT, G_TYPE_BOOLEAN);
+    cw->trees[0] = gtk_tree_view_new_with_model(GTK_TREE_MODEL(cw->stores[0]));
+    g_object_ref_sink(cw->trees[0]);
+    GtkTreeSelection *sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(cw->trees[0]));
+    g_signal_connect(sel, "changed", G_CALLBACK(on_column_changed), cw);
+
+    mock_node_t *tree = mock_group(NULL,
+        mock_group("Rock", mock_leaf("t1", "A", mock_leaf("t2", "B", NULL)), NULL), NULL);
+    mock_set_item_tree(tree);
+    ml_source = (ddb_mediasource_source_t *)tree;
+
+    update_tree_data(cw);
+    GtkTreeModel *m = GTK_TREE_MODEL(cw->stores[0]);
+    g_assert_cmpint(gtk_tree_model_iter_n_children(m, NULL), ==, 2); // [All] + Rock
+
+    GtkListStore *old_store = cw->stores[0];
+    GtkWidget *old_tree = cw->trees[0];
+    cui_set_mode(cw, CUI_MODE_INTAKE);
+
+    g_assert_cmpint(cw->mode, ==, CUI_MODE_INTAKE);
+    // rebuild_columns replaced the widgets; release the manual refs.
+    g_object_unref(old_store);
+    g_object_unref(old_tree);
+
+    // The fresh store was really populated (the -1 reset defeated the cache),
+    // the header carries the incoming mode's title, and the old live set
+    // moved to alt.
+    m = GTK_TREE_MODEL(cw->stores[0]);
+    g_assert_cmpint(gtk_tree_model_iter_n_children(m, NULL), ==, 2);
+    GtkTreeViewColumn *col = gtk_tree_view_get_column(GTK_TREE_VIEW(cw->trees[0]), 0);
+    g_assert_nonnull(col);
+    g_assert_cmpstr(gtk_tree_view_column_get_title(col), ==, "Added");
+    g_assert_cmpstr(cw->alt_titles[0], ==, "Genre");
+    g_assert_cmpstr(cw->titles[0], ==, "Added");
+
+    // Switching home restores the original set from alt (remembers both).
+    cui_set_mode(cw, CUI_MODE_PLAY);
+    g_assert_cmpint(cw->mode, ==, CUI_MODE_PLAY);
+    g_assert_cmpstr(cw->titles[0], ==, "Genre");
+    g_assert_cmpstr(cw->alt_titles[0], ==, "Added");
+
+    // Cancel the refill the last rebuild armed, then release everything.
+    cui_fill_cancel(cw);
+    g_object_unref(cw->base.widget);
+    cw->cached_tree = NULL;
+    ml_source = NULL;
+    mock_set_item_tree(NULL);
+    my_scriptable_free((scriptableItem_t *)cw->my_preset);
+    if (cw->track_counts_cache) g_hash_table_destroy(cw->track_counts_cache);
+    free_widget_columns(cw);
+    mock_node_free(tree);
+    g_free(cw);
+}
+
+// The recency bucket labels order by recency, not locale collation, with
+// [All] still pinned (§6.13).
+
+static void test_sort_recent_order(void) {
+    if (!g_gtk_ok) { g_test_skip("no display for GtkListStore"); return; }
+    cui_widget_t *cw = fresh_widget();
+    cw->ignore_prefix = 0;
+
+    GtkListStore *store = gtk_list_store_new(3, G_TYPE_STRING, G_TYPE_INT, G_TYPE_BOOLEAN);
+    gtk_tree_sortable_set_sort_func(GTK_TREE_SORTABLE(store), 0, sort_func, cw, NULL);
+    gtk_tree_sortable_set_sort_column_id(GTK_TREE_SORTABLE(store), 0, GTK_SORT_ASCENDING);
+    GtkTreeIter it;
+    gtk_list_store_insert_with_values(store, &it, -1, 0, "[All (3 Additions)]", 1, 99, 2, TRUE,  -1);
+    gtk_list_store_insert_with_values(store, &it, -1, 0, "Library",      1,   3, 2, FALSE, -1);
+    gtk_list_store_insert_with_values(store, &it, -1, 0, "Recent 30d",   1,   7, 2, FALSE, -1);
+    gtk_list_store_insert_with_values(store, &it, -1, 0, "New 1d",       1,   1, 2, FALSE, -1);
+
+    const char *want_asc[]  = {"[All (3 Additions)]", "New 1d", "Recent 30d", "Library"};
+    const char *want_desc[] = {"[All (3 Additions)]", "Library", "Recent 30d", "New 1d"};
+
+    GtkTreeModel *m = GTK_TREE_MODEL(store);
+    for (int pass = 0; pass < 2; pass++) {
+        gtk_tree_sortable_set_sort_column_id(GTK_TREE_SORTABLE(store), 0,
+                                             pass == 0 ? GTK_SORT_ASCENDING : GTK_SORT_DESCENDING);
+        const char **want = (pass == 0) ? want_asc : want_desc;
+        GtkTreeIter iter;
+        gboolean valid = gtk_tree_model_get_iter_first(m, &iter);
+        for (int i = 0; valid && i < 4; i++) {
+            gchar *text;
+            gtk_tree_model_get(m, &iter, 0, &text, -1);
+            g_assert_cmpstr(text, ==, want[i]);
+            g_free(text);
+            valid = gtk_tree_model_iter_next(m, &iter);
+        }
+        g_assert_false(valid);
+    }
+    g_object_unref(store);
     g_free(cw);
 }
 
@@ -1269,6 +1600,11 @@ int main(int argc, char **argv) {
     g_test_add_func("/cui/scriptable/split", test_scriptable_split);
     g_test_add_func("/cui/scriptable/rating_column", test_scriptable_rating_column);
     g_test_add_func("/cui/rating/text_key", test_rating_text_key);
+    g_test_add_func("/cui/recent/expression", test_recent_expression);
+    g_test_add_func("/cui/recent/text_key", test_recent_text_key);
+    g_test_add_func("/cui/mode/exchange", test_mode_exchange);
+    g_test_add_func("/cui/modes/keyfile", test_modes_keyfile);
+    g_test_add_func("/cui/mode/serialize_roundtrip", test_mode_serialize_roundtrip);
     g_test_add_func("/cui/search/match", test_search_match);
     g_test_add_func("/cui/count/recursive", test_count_recursive);
     g_test_add_func("/cui/count/cache_zero", test_count_cache_zero);
@@ -1282,6 +1618,8 @@ int main(int argc, char **argv) {
     g_test_add_func("/cui/config/save_layout", test_config_never_saves_layout);
     g_test_add_func("/cui/sort/all_row", test_sort_all_row);
     g_test_add_func("/cui/sort/rating_order", test_sort_rating_order);
+    g_test_add_func("/cui/sort/recent_order", test_sort_recent_order);
+    g_test_add_func("/cui/mode/switch_rebuild", test_mode_switch_rebuild);
     g_test_add_func("/cui/populate/no_selection_steal", test_populate_does_not_steal_selection);
     g_test_add_func("/cui/update/modification_index_invalidation", test_modification_index_invalidation);
     g_test_add_func("/cui/sort/persistence", test_sort_persistence_roundtrip);

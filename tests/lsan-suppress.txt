@@ -1,0 +1,11 @@
+# LeakSanitizer suppressions for the ASan/UBSan release-gate run (AGENTS.md §5.5).
+#
+# The suite's first real rebuild_columns (v2.2.0 mode-switch test) makes GTK
+# render text for the first time, which pulls in fontconfig and pango. Both
+# deliberately keep their pattern/font caches alive for the whole process and
+# never free at exit; every block in the report originates in these two
+# libraries and none in plugin code. GTK upstream carries the same class of
+# suppressions for its own test suite. Keep this list minimal: a leak whose
+# stack is NOT covered by these two entries is ours and must be fixed.
+leak:libfontconfig
+leak:libpango

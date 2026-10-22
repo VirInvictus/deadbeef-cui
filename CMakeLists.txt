@@ -11,11 +11,12 @@ pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
 # Since we know where deadbeef.h is (/usr/include/deadbeef), we can just use it directly
 include_directories(/usr/include)
 
-add_library(cui SHARED 
+add_library(cui SHARED
     src/main.c
     src/cui_widget.c
     src/cui_data.c
     src/cui_scriptable.c
+    src/cui_modes.c
 )
 # PREFIX "" + OUTPUT_NAME: the build emits ddb_misc_cui_GTK3.so directly, the
 # filename DeaDBeeF requires (the _load entry-point symbol is derived from the
@@ -43,6 +44,7 @@ if(BUILD_TESTS)
         src/cui_data.c
         src/cui_widget.c
         src/cui_scriptable.c
+        src/cui_modes.c
     )
     target_include_directories(cui_tests PRIVATE src tests ${GTK3_INCLUDE_DIRS})
     target_link_libraries(cui_tests PRIVATE ${GTK3_LIBRARIES} ${CMAKE_DL_LIBS})

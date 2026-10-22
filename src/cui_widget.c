@@ -1,5 +1,6 @@
 #include "cui_widget.h"
 #include "cui_data.h"
+#include "cui_modes.h"
 #include "cui_scriptable.h"
 
 // Both logging helpers are format-checked (attributes in cui_globals.h) —
@@ -385,6 +386,77 @@ static void on_menu_sync_library(GtkMenuItem *item, gpointer user_data) {
     medialib_plugin->refresh(ml_source);
 }
 
+// The preset-swap + rebuild sequence shared by the config dialog's OK, mode
+// switches, and template application: all three replace the preset and every
+// column store, so the modification-index cache must be invalidated or
+// update_tree_data short-circuits and the new panes stay blank until the
+// next library event (the v1.3.4 dialog-OK rule; see the paired comment in
+// update_tree_data).
+static void cui_rebuild_after_column_swap(cui_widget_t *cw) {
+    if (cw->my_preset) {
+        my_scriptable_free((scriptableItem_t *)cw->my_preset);
+        cw->my_preset = NULL;
+    }
+    init_my_preset(cw);
+    rebuild_columns(cw);
+    cw->last_ml_modification_idx = -1;
+    update_tree_data(cw);
+}
+
+// Switch this instance's facet mode (CUI_MODE_PLAY / CUI_MODE_INTAKE): the
+// live and alt column sets exchange, then the columns rebuild. The incoming
+// slot is seeded from cui-modes.ini (or built-ins) on the first switch of a
+// layout that predates modes. Selections intentionally reset: the old mode's
+// facet values cannot match the new tree, which is the accepted view-reset
+// of a mode switch (library data is never touched).
+void cui_set_mode(cui_widget_t *cw, int mode) {
+    if (mode == cw->mode) return;
+    if (mode != CUI_MODE_PLAY && mode != CUI_MODE_INTAKE) return;
+
+    if (!cui_modes_columns_present(cw->alt_titles, cw->alt_formats)) {
+        cui_modes_load_columns(mode, cw->alt_titles, cw->alt_formats);
+    }
+    cui_modes_exchange_alt(cw);
+    cw->mode = mode;
+    CUI_DEBUG("mode switched to %s", mode == CUI_MODE_INTAKE ? "Intake" : "Play");
+    cui_rebuild_after_column_swap(cw);
+}
+
+static void on_menu_mode_activate(GtkMenuItem *item, gpointer user_data) {
+    cui_widget_t *cw = (cui_widget_t *)user_data;
+    // Radio groups deselect the previously active item on every click; only
+    // the newly checked item should act, and re-clicking the active mode is
+    // a no-op.
+    if (!gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(item))) return;
+    int target = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(item), "cui_mode_idx"));
+    cui_set_mode(cw, target);
+}
+
+// Apply a cui-modes.ini [template:*] column set to the CURRENT mode's slots.
+// Sorts reset to the defaults (name/ascending); the other mode is untouched.
+static void on_menu_template_activate(GtkMenuItem *item, gpointer user_data) {
+    cui_widget_t *cw = (cui_widget_t *)user_data;
+    const char *name = (const char *)g_object_get_data(G_OBJECT(item), "cui_template_name");
+    if (!name || !name[0]) return;
+
+    char *titles[MAX_COLUMNS] = {NULL};
+    char *formats[MAX_COLUMNS] = {NULL};
+    if (cui_modes_template_columns(name, titles, formats) != 0) {
+        cui_log(DDB_LOG_LAYER_DEFAULT, "deadbeef-cui: template '%s' not found in cui-modes.ini.\n", name);
+        cui_modes_free_columns(titles, formats);
+        return;
+    }
+    cui_modes_free_columns(cw->titles, cw->formats);
+    for (int i = 0; i < MAX_COLUMNS; i++) {
+        cw->titles[i] = titles[i];
+        cw->formats[i] = formats[i];
+        cw->sort_ids[i] = 0;
+        cw->sort_orders[i] = 0;
+    }
+    CUI_DEBUG("template '%s' applied to mode %d", name, cw->mode);
+    cui_rebuild_after_column_swap(cw);
+}
+
 // Read the right-clicked tree's current selection and produce a comma-joined
 // string of the non-[All] row labels, suitable for use as a playlist title.
 // Length-clamped to 200 chars (deadbeef plt titles fit in 256-byte buffers,
@@ -745,6 +817,46 @@ static gboolean on_tree_button_press(GtkWidget *widget, GdkEventButton *event, g
     GtkWidget *sep_bot = gtk_separator_menu_item_new();
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), sep_bot);
 
+    // Mode submenu: radio items per facet mode; the active one carries the
+    // check. Switching rebuilds the columns from the other mode's set.
+    GtkWidget *item_mode = gtk_menu_item_new_with_label("Mode");
+    GtkWidget *mode_menu = gtk_menu_new();
+    static const char *const mode_labels[2] = { "Play", "Intake" };
+    GSList *radio_group = NULL;
+    for (int m = 0; m < 2; m++) {
+        GtkWidget *mi = gtk_radio_menu_item_new_with_label(radio_group, mode_labels[m]);
+        radio_group = gtk_radio_menu_item_get_group(GTK_RADIO_MENU_ITEM(mi));
+        if (cw->mode == m) {
+            gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(mi), TRUE);
+        }
+        g_object_set_data(G_OBJECT(mi), "cui_mode_idx", GINT_TO_POINTER(m));
+        g_signal_connect(mi, "activate", G_CALLBACK(on_menu_mode_activate), cw);
+        gtk_menu_shell_append(GTK_MENU_SHELL(mode_menu), mi);
+    }
+    gtk_menu_item_set_submenu(GTK_MENU_ITEM(item_mode), mode_menu);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), item_mode);
+
+    // Templates submenu: [template:*] groups from cui-modes.ini, re-read each
+    // time the menu opens so hand edits to the file land without a restart.
+    // Hidden entirely when the file offers none.
+    GPtrArray *templates = cui_modes_list_templates();
+    if (templates->len > 0) {
+        GtkWidget *item_tpl = gtk_menu_item_new_with_label("Templates");
+        GtkWidget *tpl_menu = gtk_menu_new();
+        for (guint t = 0; t < templates->len; t++) {
+            const char *tpl_name = g_ptr_array_index(templates, t);
+            char *label = g_strdup_printf("Apply template: %s", tpl_name);
+            GtkWidget *mi = gtk_menu_item_new_with_label(label);
+            g_free(label);
+            g_object_set_data_full(G_OBJECT(mi), "cui_template_name", g_strdup(tpl_name), g_free);
+            g_signal_connect(mi, "activate", G_CALLBACK(on_menu_template_activate), cw);
+            gtk_menu_shell_append(GTK_MENU_SHELL(tpl_menu), mi);
+        }
+        gtk_menu_item_set_submenu(GTK_MENU_ITEM(item_tpl), tpl_menu);
+        gtk_menu_shell_append(GTK_MENU_SHELL(menu), item_tpl);
+    }
+    g_ptr_array_unref(templates);
+
     GtkWidget *item_sync = gtk_menu_item_new_with_label("Sync library");
     g_signal_connect(item_sync, "activate", G_CALLBACK(on_menu_sync_library), cw);
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), item_sync);
@@ -1053,6 +1165,7 @@ static void cui_destroy(ddb_gtkui_widget_t *w) {
         g_free(cw->titles[i]);
         g_free(cw->formats[i]);
     }
+    cui_modes_free_columns(cw->alt_titles, cw->alt_formats);
 
     // w_destroy (gtkui widgets.c) frees the cui_widget_t struct itself but not
     // anything it points to, so every heap member we own must be released here.
@@ -1075,7 +1188,9 @@ static void cui_destroy(ddb_gtkui_widget_t *w) {
 
 const char **cui_serialize_to_keyvalues(ddb_gtkui_widget_t *w) {
     cui_widget_t *cw = (cui_widget_t *)w;
-    int num_items = MAX_COLUMNS * 3 + 3; // titles, formats, sorts, split_tags, ignore_prefix, autoplaylist
+    // pairs: current columns (15), altmode columns (15), split_tags,
+    // ignore_prefix, autoplaylist_name, mode, recent_days.
+    int num_items = MAX_COLUMNS * 3 * 2 + 5;
     char **keyvalues = calloc(num_items * 2 + 1, sizeof(char *));
     int idx = 0;
 
@@ -1098,19 +1213,47 @@ const char **cui_serialize_to_keyvalues(ddb_gtkui_widget_t *w) {
         keyvalues[idx++] = strdup(key_sort);
         keyvalues[idx++] = strdup(val_sort);
     }
-    
+
+    // The other mode's column set, so a mode switch restores it including
+    // per-column sorts. Empty slots serialize as "" and deserialize back to
+    // NULL (the alt set counts as absent until a mode actually populates it).
+    for (int i = 0; i < MAX_COLUMNS; i++) {
+        char key_title[32], key_format[32], key_sort[32], val_sort[16];
+        snprintf(key_title, sizeof(key_title), "altmode.col%d_title", i + 1);
+        snprintf(key_format, sizeof(key_format), "altmode.col%d_format", i + 1);
+
+        keyvalues[idx++] = strdup(key_title);
+        keyvalues[idx++] = cw->alt_titles[i] ? strdup(cw->alt_titles[i]) : strdup("");
+
+        keyvalues[idx++] = strdup(key_format);
+        keyvalues[idx++] = cw->alt_formats[i] ? strdup(cw->alt_formats[i]) : strdup("");
+
+        snprintf(key_sort, sizeof(key_sort), "altmode.col%d_sort", i + 1);
+        snprintf(val_sort, sizeof(val_sort), "%d:%d", cw->alt_sort_ids[i], cw->alt_sort_orders[i]);
+        keyvalues[idx++] = strdup(key_sort);
+        keyvalues[idx++] = strdup(val_sort);
+    }
+
     keyvalues[idx++] = strdup("split_tags");
     char temp[16];
     snprintf(temp, sizeof(temp), "%d", cw->split_tags);
     keyvalues[idx++] = strdup(temp);
-    
+
     keyvalues[idx++] = strdup("ignore_prefix");
     snprintf(temp, sizeof(temp), "%d", cw->ignore_prefix);
     keyvalues[idx++] = strdup(temp);
-    
+
     keyvalues[idx++] = strdup("autoplaylist_name");
     keyvalues[idx++] = cw->autoplaylist_name ? strdup(cw->autoplaylist_name) : strdup("Library Viewer");
-    
+
+    keyvalues[idx++] = strdup("mode");
+    snprintf(temp, sizeof(temp), "%d", cw->mode);
+    keyvalues[idx++] = strdup(temp);
+
+    keyvalues[idx++] = strdup("recent_days");
+    snprintf(temp, sizeof(temp), "%d", cw->recent_days);
+    keyvalues[idx++] = strdup(temp);
+
     keyvalues[idx] = NULL;
     return (const char **)keyvalues;
 }
@@ -1132,13 +1275,15 @@ void cui_deserialize_from_keyvalues(ddb_gtkui_widget_t *w, const char **keyvalue
             for (int i = 0; i < MAX_COLUMNS; i++) {
                 g_free(cw->titles[i]); cw->titles[i] = NULL;
                 g_free(cw->formats[i]); cw->formats[i] = NULL;
+                g_free(cw->alt_titles[i]); cw->alt_titles[i] = NULL;
+                g_free(cw->alt_formats[i]); cw->alt_formats[i] = NULL;
             }
-            
+
             for (int i = 0; keyvalues[i]; i += 2) {
                 const char *k = keyvalues[i];
                 const char *v = keyvalues[i+1];
                 if (!v) continue;
-                
+
                 if (strncmp(k, "col", 3) == 0 && strlen(k) >= 10) {
                     int col = k[3] - '1';
                     if (col >= 0 && col < MAX_COLUMNS) {
@@ -1158,6 +1303,37 @@ void cui_deserialize_from_keyvalues(ddb_gtkui_widget_t *w, const char **keyvalue
                         && (id == 0 || id == 1) && (order == 0 || order == 1)) {
                         cw->sort_ids[col] = id;
                         cw->sort_orders[col] = order;
+                    }
+                } else if (strncmp(k, "altmode.col", 11) == 0 && strlen(k) >= 18) {
+                    // altmode.colN_title/_format: the inactive mode's set.
+                    // Empty values stay NULL so the alt set counts as absent
+                    // until a mode switch actually populates it.
+                    int col = k[11] - '1';
+                    if (col >= 0 && col < MAX_COLUMNS && v[0]) {
+                        if (strstr(k, "_title")) {
+                            cw->alt_titles[col] = g_strdup(v);
+                        } else if (strstr(k, "_format")) {
+                            cw->alt_formats[col] = g_strdup(v);
+                        }
+                    }
+                } else if (strncmp(k, "altmode.col", 11) == 0 && strstr(k, "_sort")) {
+                    int col = k[11] - '1';
+                    int id = -1, order = -1;
+                    if (col >= 0 && col < MAX_COLUMNS
+                        && sscanf(v, "%d:%d", &id, &order) == 2
+                        && (id == 0 || id == 1) && (order == 0 || order == 1)) {
+                        cw->alt_sort_ids[col] = id;
+                        cw->alt_sort_orders[col] = order;
+                    }
+                } else if (strcmp(k, "mode") == 0) {
+                    int m = atoi(v);
+                    if (m == CUI_MODE_PLAY || m == CUI_MODE_INTAKE) {
+                        cw->mode = m;
+                    }
+                } else if (strcmp(k, "recent_days") == 0) {
+                    int d = atoi(v);
+                    if (d >= 1 && d <= 365) {
+                        cw->recent_days = d;
                     }
                 } else if (strcmp(k, "split_tags") == 0) {
                     cw->split_tags = atoi(v);
@@ -1226,21 +1402,17 @@ static void on_config_dialog_response(GtkDialog *dialog, gint response_id, gpoin
                 if (cw->autoplaylist_name) g_free(cw->autoplaylist_name);
                 cw->autoplaylist_name = g_strdup(gtk_entry_get_text(GTK_ENTRY(ap_entry)));
             }
+
+            GtkWidget *days_spin = gtk_grid_get_child_at(grid, 1, MAX_COLUMNS + 4);
+            if (days_spin && GTK_IS_SPIN_BUTTON(days_spin)) {
+                cw->recent_days = (int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(days_spin));
+            }
         }
         g_list_free(children);
 
-        if (cw->my_preset) {
-            my_scriptable_free((scriptableItem_t *)cw->my_preset);
-            cw->my_preset = NULL;
-        }
-        init_my_preset(cw);
-        rebuild_columns(cw);
-        // The dialog replaced the preset and the column stores, so force a
-        // real rebuild: without this reset update_tree_data short-circuits on
-        // the modification-index cache and every pane stays blank until the
-        // next library event or search keystroke.
-        cw->last_ml_modification_idx = -1;
-        update_tree_data(cw);
+        // The dialog may have changed the preset inputs (columns, split,
+        // recent days); the shared swap-rebuild sequence reapplies it all.
+        cui_rebuild_after_column_swap(cw);
 
         // No layout save here. The plugin used to call
         // gtkui_plugin->w_save_layout_to_conf_key("layout", NULL), which
@@ -1301,6 +1473,13 @@ void show_config_dialog(GtkMenuItem *item, gpointer user_data) {
     GtkWidget *ap_entry = gtk_entry_new();
     if (cw->autoplaylist_name) gtk_entry_set_text(GTK_ENTRY(ap_entry), cw->autoplaylist_name);
     gtk_grid_attach(GTK_GRID(grid), ap_entry, 1, MAX_COLUMNS + 3, 2, 1);
+
+    // Bucket size (days) for the @cui/recent@ recency column (v2.2.0); feeds
+    // the cutoffs init_my_preset injects at preset build.
+    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Recent days:"), 0, MAX_COLUMNS + 4, 1, 1);
+    GtkWidget *days_spin = gtk_spin_button_new_with_range(1, 365, 1);
+    gtk_spin_button_set_value(GTK_SPIN_BUTTON(days_spin), cw->recent_days >= 1 ? cw->recent_days : 1);
+    gtk_grid_attach(GTK_GRID(grid), days_spin, 1, MAX_COLUMNS + 4, 2, 1);
     
     gtk_container_add(GTK_CONTAINER(content_area), grid);
     gtk_widget_show_all(dialog);
@@ -1322,8 +1501,14 @@ ddb_gtkui_widget_t *cui_create_widget(void) {
     cw->changed_col_idx = -1;
     cw->playlist_dirty = 1;
     cw->fill_budget_us = 75000;
+    cw->recent_days = 1;
+    cw->mode = CUI_MODE_PLAY;
     ddb_gtkui_widget_t *w = &cw->base;
     w->type = "cui";
+
+    // First widget of the session makes sure the editable mode/template file
+    // exists (never overwrites); idempotent per process.
+    cui_modes_ensure_default_file();
 
     deadbeef_api->conf_lock();
     if (!deadbeef_api->conf_get_str_fast("cui.col1_format", NULL)) {

@@ -20,6 +20,11 @@ void cui_setup_menu_autodestroy(GtkWidget *menu);
 void cui_widget_stop(void);
 void cui_clear_viewer_playlists(void);
 
+// Switch this instance's facet mode (CUI_MODE_PLAY / CUI_MODE_INTAKE),
+// exchanging the live and alt column sets and rebuilding. Exposed for the
+// test suite; the right-click Mode submenu is its only runtime caller.
+void cui_set_mode(cui_widget_t *cw, int mode);
+
 void sync_source_config(void);
 
 gboolean deferred_lib_update_cb(gpointer data);

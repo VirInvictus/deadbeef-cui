@@ -30,6 +30,7 @@ The plugin drives DeaDBeeF's ordinary playlist view. To keep your manual playlis
 |-----------|-------------|
 | **Dynamic Columns** | Configure 1 to 5 interactive list views filtering hierarchically. |
 | **Custom Formatting** | Full support for DeaDBeeF title formatting syntax. |
+| **Facet Modes** | Two named workflows (Play, Intake) per browser, toggled from the context menu; defaults and templates live in an editable `cui-modes.ini`. |
 | **Integrated Search** | Filter facets dynamically via a `CTRL-SHIFT-F` search bar. |
 | **Multi-Selection** | Aggregate filters across multiple genres/artists via Ctrl/Shift-click. |
 | **Native Integration** | Built as a native C GTK3 plugin using the `DB_mediasource_t` API. |
@@ -130,6 +131,28 @@ Notes that apply to every layout:
   its own columns and its own viewer playlist name.
 - The playlists you build here are ordinary DeaDBeeF playlists: send them
   to a new playlist (right-click) and they outlive the browser.
+
+## Facet modes & templates
+
+Right-click any facet for the **Mode** submenu: **Play** (Rating > Genre >
+Album Artist > Album) and **Intake** (Added > Codec > Genre > Album Artist >
+Album). Each browser remembers both modes' columns, including edits from
+Configure Facets, and switching is instant; facet selections reset on a
+switch, which is the point. The Intake mode's first column buckets your
+library by when files entered it ("New Nd" / "Recent 30d" / "Library", with N
+under a new *Recent days* spinner in Configure Facets), so an intake pass is:
+switch to Intake, select **New**, and see only what changed since yesterday,
+already split by codec so a bad rip can't hide.
+
+Mode defaults and templates live in `cui-modes.ini` inside DeaDBeeF's config
+directory. The file is created with defaults on first run and re-read every
+time you open the menu or switch modes, so you can edit it in a text editor
+while the player runs. Its `[template:Name]` sections show up under the
+**Templates** submenu; applying one copies those columns into the current
+mode. The shipped set includes **Standard play** (the reset button for when
+an experiment went too far), Decades, Artist Initials, Quality, Tag Gaps,
+and Year. Column formats accept any title-formatting expression, including a
+reserved `@cui/recent@` token that expands to the recency buckets.
 
 ## Acknowledgments
 

@@ -40,4 +40,10 @@ void my_scriptable_add_child(scriptableItem_t *parent, scriptableItem_t *child);
 
 void init_my_preset(cui_widget_t *cw);
 
+// Expands CUI_RECENT_TOKEN into the recency-bucket title-format expression:
+// New (Nd) / Recent (30d) / Library buckets over %:MEDIALIB_SCAN_TIME%, with
+// cutoffs injected from (days, now). Pure so tests can pin exact cutoffs;
+// init_my_preset passes time(NULL).
+void cui_build_recent_expression(int days, gint64 now, char *out, size_t size);
+
 #endif // CUI_SCRIPTABLE_H

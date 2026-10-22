@@ -3,6 +3,8 @@
 // and strict feature-test macros reject the implicit declaration.
 #define _GNU_SOURCE
 
+#include <time.h>
+
 #include "cui_data.h"
 #include "cui_scriptable.h"
 #include "cui_widget.h"
@@ -83,14 +85,33 @@ int rating_text_key(const char *text) {
     return stars;
 }
 
+// Sort key for the recency bucket labels the CUI_RECENT_TOKEN expansion
+// emits (cui_scriptable.c): New Nd sorts before Recent 30d before Library,
+// regardless of where the locale drops them. Same textual-detection trade as
+// rating_text_key: real metadata colliding with these prefixes would order
+// by bucket; nothing genuine starts with "New ".
+int recent_text_key(const char *text) {
+    if (!text) return -1;
+    if (strncmp(text, "New ", 4) == 0) return 0;
+    if (strncmp(text, "Recent ", 7) == 0) return 1;
+    if (strcmp(text, "Library") == 0) return 2;
+    return -1;
+}
+
 // Facet-row name comparison: two rating display texts order by rating value,
 // so the Rating facet does not depend on where the locale drops U+2605;
-// anything else collates under the ignore-prefix rule as before.
+// likewise two recency bucket labels order by recency. Anything else
+// collates under the ignore-prefix rule as before.
 static int compare_display_names(cui_widget_t *cw, const char *a, const char *b) {
     int ka = rating_text_key(a);
     int kb = rating_text_key(b);
     if (ka >= 0 && kb >= 0) {
         return (ka > kb) - (ka < kb);
+    }
+    int ra = recent_text_key(a);
+    int rb = recent_text_key(b);
+    if (ra >= 0 && rb >= 0) {
+        return (ra > rb) - (ra < rb);
     }
     return g_utf8_collate(skip_prefix(a, cw->ignore_prefix), skip_prefix(b, cw->ignore_prefix));
 }
@@ -610,6 +631,15 @@ static gboolean restore_vscroll_idle(gpointer data) {
 
 void update_tree_data(cui_widget_t *cw) {
     if (g_atomic_int_get(&shutting_down) || !medialib_plugin || !ml_source) return;
+
+    // The recency bucket cutoffs are baked into the preset at build time; an
+    // hour-old preset rebuilds (with the -1 reset, the v1.3.4 rule) so day
+    // boundaries roll without waiting for a restart or config change.
+    if (cw->preset_has_recent && time(NULL) - cw->preset_built_at >= 3600) {
+        CUI_DEBUG("recent-bucket preset stale; rebuilding cutoffs");
+        init_my_preset(cw);
+        cw->last_ml_modification_idx = -1;
+    }
 
     int search_changed = 0;
     if (cw->search_text && (!cw->last_search_text || strcmp(cw->search_text, cw->last_search_text) != 0)) {

@@ -24,6 +24,7 @@ A series of list views (facets) that filter hierarchically. While the default is
 - **Metadata Filtering:** Columns can be mapped to any tag (Genre, Artist, Album, Year, Composer, etc.).
 - **Hierarchical Engine:** Selection in one pane filters all subsequent panes to the right.
 - **Aggregate Selection:** "All" rows and multi-selection support for broad filtering.
+- **Facet Modes (v2.2.0):** Two per-instance named column sets (Play, Intake) toggled from the context menu; both sets persist across switches and restarts. Mode defaults and templates live in a user-editable `cui-modes.ini` that is re-read live and never overwritten once it exists.
 
 ### 2.3 Recursive Filter Engine
 A recursive aggregation system that keeps hierarchical filtering correct at all levels, even when broad "All" categories are selected. It resolves the "Various Artists" collision by aggregating child albums from all matching nodes across the library tree.

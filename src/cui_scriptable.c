@@ -1,5 +1,7 @@
 #include "cui_scriptable.h"
 
+#include <time.h>
+
 scriptableItem_t *my_scriptable_alloc(void) {
     return calloc(1, sizeof(scriptableItem_t));
 }
@@ -73,6 +75,43 @@ static int column_format_is_rating(const char *fmt) {
     return is_rating;
 }
 
+// The recency facet (CUI_RECENT_TOKEN) expands to this expression at preset
+// build. DeaDBeeF 1.10.3 has no %added% field and no clock function in tf, so
+// the cutoffs are injected here: :MEDIALIB_SCAN_TIME is the unix-seconds stamp
+// the medialib scanner writes when a file's current contents are first read
+// (retags re-stamp, which is intake-relevant), and $ifgreater compares
+// numerically via atoi (tf.c). Kept a pure function of (days, now) so the
+// suite can assert exact cutoffs. days is clamped 1..365.
+//
+// LABELS MUST NEVER CONTAIN PARENTHESES (or any other bracket): tf's argument
+// parser closes an argument list at the FIRST ')' with no nesting awareness
+// (tf.c tf_compile_func), so a literal paren inside an argument truncates the
+// function and the whole expression fails to evaluate — and since medialib
+// concatenates every level's expression into one path string for grouping
+// (medialibtree.c _create_tf_tree), one broken level collapses the ENTIRE
+// tree into single-value columns. Nested $func() calls are fine: their ')'
+// unwinds the naive LIFO correctly, which is exactly why the %rating% star
+// chain works. Caught live 2026-10-22 ("New (1d)" blanked every facet).
+void cui_build_recent_expression(int days, gint64 now, char *out, size_t size) {
+    if (days < 1) days = 1;
+    if (days > 365) days = 365;
+    gint64 recent_cut = now - (gint64)days * 86400;
+    gint64 month_cut = now - (gint64)30 * 86400;
+    snprintf(out, size,
+             "$ifgreater(%%:MEDIALIB_SCAN_TIME%%,%lld,New %dd,"
+             "$ifgreater(%%:MEDIALIB_SCAN_TIME%%,%lld,Recent 30d,Library))",
+             (long long)recent_cut, days, (long long)month_cut);
+}
+
+static int column_format_is_recent(const char *fmt) {
+    if (!fmt) return 0;
+    char *trimmed = g_strdup(fmt);
+    g_strstrip(trimmed);
+    int is_recent = strcmp(trimmed, CUI_RECENT_TOKEN) == 0;
+    g_free(trimmed);
+    return is_recent;
+}
+
 void init_my_preset(cui_widget_t *cw) {
     CUI_DEBUG("init_my_preset called");
     if (cw->my_preset) {
@@ -115,10 +154,19 @@ void init_my_preset(cui_widget_t *cw) {
     p->flags = SCRIPTABLE_FLAG_IS_LIST;
     my_scriptable_set_prop(p, "name", "Facets");
 
+    int has_recent = 0;
     for (int i = 0; i < cw->num_columns; i++) {
         scriptableItem_t *child = my_scriptable_alloc();
-        my_scriptable_set_prop(child, "name",
-                               column_format_is_rating(cw->formats[i]) ? rating_display_tf : cw->formats[i]);
+        if (column_format_is_rating(cw->formats[i])) {
+            my_scriptable_set_prop(child, "name", rating_display_tf);
+        } else if (column_format_is_recent(cw->formats[i])) {
+            char expr[512];
+            cui_build_recent_expression(cw->recent_days, (gint64)time(NULL), expr, sizeof(expr));
+            my_scriptable_set_prop(child, "name", expr);
+            has_recent = 1;
+        } else {
+            my_scriptable_set_prop(child, "name", cw->formats[i]);
+        }
 
         if (cw->split_tags) {
             my_scriptable_set_prop(child, "split", "; ");
@@ -126,6 +174,8 @@ void init_my_preset(cui_widget_t *cw) {
 
         my_scriptable_add_child(p, child);
     }
+    cw->preset_has_recent = has_recent;
+    cw->preset_built_at = (gint64)time(NULL);
 
     scriptableItem_t *track_child = my_scriptable_alloc();
     my_scriptable_set_prop(track_child, "name", "%title%");

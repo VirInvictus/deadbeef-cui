@@ -162,6 +162,14 @@ Measured baseline (6,367-track library, fresh launch with cui in layout but no G
 - [x] **Investigated, no change:** `[All]` row sort position. `sort_func`'s order-aware pinning keeps `[All]` at iter 0 in all sort orders; the original code was correct. Documented in CLAUDE.md §6.13 and covered by the sort test.
 - [x] **Untracked `pick-it-up.md` at repo root** (workspace sweep, 2026-06-09). Decide whether it should be committed (it is committed in other repos) or removed; right now it is invisible to clones. **Moot: the file no longer exists.** It was removed at some point between that sweep and 2026-07-23, so the "commit or remove" question answered itself as "removed". Closed in the 2026-07-23 reconciliation sweep. Build itself is clean: zero compiler warnings from a from-scratch cmake + make.
 
+## Phase 13: Modes & templates (v2.2.0)
+*Named workflows over one browser, borrowed from Atrium's mode-as-view split.*
+
+- [x] **Play / Intake Modes:** A right-click Mode submenu swaps per-instance column sets (Play: Rating > Genre > Album Artist > Album; Intake: Added > Codec > Genre > Album Artist > Album); both sets persist across switches and restarts, and selections reset on switch by design.
+- [x] **Editable defaults file:** `cui-modes.ini` (GKeyFile, DeaDBeeF config dir) carries mode defaults and templates; written once on first run, re-read at every menu open and switch, never overwritten; compiled fallbacks on missing or broken files.
+- [x] **Recency facet:** The reserved `@cui/recent@` format token expands to New Nd / Recent 30d / Library buckets over the medialib's `:MEDIALIB_SCAN_TIME` stamp, with a per-instance Recent days preference and an hourly cutoff refresh.
+- [x] **Templates submenu:** `[template:*]` groups apply to the current mode's slots; shipped starter set: Standard play (the reset), Decades, Artist Initials, Quality, Tag Gaps, Year.
+
 ## New findings 2026-09-12 (six-lens audit Wave 21 + the night research blitz; rewritten in place after the blitz verified it)
 
 Detail: the workspace audit repo's FULL-AUDIT-2026-09-12.md (Wave 21,

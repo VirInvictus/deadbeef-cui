@@ -1,5 +1,73 @@
 # deadbeef-cui — Patch Notes
 
+## v2.2.0
+
+---
+
+### Features
+
+**Facet modes: Play and Intake, with templates.** A right-click "Mode"
+submenu swaps the browser between two named column sets per instance: Play
+(Rating, Genre, Album Artist, Album) and Intake (Added, Codec, Genre, Album
+Artist, Album). Each mode's columns, including config-dialog edits, persist
+across switches and restarts (serialized as `altmode.colN_*` next to the
+existing `colN_*` keys, plus `mode` and `recent_days`), and switching resets
+facet selections, which is the intended view-reset; library data is never
+touched. Mode defaults and templates live in a user-editable INI
+(`cui-modes.ini` in DeaDBeeF's config directory, GKeyFile format), written
+with defaults on first run and re-read at every menu open and mode switch, so
+hand edits land without a restart; a missing or unparseable file falls back
+to compiled defaults and is never overwritten. A "Templates" submenu lists
+the file's `[template:*]` groups (starter set: Standard play, Decades,
+Artist Initials, Quality, Tag Gaps, Year); applying one copies its columns
+into the current mode's slots, so Standard play doubles as the one-click
+reset. Files: `src/cui_modes.c`, `src/cui_modes.h`, `src/cui_widget.c`,
+`src/cui_globals.h`, `CMakeLists.txt`.
+
+**The Added column: recency buckets over the medialib scan stamp.** Intake's
+first facet is the reserved format token `@cui/recent@`, which expands at
+preset build into a `$ifgreater` chain over `%:MEDIALIB_SCAN_TIME%`, the unix
+stamp the medialib scanner writes when a file's current contents first enter
+the library (a re-tag re-stamps it, so recently touched albums surface too).
+The buckets are "New Nd" (N from a new "Recent days" spinner in Configure
+Facets, default 1, serialized per instance), "Recent 30d", and "Library".
+DeaDBeeF 1.10.3 has no `%added%` field and the title formatter has no clock,
+so the plugin injects the cutoffs; the preset rebuilds when its cutoffs are
+an hour stale so day boundaries roll without a restart. Bucket rows sort by
+recency, not locale collation. Files: `src/cui_scriptable.c`,
+`src/cui_data.c`, `src/cui_widget.c`.
+
+### Bug fixes
+
+**Literal parentheses are banned inside generated title-format arguments.**
+The first intake build labeled its buckets "New (1d)" and "Recent (30d)",
+which blanked the entire facet tree: the title formatter's argument parser
+closes an argument at the first `)` with no nesting awareness (`tf.c`
+`tf_compile_func`), so the literal paren truncated the expression, and
+because medialib concatenates every level's expression into one grouping
+string (`medialibtree.c` `_create_tf_tree`), every column collapsed to a
+single value holding the whole library (caught live 2026-10-22, reported by
+Brandon). Labels are now paren-free, the generator test gained a bracket
+guard, and the constraint is documented where the next special function will
+be written.
+
+### Testing
+
+**Seven new tests (40 total), green plain and under ASan/UBSan.** The recent
+expression generator pins exact cutoffs and guards against bracket relapse;
+`recent_text_key` covers the bucket classifier; mode array exchange, INI
+parsing (fed in-memory GKeyFile data, never the user's real file), and the
+serialize roundtrip including legacy-layout back-compat and malformed
+`mode`/`recent_days` rejection are headless; the full mode switch (fresh
+stores populated, modification-index contract, both modes remembered) and
+the bucket sort order are desktop-gated like the other store tests. The
+ASan/UBSan gate gained `tests/lsan-suppress.txt`: the mode-switch test is
+the suite's first real GTK text rendering, which pulls in fontconfig and
+pango, whose process-lifetime caches are the only leaks in the report.
+Live-verified on the development machine (2026-10-22): both modes, the
+template menu, the Standard play reset, and the recency buckets over a
+12,003-track library. Files: `tests/test_cui.c`, `tests/lsan-suppress.txt`.
+
 ## v2.1.0
 
 ---
