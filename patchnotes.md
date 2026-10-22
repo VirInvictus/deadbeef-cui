@@ -1,5 +1,41 @@
 # deadbeef-cui — Patch Notes
 
+## v2.1.0
+
+---
+
+### Features
+
+**`%rating%` facets render as stars, with an Unrated bucket.** A facet column
+whose format is exactly `%rating%` now displays each rating as that many ★
+characters (1 through 5), and tracks with no rating group under a single
+`Unrated` row instead of a blank one. The rewrite lives in the scriptable
+preset itself (a nested `$ifequal` chain, which the title formatter evaluates
+numerically): medialib groups tracks by the evaluated column text, so the
+star text has to exist at the tree level for grouping, counts, selection
+restore, and the viewer playlist to stay consistent; rewriting at display
+time would have left the tree grouped under the raw numbers with star-shaped
+labels. The configured format still reads `%rating%` in the config dialog and
+in the saved layout (the rewrite happens only at preset build), composite
+expressions that merely contain `%rating%` (e.g. `$if2(%rating%,0)`) are left
+verbatim, and every non-rating column behaves exactly as before. Because the
+facet now sorts on star text, the row comparator classifies rating displays
+textually (`rating_text_key` in `cui_data.c`) and orders them by rating
+value, with `Unrated` as 0, instead of leaving them to locale collation,
+which would drop `Unrated` at an arbitrary position between star counts.
+Files: `src/cui_scriptable.c`, `src/cui_data.c`, `src/cui_data.h`.
+
+### Testing
+
+**Preset rewrite and rating sort locked by three new tests.**
+`/cui/scriptable/rating_column` (the exact expression, balanced parens,
+verbatim neighbor columns, whitespace-tolerant detection, composite left
+alone), `/cui/rating/text_key` (the display-text classifier), and
+`/cui/sort/rating_order` (ascending and descending row order with `[All]`
+pinned; desktop-only like the other store tests). 33 tests, green plain and
+under ASan/UBSan. Live-verified in the running player (2026-10-22). Files:
+`tests/test_cui.c`.
+
 ## v2.0.1
 
 ---

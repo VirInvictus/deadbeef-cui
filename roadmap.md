@@ -49,6 +49,7 @@ What's done, what's next. Sequenced for feature-parity with foobar2000's Columns
 - [x] **Album Artist Logic:** Standardize tag priority handling (TPE2 vs. `ALBUM ARTIST`) across different filetypes (Opus, MP3, FLAC).
 - [x] **Prefix Handling:** Option to ignore leading articles ("The", "A", "An") during alphabetical sorting.
 - [x] **Show List Number:** Display the total number of items in each column's "All" row (e.g., [All (55 Genres)]) for a clear overview of selection size.
+- [x] **Rating Facets:** When a column's pattern is exactly `%rating%`, render each rating as ★ characters (1-5) and group unrated tracks under a single "Unrated" row.
 
 ## Phase 5: Advanced CUI Features
 *Deep integration with the DeaDBeeF ecosystem.*

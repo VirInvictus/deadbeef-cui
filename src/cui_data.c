@@ -67,6 +67,34 @@ const char *skip_prefix(const char *str, int ignore) {
     return str;
 }
 
+// Sort key for the rating display texts the preset's %rating% rewrite
+// produces (cui_scriptable.c): "Unrated" is rating 0, a run of 1..5 ★ is that
+// rating. Everything else — any other facet's text — is -1 and falls through
+// to locale collation.
+int rating_text_key(const char *text) {
+    if (!text || !text[0]) return -1;
+    if (strcmp(text, "Unrated") == 0) return 0;
+    int stars = 0;
+    for (const char *p = text; *p; p = g_utf8_next_char(p)) {
+        if (g_utf8_get_char(p) != 0x2605) return -1; // ★
+        stars++;
+        if (stars > 5) return -1;
+    }
+    return stars;
+}
+
+// Facet-row name comparison: two rating display texts order by rating value,
+// so the Rating facet does not depend on where the locale drops U+2605;
+// anything else collates under the ignore-prefix rule as before.
+static int compare_display_names(cui_widget_t *cw, const char *a, const char *b) {
+    int ka = rating_text_key(a);
+    int kb = rating_text_key(b);
+    if (ka >= 0 && kb >= 0) {
+        return (ka > kb) - (ka < kb);
+    }
+    return g_utf8_collate(skip_prefix(a, cw->ignore_prefix), skip_prefix(b, cw->ignore_prefix));
+}
+
 int sort_func(GtkTreeModel *model, GtkTreeIter *a, GtkTreeIter *b, gpointer user_data) {
     cui_widget_t *cw = (cui_widget_t *)user_data;
     gint sort_col;
@@ -95,9 +123,9 @@ int sort_func(GtkTreeModel *model, GtkTreeIter *a, GtkTreeIter *b, gpointer user
         } else {
             if (sort_col == 1) { // Count
                 result = count_b - count_a;
-                if (result == 0) result = g_utf8_collate(skip_prefix(name_a, cw->ignore_prefix), skip_prefix(name_b, cw->ignore_prefix));
+                if (result == 0) result = compare_display_names(cw, name_a, name_b);
             } else { // Name
-                result = g_utf8_collate(skip_prefix(name_a, cw->ignore_prefix), skip_prefix(name_b, cw->ignore_prefix));
+                result = compare_display_names(cw, name_a, name_b);
             }
         }
     }

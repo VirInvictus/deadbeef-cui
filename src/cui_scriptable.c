@@ -46,6 +46,33 @@ void my_scriptable_add_child(scriptableItem_t *parent, scriptableItem_t *child) 
     child->parent = parent;
 }
 
+// A facet column whose format is exactly %rating% renders as stars. Medialib
+// groups tracks by the evaluated title format (medialibtree.c tf_evals each
+// level's `name` against every track), so the star text must be produced by
+// the preset expression itself: rewriting at display time would leave the
+// tree grouped under the raw numbers. $ifequal compares with atoi (tf.c), and
+// an absent rating evaluates to an empty string (the public tf_eval passes
+// fail_on_undef=0), i.e. 0 — everything that is not 1..5 lands on Unrated.
+// The stored colN_format keeps the user's %rating%; this rewrite happens only
+// at preset build. Composite formats that merely contain %rating% stay
+// verbatim. Locked in by /cui/scriptable/rating_column.
+static const char *rating_display_tf =
+    "$ifequal(%rating%,1,★,"
+    "$ifequal(%rating%,2,★★,"
+    "$ifequal(%rating%,3,★★★,"
+    "$ifequal(%rating%,4,★★★★,"
+    "$ifequal(%rating%,5,★★★★★,"
+    "Unrated)))))";
+
+static int column_format_is_rating(const char *fmt) {
+    if (!fmt) return 0;
+    char *trimmed = g_strdup(fmt);
+    g_strstrip(trimmed);
+    int is_rating = strcmp(trimmed, "%rating%") == 0;
+    g_free(trimmed);
+    return is_rating;
+}
+
 void init_my_preset(cui_widget_t *cw) {
     CUI_DEBUG("init_my_preset called");
     if (cw->my_preset) {
@@ -90,7 +117,8 @@ void init_my_preset(cui_widget_t *cw) {
 
     for (int i = 0; i < cw->num_columns; i++) {
         scriptableItem_t *child = my_scriptable_alloc();
-        my_scriptable_set_prop(child, "name", cw->formats[i]);
+        my_scriptable_set_prop(child, "name",
+                               column_format_is_rating(cw->formats[i]) ? rating_display_tf : cw->formats[i]);
 
         if (cw->split_tags) {
             my_scriptable_set_prop(child, "split", "; ");

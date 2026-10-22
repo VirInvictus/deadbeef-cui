@@ -123,6 +123,78 @@ static void test_scriptable_split(void) {
     g_free(cw);
 }
 
+// ---- scriptable preset: %rating% renders as stars ---------------------------
+
+static const char *stars_expr =
+    "$ifequal(%rating%,1,★,"
+    "$ifequal(%rating%,2,★★,"
+    "$ifequal(%rating%,3,★★★,"
+    "$ifequal(%rating%,4,★★★★,"
+    "$ifequal(%rating%,5,★★★★★,"
+    "Unrated)))))";
+
+static void test_scriptable_rating_column(void) {
+    cui_widget_t *cw = fresh_widget();
+    cw->titles[0] = g_strdup("Rating"); cw->formats[0] = g_strdup("%rating%");
+    cw->titles[1] = g_strdup("Genre");  cw->formats[1] = g_strdup("%genre%");
+    init_my_preset(cw);
+
+    scriptableItem_t *root = (scriptableItem_t *)cw->my_preset;
+    // The rating column's tree name is the star expression: medialib groups by
+    // the evaluated format, so the stars have to live in the preset itself.
+    const char *expr = find_prop(nth_child(root, 0), "name");
+    g_assert_cmpstr(expr, ==, stars_expr);
+    // Balanced parens: medialib's tf parser would reject the whole expression
+    // at runtime otherwise, emptying the facet (untestable headless).
+    int depth = 0;
+    for (const char *p = expr; *p; p++) {
+        if (*p == '(') depth++;
+        else if (*p == ')') depth--;
+    }
+    g_assert_cmpint(depth, ==, 0);
+    // Neighbouring non-rating columns pass through verbatim.
+    g_assert_cmpstr(find_prop(nth_child(root, 1), "name"), ==, "%genre%");
+
+    my_scriptable_free((scriptableItem_t *)cw->my_preset);
+    cw->my_preset = NULL;
+    for (int i = 0; i < MAX_COLUMNS; i++) { g_free(cw->titles[i]); g_free(cw->formats[i]); cw->titles[i] = cw->formats[i] = NULL; }
+
+    // Surrounding whitespace still matches (the format field is free text).
+    cw->titles[0] = g_strdup("Rating"); cw->formats[0] = g_strdup(" %rating% ");
+    init_my_preset(cw);
+    g_assert_cmpstr(find_prop(nth_child((scriptableItem_t *)cw->my_preset, 0), "name"), ==, stars_expr);
+
+    my_scriptable_free((scriptableItem_t *)cw->my_preset);
+    cw->my_preset = NULL;
+    for (int i = 0; i < MAX_COLUMNS; i++) { g_free(cw->titles[i]); g_free(cw->formats[i]); cw->titles[i] = cw->formats[i] = NULL; }
+
+    // A composite expression that merely contains %rating% is left alone.
+    cw->titles[0] = g_strdup("Rating"); cw->formats[0] = g_strdup("$if2(%rating%,0)");
+    init_my_preset(cw);
+    g_assert_cmpstr(find_prop(nth_child((scriptableItem_t *)cw->my_preset, 0), "name"), ==, "$if2(%rating%,0)");
+
+    my_scriptable_free((scriptableItem_t *)cw->my_preset);
+    for (int i = 0; i < MAX_COLUMNS; i++) { g_free(cw->titles[i]); g_free(cw->formats[i]); }
+    g_free(cw);
+}
+
+// ---- rating_text_key: star display texts order by rating value --------------
+
+static void test_rating_text_key(void) {
+    g_assert_cmpint(rating_text_key("Unrated"), ==, 0);
+    g_assert_cmpint(rating_text_key("★"), ==, 1);
+    g_assert_cmpint(rating_text_key("★★★"), ==, 3);
+    g_assert_cmpint(rating_text_key("★★★★★"), ==, 5);
+    // Anything else is "not a rating display": other facet text, wrong star
+    // counts, embedded stars, empty.
+    g_assert_cmpint(rating_text_key("Jazz"), ==, -1);
+    g_assert_cmpint(rating_text_key(""), ==, -1);
+    g_assert_cmpint(rating_text_key(NULL), ==, -1);
+    g_assert_cmpint(rating_text_key("★★★★★★"), ==, -1);
+    g_assert_cmpint(rating_text_key("★★x"), ==, -1);
+    g_assert_cmpint(rating_text_key("★★ Jazz"), ==, -1);
+}
+
 // ---- search matching -------------------------------------------------------
 
 static void test_search_match(void) {
@@ -457,6 +529,47 @@ static void test_sort_all_row(void) {
     assert_all_pinned_top(cw, 1, GTK_SORT_ASCENDING);   // by count, asc
     assert_all_pinned_top(cw, 1, GTK_SORT_DESCENDING);  // by count, desc
 
+    g_free(cw);
+}
+
+// The rating facet sorts by rating value, not locale collation: Unrated (0)
+// first ascending, star runs by length, [All] still pinned at iter 0 (§6.13).
+
+static void test_sort_rating_order(void) {
+    if (!g_gtk_ok) { g_test_skip("no display for GtkListStore"); return; }
+    cui_widget_t *cw = fresh_widget();
+    cw->ignore_prefix = 0;
+
+    GtkListStore *store = gtk_list_store_new(3, G_TYPE_STRING, G_TYPE_INT, G_TYPE_BOOLEAN);
+    gtk_tree_sortable_set_sort_func(GTK_TREE_SORTABLE(store), 0, sort_func, cw, NULL);
+    gtk_tree_sortable_set_sort_column_id(GTK_TREE_SORTABLE(store), 0, GTK_SORT_ASCENDING);
+    GtkTreeIter it;
+    gtk_list_store_insert_with_values(store, &it, -1, 0, "[All (4 Ratings)]", 1, 99, 2, TRUE,  -1);
+    gtk_list_store_insert_with_values(store, &it, -1, 0, "★★★★★",          1,  3, 2, FALSE, -1);
+    gtk_list_store_insert_with_values(store, &it, -1, 0, "Unrated",         1,  7, 2, FALSE, -1);
+    gtk_list_store_insert_with_values(store, &it, -1, 0, "★",               1,  1, 2, FALSE, -1);
+    gtk_list_store_insert_with_values(store, &it, -1, 0, "★★★",             1,  5, 2, FALSE, -1);
+
+    const char *want_asc[]  = {"[All (4 Ratings)]", "Unrated", "★", "★★★", "★★★★★"};
+    const char *want_desc[] = {"[All (4 Ratings)]", "★★★★★", "★★★", "★", "Unrated"};
+
+    GtkTreeModel *m = GTK_TREE_MODEL(store);
+    for (int pass = 0; pass < 2; pass++) {
+        gtk_tree_sortable_set_sort_column_id(GTK_TREE_SORTABLE(store), 0,
+                                             pass == 0 ? GTK_SORT_ASCENDING : GTK_SORT_DESCENDING);
+        const char **want = (pass == 0) ? want_asc : want_desc;
+        GtkTreeIter iter;
+        gboolean valid = gtk_tree_model_get_iter_first(m, &iter);
+        for (int i = 0; valid && i < 5; i++) {
+            gchar *text;
+            gtk_tree_model_get(m, &iter, 0, &text, -1);
+            g_assert_cmpstr(text, ==, want[i]);
+            g_free(text);
+            valid = gtk_tree_model_iter_next(m, &iter);
+        }
+        g_assert_false(valid);
+    }
+    g_object_unref(store);
     g_free(cw);
 }
 
@@ -1154,6 +1267,8 @@ int main(int argc, char **argv) {
     g_test_add_func("/cui/scriptable/default", test_scriptable_default);
     g_test_add_func("/cui/scriptable/compaction", test_scriptable_compaction);
     g_test_add_func("/cui/scriptable/split", test_scriptable_split);
+    g_test_add_func("/cui/scriptable/rating_column", test_scriptable_rating_column);
+    g_test_add_func("/cui/rating/text_key", test_rating_text_key);
     g_test_add_func("/cui/search/match", test_search_match);
     g_test_add_func("/cui/count/recursive", test_count_recursive);
     g_test_add_func("/cui/count/cache_zero", test_count_cache_zero);
@@ -1166,6 +1281,7 @@ int main(int argc, char **argv) {
     g_test_add_func("/cui/viewer/marker_first_no_fallback", test_viewer_marker_first_no_fallback);
     g_test_add_func("/cui/config/save_layout", test_config_never_saves_layout);
     g_test_add_func("/cui/sort/all_row", test_sort_all_row);
+    g_test_add_func("/cui/sort/rating_order", test_sort_rating_order);
     g_test_add_func("/cui/populate/no_selection_steal", test_populate_does_not_steal_selection);
     g_test_add_func("/cui/update/modification_index_invalidation", test_modification_index_invalidation);
     g_test_add_func("/cui/sort/persistence", test_sort_persistence_roundtrip);

@@ -13,6 +13,7 @@
 int track_matches_search(DB_playItem_t *track, const char *search_text);
 int count_tracks_recursive(const ddb_medialib_item_t *node, cui_widget_t *cw);
 const char *skip_prefix(const char *str, int ignore);
+int rating_text_key(const char *text);
 int sort_func(GtkTreeModel *model, GtkTreeIter *a, GtkTreeIter *b, gpointer user_data);
 void add_tracks_recursive_multi(const ddb_medialib_item_t *node, int current_level, cui_widget_t *cw, ddb_playlist_t *plt, DB_playItem_t **after);
 ddb_playlist_t *find_viewer_playlist(cui_widget_t *cw);
