@@ -1,5 +1,28 @@
 # deadbeef-cui — Patch Notes
 
+## v2.2.1
+
+---
+
+### Bug fixes
+
+**Templates no longer clobber Intake mode.** Applying a template overwrote
+whichever mode's columns were live, so picking Decades from Intake silently
+destroyed the intake setup. Templates now always land in Play mode: picking
+one from Intake switches the browser home first and applies the template
+there, leaving the intake set exactly what `cui-modes.ini` says (its editor
+is the file, not the menu). The Templates labels say what will happen: they
+read "Apply template: ..." from Play and "Apply to Play: ..." from Intake.
+Locked in by `/cui/template/targets_play`. Files: `src/cui_widget.c`,
+`src/cui_widget.h`.
+
+### Testing
+
+**One new test (41 total), green plain and under ASan/UBSan.** The new
+headless test pins the contract: from Intake the widget lands in Play
+playing the template's columns while the intake set survives verbatim in
+the alt slot, and from Play nothing switches.
+
 ## v2.2.0
 
 ---

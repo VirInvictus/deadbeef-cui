@@ -25,6 +25,13 @@ void cui_clear_viewer_playlists(void);
 // test suite; the right-click Mode submenu is its only runtime caller.
 void cui_set_mode(cui_widget_t *cw, int mode);
 
+// Install a template's column set as the live columns. TEMPLATES ALWAYS
+// TARGET PLAY MODE: called from Intake the widget swaps home first and the
+// intake set stays untouched (its editor is cui-modes.ini). Takes ownership
+// of the caller's arrays; the caller rebuilds afterwards. Exposed for the
+// test suite; the Templates submenu is its only runtime caller.
+void cui_template_apply_columns(cui_widget_t *cw, char **titles, char **formats);
+
 void sync_source_config(void);
 
 gboolean deferred_lib_update_cb(gpointer data);

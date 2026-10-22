@@ -405,6 +405,63 @@ static void test_mode_serialize_roundtrip(void) {
     g_free(cw3);
 }
 
+// Templates always target Play mode: picked from Intake they swap home and
+// leave the intake set untouched (its editor is cui-modes.ini, not the menu).
+
+static void test_template_targets_play(void) {
+    cui_widget_t *cw = fresh_widget();
+    cw->mode = CUI_MODE_INTAKE;
+    // Live = intake-shaped, alt = play-shaped.
+    cw->titles[0] = g_strdup("Added");
+    cw->formats[0] = g_strdup(CUI_RECENT_TOKEN);
+    cw->titles[1] = g_strdup("Codec");
+    cw->formats[1] = g_strdup("%codec%");
+    cw->alt_titles[0] = g_strdup("Rating");
+    cw->alt_formats[0] = g_strdup("%rating%");
+    cw->alt_titles[1] = g_strdup("Genre");
+    cw->alt_formats[1] = g_strdup("%genre%");
+
+    char *titles[MAX_COLUMNS] = {NULL};
+    char *formats[MAX_COLUMNS] = {NULL};
+    titles[0] = g_strdup("Decade");
+    formats[0] = g_strdup("$if(%year%,$cut(%year%,3)0s,No year)");
+    titles[1] = g_strdup("Genre");
+    formats[1] = g_strdup("%genre%");
+
+    cui_template_apply_columns(cw, titles, formats);
+
+    // Landed in Play playing the template's columns, sorts reset.
+    g_assert_cmpint(cw->mode, ==, CUI_MODE_PLAY);
+    g_assert_cmpstr(cw->titles[0], ==, "Decade");
+    g_assert_cmpstr(cw->formats[0], ==, "$if(%year%,$cut(%year%,3)0s,No year)");
+    g_assert_null(cw->titles[2]);
+    g_assert_cmpint(cw->sort_ids[0], ==, 0);
+
+    // Intake survived intact in alt; a mode switch restores it verbatim.
+    g_assert_cmpstr(cw->alt_titles[0], ==, "Added");
+    g_assert_cmpstr(cw->alt_formats[0], ==, CUI_RECENT_TOKEN);
+    g_assert_cmpstr(cw->alt_titles[1], ==, "Codec");
+    cui_modes_exchange_alt(cw);
+    cw->mode = CUI_MODE_INTAKE; // as the Mode menu would
+    g_assert_cmpstr(cw->titles[0], ==, "Added");
+
+    // From Play nothing switches and the other mode stays untouched.
+    cui_modes_exchange_alt(cw);
+    cw->mode = CUI_MODE_PLAY;
+    char *t2[MAX_COLUMNS] = {NULL};
+    char *f2[MAX_COLUMNS] = {NULL};
+    t2[0] = g_strdup("Year");
+    f2[0] = g_strdup("%year%");
+    cui_template_apply_columns(cw, t2, f2);
+    g_assert_cmpint(cw->mode, ==, CUI_MODE_PLAY);
+    g_assert_cmpstr(cw->titles[0], ==, "Year");
+    g_assert_cmpstr(cw->alt_titles[0], ==, "Added");
+
+    cui_modes_free_columns(cw->titles, cw->formats);
+    cui_modes_free_columns(cw->alt_titles, cw->alt_formats);
+    g_free(cw);
+}
+
 // ---- search matching -------------------------------------------------------
 
 static void test_search_match(void) {
@@ -1605,6 +1662,7 @@ int main(int argc, char **argv) {
     g_test_add_func("/cui/mode/exchange", test_mode_exchange);
     g_test_add_func("/cui/modes/keyfile", test_modes_keyfile);
     g_test_add_func("/cui/mode/serialize_roundtrip", test_mode_serialize_roundtrip);
+    g_test_add_func("/cui/template/targets_play", test_template_targets_play);
     g_test_add_func("/cui/search/match", test_search_match);
     g_test_add_func("/cui/count/recursive", test_count_recursive);
     g_test_add_func("/cui/count/cache_zero", test_count_cache_zero);

@@ -403,6 +403,18 @@ static void cui_rebuild_after_column_swap(cui_widget_t *cw) {
     update_tree_data(cw);
 }
 
+// Exchange the live column arrays for `mode`'s set without rebuilding: the
+// seeding guard, the pointer swap, and the mode assignment. The callers run
+// the rebuild dance themselves.
+static void cui_swap_to_mode(cui_widget_t *cw, int mode) {
+    if (!cui_modes_columns_present(cw->alt_titles, cw->alt_formats)) {
+        cui_modes_load_columns(mode, cw->alt_titles, cw->alt_formats);
+    }
+    cui_modes_exchange_alt(cw);
+    cw->mode = mode;
+    CUI_DEBUG("mode switched to %s", mode == CUI_MODE_INTAKE ? "Intake" : "Play");
+}
+
 // Switch this instance's facet mode (CUI_MODE_PLAY / CUI_MODE_INTAKE): the
 // live and alt column sets exchange, then the columns rebuild. The incoming
 // slot is seeded from cui-modes.ini (or built-ins) on the first switch of a
@@ -413,13 +425,27 @@ void cui_set_mode(cui_widget_t *cw, int mode) {
     if (mode == cw->mode) return;
     if (mode != CUI_MODE_PLAY && mode != CUI_MODE_INTAKE) return;
 
-    if (!cui_modes_columns_present(cw->alt_titles, cw->alt_formats)) {
-        cui_modes_load_columns(mode, cw->alt_titles, cw->alt_formats);
-    }
-    cui_modes_exchange_alt(cw);
-    cw->mode = mode;
-    CUI_DEBUG("mode switched to %s", mode == CUI_MODE_INTAKE ? "Intake" : "Play");
+    cui_swap_to_mode(cw, mode);
     cui_rebuild_after_column_swap(cw);
+}
+
+// Install a template's columns as the CURRENT mode's live set. TEMPLATES
+// ALWAYS TARGET PLAY MODE: called from Intake, the widget first swaps home
+// (Intake's stored set is untouched in alt), so picking templates can never
+// clobber the intake configuration, which is edited through cui-modes.ini
+// only. Takes ownership of the caller's arrays. The caller runs the rebuild
+// dance once afterwards.
+void cui_template_apply_columns(cui_widget_t *cw, char **titles, char **formats) {
+    if (cw->mode != CUI_MODE_PLAY) {
+        cui_swap_to_mode(cw, CUI_MODE_PLAY);
+    }
+    cui_modes_free_columns(cw->titles, cw->formats);
+    for (int i = 0; i < MAX_COLUMNS; i++) {
+        cw->titles[i] = titles[i];
+        cw->formats[i] = formats[i];
+        cw->sort_ids[i] = 0;
+        cw->sort_orders[i] = 0;
+    }
 }
 
 static void on_menu_mode_activate(GtkMenuItem *item, gpointer user_data) {
@@ -432,8 +458,10 @@ static void on_menu_mode_activate(GtkMenuItem *item, gpointer user_data) {
     cui_set_mode(cw, target);
 }
 
-// Apply a cui-modes.ini [template:*] column set to the CURRENT mode's slots.
-// Sorts reset to the defaults (name/ascending); the other mode is untouched.
+// Apply a cui-modes.ini [template:*] column set. Templates land in Play mode
+// no matter where they were picked (see cui_template_apply_columns): from
+// Intake this reads as "switch home, experiment there", and the intake set
+// stays exactly what cui-modes.ini says.
 static void on_menu_template_activate(GtkMenuItem *item, gpointer user_data) {
     cui_widget_t *cw = (cui_widget_t *)user_data;
     const char *name = (const char *)g_object_get_data(G_OBJECT(item), "cui_template_name");
@@ -446,14 +474,9 @@ static void on_menu_template_activate(GtkMenuItem *item, gpointer user_data) {
         cui_modes_free_columns(titles, formats);
         return;
     }
-    cui_modes_free_columns(cw->titles, cw->formats);
-    for (int i = 0; i < MAX_COLUMNS; i++) {
-        cw->titles[i] = titles[i];
-        cw->formats[i] = formats[i];
-        cw->sort_ids[i] = 0;
-        cw->sort_orders[i] = 0;
-    }
-    CUI_DEBUG("template '%s' applied to mode %d", name, cw->mode);
+    int from_intake = cw->mode != CUI_MODE_PLAY;
+    cui_template_apply_columns(cw, titles, formats);
+    CUI_DEBUG("template '%s' applied to Play%s", name, from_intake ? " (switched from Intake)" : "");
     cui_rebuild_after_column_swap(cw);
 }
 
@@ -838,14 +861,17 @@ static gboolean on_tree_button_press(GtkWidget *widget, GdkEventButton *event, g
 
     // Templates submenu: [template:*] groups from cui-modes.ini, re-read each
     // time the menu opens so hand edits to the file land without a restart.
-    // Hidden entirely when the file offers none.
+    // Hidden entirely when the file offers none. From Intake the label says
+    // where the template lands, because it always lands in Play.
     GPtrArray *templates = cui_modes_list_templates();
     if (templates->len > 0) {
+        const char *label_fmt = (cw->mode == CUI_MODE_PLAY) ? "Apply template: %s"
+                                                            : "Apply to Play: %s";
         GtkWidget *item_tpl = gtk_menu_item_new_with_label("Templates");
         GtkWidget *tpl_menu = gtk_menu_new();
         for (guint t = 0; t < templates->len; t++) {
             const char *tpl_name = g_ptr_array_index(templates, t);
-            char *label = g_strdup_printf("Apply template: %s", tpl_name);
+            char *label = g_strdup_printf(label_fmt, tpl_name);
             GtkWidget *mi = gtk_menu_item_new_with_label(label);
             g_free(label);
             g_object_set_data_full(G_OBJECT(mi), "cui_template_name", g_strdup(tpl_name), g_free);

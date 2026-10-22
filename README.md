@@ -148,11 +148,13 @@ Mode defaults and templates live in `cui-modes.ini` inside DeaDBeeF's config
 directory. The file is created with defaults on first run and re-read every
 time you open the menu or switch modes, so you can edit it in a text editor
 while the player runs. Its `[template:Name]` sections show up under the
-**Templates** submenu; applying one copies those columns into the current
-mode. The shipped set includes **Standard play** (the reset button for when
-an experiment went too far), Decades, Artist Initials, Quality, Tag Gaps,
-and Year. Column formats accept any title-formatting expression, including a
-reserved `@cui/recent@` token that expands to the recency buckets.
+**Templates** submenu; templates always land in **Play** mode, so
+experimenting from Intake just switches you home and never touches the
+intake setup (the labels say so: "Apply to Play: ..."). The shipped set
+includes **Standard play** (the reset button for when an experiment went
+too far), Decades, Artist Initials, Quality, Tag Gaps, and Year. Column
+formats accept any title-formatting expression, including a reserved
+`@cui/recent@` token that expands to the recency buckets.
 
 ## Acknowledgments
 
